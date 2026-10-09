@@ -1,0 +1,16 @@
+# venv / build
+*venv*
+build/
+dist/
+*.egg-info
+
+# secrets
+config.yaml
+
+# python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# generated outputs
+library/

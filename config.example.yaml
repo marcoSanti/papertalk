@@ -1,0 +1,50 @@
+# paper2pod configuration. Copy to config.yaml and edit.
+# Secrets are better kept in env vars: OPENWEBUI_API_KEY, OPENWEBUI_BASE_URL, PAPER2POD_MODEL.
+
+llm:
+  base_url: "https://openwebui.example.org/api"   # OpenWebUI: <host>/api ; vLLM/LM Studio: <host>/v1
+  # api_key: "sk-..."                             # OpenWebUI > Settings > Account > API keys
+  model: "llama3.1:70b"                           # exact id as shown by `paper2pod models`
+  temperature: 0.7
+  timeout_s: 900
+
+  # --- context window -------------------------------------------------------
+  # context_window: 32768        # set this to skip discovery entirely
+  probe_context: auto            # auto | always | never  (needle-in-haystack test)
+  probe_max_tokens: 131072
+  fallback_context_window: 8192
+  max_output_tokens: 4096
+  # Ollama behind OpenWebUI runs with a small num_ctx unless told otherwise.
+  # Ask for more per request (the probe then verifies OpenWebUI forwarded it):
+  # extra_body: {options: {num_ctx: 32768}}
+
+script:
+  style: host_expert             # host_expert | peers | any key under `speakers`
+  language: English              # dialogue language (pick matching TTS voices!)
+  target_minutes: 25
+  words_per_minute: 150
+  include_references: false
+  recent_turns_verbatim: 8
+
+  # Override or add styles. Each style needs exactly two speakers.
+  # speakers:
+  #   peers:
+  #     - {name: Maya, role: researcher, voice: af_bella, persona: "Presents the paper in depth..."}
+  #     - {name: Leo,  role: researcher, voice: bm_george, persona: "Constructive critic..."}
+  #   italiano:
+  #     - {name: Giulia, role: host,   voice: if_sara,   persona: "Conduttrice curiosa..."}
+  #     - {name: Marco,  role: expert, voice: im_nicola, persona: "Esperto del settore..."}
+
+tts:
+  backend: kokoro                # kokoro | openai_http | null | "my_module:MyBackend"
+  device: auto                   # auto picks cuda > mps > cpu
+  output_format: mp3
+  pause_same_speaker_s: 0.25
+  pause_speaker_change_s: 0.45
+  pause_segment_s: 1.2
+  options: {}                    # passed to the backend constructor
+  # Example for a separate local TTS server (Kokoro-FastAPI, openedai-speech/XTTS, ...):
+  # backend: openai_http
+  # options: {base_url: "http://localhost:8880/v1", model: kokoro, sample_rate: 24000}
+
+cache_dir: ~/.cache/paper2pod

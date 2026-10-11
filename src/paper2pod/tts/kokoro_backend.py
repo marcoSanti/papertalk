@@ -28,7 +28,7 @@ KOKORO_VOICES = (
 
 class KokoroBackend(TTSBackend):
     name = "kokoro"
-    supported_devices: ClassVar[tuple[str, ...]] = ("cuda", "mps", "cpu")
+    supported_devices: ClassVar[tuple[str, ...]] = ("cuda", "mps", "xpu", "cpu")
 
     def __init__(self, device: str = "cpu", repo_id: str = "hexgrad/Kokoro-82M", **options):
         super().__init__(device, repo_id=repo_id, **options)
@@ -91,5 +91,7 @@ class KokoroBackend(TTSBackend):
             import torch  # noqa: PLC0415
             if self.device == "cuda":
                 torch.cuda.empty_cache()
+            elif self.device == "xpu":
+                torch.xpu.empty_cache()
         except ImportError:
             pass

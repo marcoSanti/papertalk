@@ -29,7 +29,7 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        ffmpeg espeak-ng libsndfile1 git curl sudo \
-    && curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarm.gpg \
+    && curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.gpg \
        -o /tmp/tailscale.gpg \
     && install -o root -g root -m 644 /tmp/tailscale.gpg \
        /usr/share/keyrings/tailscale-archive-keyring.gpg \

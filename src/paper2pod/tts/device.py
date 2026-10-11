@@ -17,6 +17,9 @@ def available_devices() -> list[str]:
         mps = getattr(torch.backends, "mps", None)
         if mps is not None and mps.is_available():
             devs.append("mps")
+        xpu = getattr(torch, "xpu", None)
+        if xpu is not None and xpu.is_available():
+            devs.append("xpu")
     except ImportError:
         pass
     devs.append("cpu")
@@ -31,7 +34,7 @@ def resolve_device(requested: str, supported: tuple[str, ...]) -> str:
         if requested not in supported:
             log.warning("Backend does not support '%s'; supported: %s", requested, supported)
         return requested
-    for d in ("cuda", "mps", "cpu"):
+    for d in ("cuda", "mps", "xpu", "cpu"):
         if d in avail and d in supported:
             if d == "mps":
                 # Some ops (e.g. in Kokoro) are not implemented on MPS; let torch fall back.

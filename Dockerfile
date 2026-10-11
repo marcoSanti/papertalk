@@ -24,11 +24,21 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # System deps: ffmpeg (MP3 + chapters), espeak-ng (Kokoro phonemes/voices),
-# libsndfile (soundfile), git (model/pipeline downloads).
+# libsndfile (soundfile), git (model/pipeline downloads). Tailscale is pulled
+# from its official apt repo so the web UI can be reached over the tailnet.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ffmpeg espeak-ng libsndfile1 git \
-    && rm -rf /var/lib/apt/lists/*
+       ffmpeg espeak-ng libsndfile1 git curl sudo \
+    && curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarm.gpg \
+       -o /tmp/tailscale.gpg \
+    && install -o root -g root -m 644 /tmp/tailscale.gpg \
+       /usr/share/keyrings/tailscale-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] \
+https://pkgs.tailscale.com/stable/debian bookworm main" \
+       > /etc/apt/sources.list.d/tailscale.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends tailscale \
+    && rm -rf /var/lib/apt/lists/* /tmp/tailscale.gpg
 
 # Install the app and its dependencies (torch runs on CPU here; pass a CUDA
 # --build-arg to use a GPU build on the NAS if desired).
@@ -65,5 +75,5 @@ EOF
 EXPOSE 8170
 
 # No config.yaml by default: the web UI's Settings gear (or env vars) configure
-# the LLM endpoint/key. `paper2pod-server` == `paper2pod serve`.
+# the LLM endpoint/key. `paper2pod-server` runs the web server only.
 CMD ["paper2pod-server"]

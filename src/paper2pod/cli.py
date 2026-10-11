@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -156,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("-c", "--config", help="YAML config file (default: auto-detect ./config.yaml)")
     ap.add_argument("-v", "--verbose", action="store_true")
     # Run the web server by default (`paper2pod` with no subcommand == `serve`).
-    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--host", default=os.environ.get("PAPER2POD_HOST", "0.0.0.0"))
     ap.add_argument("--port", type=int, default=8170)
     sub = ap.add_subparsers(dest="cmd", required=False)
 
@@ -208,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(fn=cmd_backends)
 
     p = sub.add_parser("serve", help="run the FastAPI web UI server")
-    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--host", default=os.environ.get("PAPER2POD_HOST", "0.0.0.0"))
     p.add_argument("--port", type=int, default=8170)
     llm_opts(p)
     tts_opts(p)

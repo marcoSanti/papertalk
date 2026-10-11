@@ -10,11 +10,10 @@ Needs Python ≤ 3.12:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e .            # installs everything: CLI + web + Kokoro TTS
+pip install -e .            # installs everything: web server + Kokoro TTS
 
 # start the web app (config.yaml + env vars are picked up automatically)
-paper2pod-server                       # -> http://127.0.0.1:8170
-# "paper2pod" with no subcommand does the same thing
+paper2pod-server            # -> http://0.0.0.0:8170  (bind via PAPER2POD_HOST)
 ```
 
 Drag a PDF into the dropzone; the progress bar tracks conversion
@@ -35,7 +34,7 @@ export OPENWEBUI_API_KEY="sk-..."
 ```
 
 Copy `config.example.yaml` → `config.yaml` for the full option surface (styles, speakers,
-voices, TTS, context window). Precedence: **CLI flags > env vars > config.yaml > web UI
+voices, TTS, context window). Precedence: **env vars > config.yaml > web UI
 settings > defaults**.
 
 Platform notes:
@@ -58,6 +57,10 @@ docker run -d --name paper2pod -p 8170:8170 \
   -e OPENWEBUI_BASE_URL="https://host/api" -e OPENWEBUI_API_KEY="sk-..." \
   paper2pod
 ```
+
+The server listens on `0.0.0.0` by default (set `PAPER2POD_HOST` or `--host` to
+bind a specific address, e.g. `127.0.0.1` for loopback-only). In a container the
+`-p` port mapping reaches the web UI at `http://<host-ip>:8170`.
 
 - The **library directory is `/library`**, mounted from the host (your Unraid share).
   Keep it on the share so container re-creates don't lose papers:
@@ -88,22 +91,6 @@ docker run -d --name paper2pod -p 8170:8170 \
 `llm.model` must be the exact id shown by `paper2pod models`. See `config.example.yaml` for
 all options (styles, speakers, voices, TTS, context window). See [DESIGN.md](DESIGN.md) for
 how the model's real context window is discovered.
-
-## Use (CLI)
-
-```bash
-paper2pod run paper.pdf --style host_expert --minutes 30   # full pipeline
-paper2pod script paper.pdf                                # script only
-paper2pod synth out/paper/script.json                     # voice a script
-paper2pod extract paper.pdf                               # inspect PDF parse
-paper2pod models --model "llama3.1:70b" --probe            # check context window
-paper2pod backends                                         # list TTS backends
-paper2pod serve --port 9000                                # or paper2pod-server
-```
-
-Output in `out/<paper>/`: `podcast.mp3` (+`.wav`/`.srt`), `script.md`/`script.json`, and
-checkpoints (`paper.json`, `notes.json`, `outline.json`) that let runs resume. `--fresh`
-replans from scratch.
 
 ## Web API
 

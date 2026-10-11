@@ -35,7 +35,7 @@ class KokoroBackend(TTSBackend):
         try:
             from kokoro import KModel  # noqa: PLC0415
         except ImportError as e:
-            raise ImportError("Kokoro backend needs: pip install 'paper2pod[kokoro]' "
+            raise ImportError("Kokoro backend needs: pip install 'paper2pod' "
                               "(and espeak-ng for non-English voices)") from e
         try:
             model = KModel(repo_id=repo_id)          # kokoro >= 0.9

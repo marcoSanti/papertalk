@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import threading
 import importlib
 from importlib.metadata import entry_points
 
@@ -35,6 +36,13 @@ def available_backends() -> dict[str, str]:
     return found
 
 
+# Process-wide backend cache: one model (and its voices) is loaded once and reused by
+# every job, so heavy model files / voice weights aren't re-validated against HF per
+# conversion (a single KModel is ~a few GB load otherwise).
+_BACKENDS: dict[tuple, TTSBackend] = {}
+_backend_lock = threading.Lock()
+
+
 def create_backend(name: str, device: str = "auto", **options) -> TTSBackend:
     if ":" in name:
         cls = _load(name)
@@ -44,4 +52,11 @@ def create_backend(name: str, device: str = "auto", **options) -> TTSBackend:
             raise KeyError(f"Unknown TTS backend '{name}'. Available: {', '.join(backends)}")
         cls = _load(backends[name])
     dev = resolve_device(device, cls.supported_devices)
-    return cls(device=dev, **options)
+    key = (name, dev, tuple(sorted(options.items())))
+    with _backend_lock:
+        cached = _BACKENDS.get(key)
+        if cached is not None:
+            return cached
+        backend = cls(device=dev, **options)
+        _BACKENDS[key] = backend
+        return backend

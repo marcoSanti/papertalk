@@ -22,6 +22,14 @@ def _progress(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
+# Serialize synthesis so backends like Kokoro-on-MPS never run concurrently:
+# several parallel jobs loading the model and driving Metal command buffers at
+# once crashes with an abort. Extraction/script stages still run in parallel.
+# ponytail: process-global lock; a per-device lock would let unrelated devices
+# overlap, add when anyone runs >1 device.
+_tts_lock = threading.Lock()
+
+
 class PipelineCancelled(RuntimeError):
     """Raised between stages when a job was asked to stop."""
 
@@ -95,12 +103,14 @@ def _synthesize(script, cfg: Config, workdir: str | Path,
 
     wd = Path(workdir)
     _progress(f"Loading TTS backend '{cfg.tts.backend}' (device={cfg.tts.device})...")
-    with create_backend(cfg.tts.backend, cfg.tts.device, **cfg.tts.options) as backend:
+    with _tts_lock:
+        backend = create_backend(cfg.tts.backend, cfg.tts.device, **cfg.tts.options)
         _progress(f"  using device: {backend.device}")
         if progress is not None:
             progress.set_stage("audio", "Synthesizing podcast")
         res = render(script, backend, cfg.tts, wd / "podcast", Path(cfg.cache_dir).expanduser(),
                      progress=_progress, reporter=progress)
+    # `backend` is a process-wide singleton (see tts/registry); not closed here.
     rtf = res.synth_s / res.duration_s if res.duration_s else 0
     _progress(f"Audio: {res.duration_s / 60:.1f} min (synthesis {res.synth_s:.0f}s, RTF {rtf:.2f})")
     for p in (res.mp3, res.wav, res.srt):

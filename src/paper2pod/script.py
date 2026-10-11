@@ -19,6 +19,7 @@ from pathlib import Path
 
 from . import prompts as P
 from .config import Config, Speaker, speakers_for
+from .gender import guess_gender, re_first_name, voice_for
 from .llm import Budget, LLMClient
 from .pdf_extract import Paper, Section
 
@@ -158,8 +159,23 @@ class ScriptGenerator:
         self.notes_path = workdir / "notes.json"
         if self.notes_path.exists():
             self.notes = {int(k): v for k, v in json.loads(self.notes_path.read_text()).items()}
+        self.tags: list[str] = self._load_tags()
 
     # -- utils
+    def _load_tags(self) -> list[str]:
+        tp = self.workdir / "tags.json"
+        if tp.exists():
+            try:
+                data = json.loads(tp.read_text())
+                return [str(t).strip() for t in data if str(t).strip()]
+            except (ValueError, TypeError):
+                return []
+        return []
+
+    def _save_tags(self) -> None:
+        (self.workdir / "tags.json").write_text(
+            json.dumps(self.tags, indent=1, ensure_ascii=False))
+
     def _tok(self, s: str) -> int:
         return self.llm.tokens.count(s)
 
@@ -266,7 +282,11 @@ class ScriptGenerator:
     # -- 2. outline
     def _outline(self, paper: Paper, sections: list[Section], b: Budget) -> list[Segment]:
         index = "\n".join(f"{i}: {s.title} (~{self._tok(s.text)} tok)" for i, s in enumerate(sections))
-        full = "\n\n".join([f"TITLE: {paper.title}", f"ABSTRACT:\n{paper.abstract}"] +
+        head = (f"TITLE: {paper.title}\n"
+                + (f"AUTHORS: {', '.join(paper.authors)}\n" if paper.authors else "")
+                + (f"DOI: {paper.doi}\n" if paper.doi else "")
+                + f"ABSTRACT:\n{paper.abstract}")
+        full = "\n\n".join([head] +
                            [self._section_text(i, s) for i, s in enumerate(sections)])
         if paper.captions:
             full += "\n\nFIGURE/TABLE CAPTIONS:\n" + "\n".join(paper.captions)
@@ -282,8 +302,7 @@ class ScriptGenerator:
             self.progress(f"  paper fits in context (~{self._tok(full)} tok): direct mode")
         else:
             self.progress(f"  paper ~{self._tok(full)} tok > room {room}: digest mode")
-            head = f"TITLE: {paper.title}\nABSTRACT:\n{paper.abstract}\n\n"
-            kind, text = "NOTES", head + self._digest(paper, sections, b, room - self._tok(head))
+            kind, text = "NOTES", head + "\n\n" + self._digest(paper, sections, b, room - self._tok(head))
 
         prompt = P.OUTLINE_PROMPT.format(kind=kind, text=text, **fmt)
         if self.reporter is not None:
@@ -302,6 +321,9 @@ class ScriptGenerator:
                                 weight=float(s.get("weight", 1.0) or 1.0))
                         for s in data["segments"]]
                 if len(segs) >= 2:
+                    tags = [str(t).strip().lower() for t in data.get("tags", []) if str(t).strip()]
+                    if tags:
+                        self.tags = tags[:6]
                     break
             except (ValueError, KeyError, TypeError) as e:
                 log.warning("outline parse failed (%s), retrying", e)
@@ -400,8 +422,39 @@ class ScriptGenerator:
         return turns
 
     # -- driver
+    def _cast_first_author(self, paper: Paper) -> None:
+        """Rename + revoice the presenter speaker as the paper's first author.
+
+        Applied when the PDF exposed authors. The speaker's configured role (its index in
+        ``self.speakers``) is untouched, so persona and framing still hold.
+        """
+        if not paper.authors:
+            return
+        idx = next((i for i, s in enumerate(self.speakers)
+                    if s.role == self.cfg.script.author_speaker), None)
+        if idx is None:
+            log.warning("no speaker with role '%s' to cast as first author "
+                        "(set script.author_speaker)", self.cfg.script.author_speaker)
+            return
+        sp = self.speakers[idx]
+        given = re_first_name(paper.authors[0]) or sp.name
+        if given and given != sp.name:
+            self.progress(f"  casting first author as {sp.role}: {sp.name} -> {given}")
+            sp.name = given
+        gender = self.cfg.script.author_gender
+        if gender == "auto":
+            gender = guess_gender(given)
+        if gender:
+            new_voice = voice_for(gender, sp.voice)
+            if new_voice != sp.voice:
+                self.progress(f"  voice for {given}: {sp.voice} -> {new_voice} ({gender})")
+                sp.voice = new_voice
+        self.names = [s.name for s in self.speakers]
+        self.system = P.system_prompt(self.cfg.script.style, self.speakers, self.cfg.script.language)
+
     def generate(self, paper: Paper, reporter=None) -> Script:
         self.reporter = reporter
+        self._cast_first_author(paper)
         b = self.llm.budget()
         ctx = self.llm.discover_context()
         self.progress(f"Context window {b.window} tok (source: {ctx.source}); "
@@ -417,6 +470,8 @@ class ScriptGenerator:
             self.progress("Planning outline...")
             segs = self._outline(paper, sections, b)
             outline_path.write_text(json.dumps([asdict(s) for s in segs], indent=2, ensure_ascii=False))
+        if self.tags:
+            self._save_tags()
         for i, s in enumerate(segs, 1):
             self.progress(f"  {i:2d}. {s.title}  ({s.target_words} words, sections {s.sections})")
 
@@ -439,4 +494,5 @@ class ScriptGenerator:
                       language=self.cfg.script.language,
                       speakers=[asdict(s) for s in self.speakers], segments=segs,
                       meta={"model": self.llm.cfg.model, "context_window": b.window,
-                            "context_source": ctx.source, "usage": dict(self.llm.usage)})
+                            "context_source": ctx.source, "usage": dict(self.llm.usage),
+                            "tags": self.tags})

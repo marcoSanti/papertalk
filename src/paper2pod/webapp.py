@@ -14,13 +14,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import shutil
 import threading
 import time
+import asyncio
+from contextlib import asynccontextmanager
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from starlette.responses import StreamingResponse
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -39,7 +44,48 @@ _lock = threading.Lock()
 _jobs: dict[str, threading.Thread] = {}
 _cancel: dict[str, threading.Event] = {}
 
-app = FastAPI(title="paper2pod")
+# Server-Sent Event hub: status changes are pushed to open browser streams so the
+# frontend never needs to poll.
+_listeners: set[tuple[asyncio.AbstractEventLoop, "asyncio.Queue"] | tuple] = set()
+
+_TERMINAL = {"done", "error"}
+
+
+def _resume_unfinished() -> None:
+    """After a restart, pick up papers whose worker thread died before finishing.
+
+    Any paper with a non-terminal status is re-queued and its job restarted, so an
+    interrupted conversion resumes automatically on the next boot.
+    """
+    if not LIBRARY.is_dir():
+        return
+    for wd in LIBRARY.iterdir():
+        if not wd.is_dir() or not (wd / "source.pdf").is_file():
+            continue
+        sp = wd / "status.json"
+        state = None
+        if sp.exists():
+            try:
+                state = json.loads(sp.read_text()).get("state")
+            except (OSError, ValueError):
+                state = None
+        if state in _TERMINAL:
+            continue
+        # Clear partial artifacts (the fresh run overwrites them) and restart.
+        for name in ("script.json", "script.md", "podcast.wav", "podcast.mp3", "podcast.srt"):
+            (wd / name).unlink(missing_ok=True)
+        _write_status(wd.name, state="queued", stage="extract", progress=0.0,
+                      message="Queued (resumed after restart)")
+        _start_job(wd.name)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    _resume_unfinished()
+    yield
+
+
+app = FastAPI(title="paper2pod", lifespan=_lifespan)
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 _STATUS_KEYS = ("paper_id", "state", "stage", "progress", "message", "error")
@@ -87,28 +133,62 @@ def _write_status(paper_id: str, **fields) -> None:
                               message=fields.get("message", ""),
                               error=fields.get("error"))
     _atomic_write(LIBRARY / paper_id / "status.json", json.dumps(payload, indent=2))
+    _broadcast("status", payload)
+
+
+def _broadcast(event: str, data: dict) -> None:
+    """Push an event to every connected SSE client (thread-safe)."""
+    with _lock:
+        targets = list(_listeners)
+    for loop, q in targets:
+        try:
+            loop.call_soon_threadsafe(
+                q.put_nowait, f"event: {event}\ndata: {json.dumps(data)}\n\n")
+        except RuntimeError:
+            pass  # loop shut down; drop the client
+
+
+@app.get("/api/events")
+async def sse_stream(request: Request):
+    """Single long-lived stream that pushes status changes as they happen."""
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue = asyncio.Queue()
+    with _lock:
+        _listeners.add((loop, q))
+
+    async def gen():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = q.get_nowait()
+                except asyncio.QueueEmpty:
+                    yield ": keepalive\n\n"
+                    await asyncio.sleep(15)
+                    continue
+                yield msg
+        finally:
+            with _lock:
+                _listeners.discard((loop, q))
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-store"})
 
 
 def _enrich_meta_from_paper(paper_id: str) -> None:
-    """Once the extractor writes paper.json, promote the real paper title into meta.json.
+    """Promote title/authors/affiliations/doi/tags from pipeline artifacts into meta.json.
 
-    Executed on progress changes (and once at job end), so library entries show the
-    paper's own title instead of the uploaded filename. The extractor falls back to
-    the source stem (\"source\") when it finds no title; we skip that so the more
-    useful filename is kept.
+    Executed on progress changes (and once at job end). The extractor writes
+    ``paper.json`` (title, authors, affiliations, doi) and the script stage writes
+    ``tags.json``. We copy them into the library's ``meta.json`` so library entries
+    surface rich metadata; the more useful original filename is kept as the title
+    fallback (``source`` stem is skipped).
     """
     wd = LIBRARY / paper_id
     mp = wd / "meta.json"
-    pp = wd / "paper.json"
-    if not pp.is_file():
+    if not mp.is_file():
         return
-    try:
-        title = json.loads(pp.read_text()).get("title")
-    except (OSError, ValueError, json.JSONDecodeError):
-        return
-    if not (isinstance(title, str) and title.strip()):
-        return
-    title = title.strip()
     # Re-read meta right before writing so a concurrent PATCH (tags/favorite/
     # manual rename) is not clobbered by this whole-dict write.
     # ponytail: best-effort merge; a file lock would fully serialize enrich
@@ -117,12 +197,40 @@ def _enrich_meta_from_paper(paper_id: str) -> None:
         meta = json.loads(mp.read_text())
     except (OSError, ValueError, json.JSONDecodeError):
         return
-    if meta.get("title_enriched"):
-        return
-    enriched = title.lower() != "source" and title != meta.get("filename")
-    if enriched:
-        meta["title"] = title
-    meta["title_enriched"] = True
+
+    pp = wd / "paper.json"
+    if pp.is_file():
+        try:
+            info = json.loads(pp.read_text())
+        except (OSError, ValueError, json.JSONDecodeError):
+            info = {}
+        for key in ("authors", "affiliations", "doi"):
+            val = info.get(key)
+            if val not in (None, "", [], {}):
+                meta[key] = val
+        title = info.get("title")
+        if isinstance(title, str) and title.strip() and not meta.get("title_enriched"):
+            if title.lower() != "source" and title != meta.get("filename"):
+                meta["title"] = title.strip()
+            meta["title_enriched"] = True
+
+    tp = wd / "tags.json"
+    if tp.is_file():
+        try:
+            auto_tags = [str(t) for t in json.loads(tp.read_text()) if str(t).strip()]
+        except (ValueError, TypeError):
+            auto_tags = []
+        if auto_tags:
+            # keep any user-added tags, then the auto ones (dedup, order preserved)
+            seen: set[str] = set()
+            merged: list[str] = []
+            for t in (meta.get("tags", []) or []) + auto_tags:
+                t = str(t).strip()
+                if t and t not in seen:
+                    seen.add(t)
+                    merged.append(t)
+            meta["tags"] = merged
+
     _atomic_write(mp, json.dumps(meta, indent=2))
 
 
@@ -145,6 +253,7 @@ def _worker(paper_id: str) -> None:
         cfg = _serving_config()
         cancel = _cancel.get(paper_id)
         run_paper(str(wd / "source.pdf"), cfg, wd, progress=rep, cancel=cancel)
+        _enrich_meta_from_paper(paper_id)  # guarantee /library has fresh meta before "done"
         _write_status(paper_id, state="done", stage="done", progress=1.0, message="Done")
     except PipelineCancelled as e:
         _write_status(paper_id, state="error", stage="finalize",
@@ -230,6 +339,13 @@ def _library_entry(wd: Path, meta: dict, meta_ok: bool, status: dict) -> dict:
     }
     entry["tags"] = meta.get("tags", [])
     entry["favorite"] = meta.get("favorite", False)
+    entry["authors"] = meta.get("authors", [])
+    entry["affiliations"] = meta.get("affiliations", [])
+    entry["doi"] = meta.get("doi", "")
+    entry["read"] = bool(meta.get("read", False))
+    entry["progress"] = float(meta.get("progress", 0) or 0)
+    entry["duration"] = float(meta.get("duration", 0) or 0)
+    entry["progress_ts"] = meta.get("progress_ts", "")
     return entry
 
 
@@ -282,6 +398,124 @@ def paper_audio(paper_id: str):
     raise HTTPException(404, "audio not found")
 
 
+@app.get("/api/papers/{paper_id}/transcript")
+def paper_transcript(paper_id: str):
+    """The structured script.json (segments + turns) for a styled transcript view."""
+    f = LIBRARY / paper_id / "script.json"
+    if not f.is_file():
+        raise HTTPException(404, "transcript not found")
+    return FileResponse(f)
+
+
+_SRT_TIME = re.compile(r"(\d+):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d+):(\d{2}):(\d{2}),(\d{3})")
+
+
+def _parse_srt(path: Path) -> list[dict]:
+    """Parse a .srt file into ordered cues: {start, end, speaker, text, words}."""
+    text = path.read_text(errors="ignore")
+    chunks = [c for c in re.split(r"\n\s*\n", text) if c]
+    cues: list[dict] = []
+    for chunk in chunks:
+        tm = re.search(_SRT_TIME, chunk)
+        if not tm:
+            continue
+        h, mm, s, ms = (int(tm.group(i)) for i in range(1, 5))
+        h2, mm2, s2, ms2 = (int(tm.group(i)) for i in range(5, 9))
+        body = re.sub(_SRT_TIME, "", chunk).splitlines()
+        body = [ln.strip() for ln in body if ln.strip()]
+        body = [ln for ln in body if not re.fullmatch(r"\d+", ln)]  # drop cue index line
+        speaker, text = "", " ".join(body).strip()
+        if text:
+            sp = re.match(r"^(.+?):\s*(.*)$", text)
+            if sp:
+                speaker, text = sp.group(1).strip(), sp.group(2).strip()
+        cues.append({"start": h * 3600 + mm * 60 + s + ms / 1000,
+                     "end": h2 * 3600 + mm2 * 60 + s2 + ms2 / 1000,
+                     "speaker": speaker, "text": text,
+                     "words": re.findall(r"\S+", text)})
+    return cues
+
+
+@app.get("/api/papers/{paper_id}/captions")
+def paper_captions(paper_id: str):
+    """Timed subtitle cues (from podcast.srt) for the custom word-tracked player."""
+    srt = LIBRARY / paper_id / "podcast.srt"
+    if not srt.is_file():
+        return []  # no audio / captions yet
+    return _parse_srt(srt)
+
+
+def _render_cover(pdf: Path, out: Path) -> None:
+    """Render the PDF's first page to a small PNG thumbnail (no poppler needed)."""
+    import pymupdf  # noqa: PLC0415
+    doc = pymupdf.open(str(pdf))
+    if not doc.page_count:
+        raise ValueError("PDF has no pages")
+    page = doc.load_page(0)
+    width = page.rect.width
+    scale = 400.0 / width if width else 2.0
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+    pix.save(str(out))
+
+
+@app.get("/api/papers/{paper_id}/cover")
+def paper_cover(paper_id: str):
+    """First-page thumbnail of the PDF, genented lazily and cached."""
+    wd = LIBRARY / paper_id
+    pdf = wd / "source.pdf"
+    if not pdf.is_file():
+        raise HTTPException(404, "paper not found")
+    cover = wd / "cover.png"
+    if not cover.is_file():
+        try:
+            _render_cover(pdf, cover)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(500, f"could not render cover: {e}") from e
+    return FileResponse(cover, media_type="image/png",
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/papers/{paper_id}/refresh-meta")
+def refresh_paper_meta(paper_id: str):
+    """Re-run only the PDF metadata extraction (title/authors/affiliations/doi).
+
+    Updates paper.json + meta.json without regenerating script or audio. A
+    manually-edited title (title_enriched) is left untouched.
+    """
+    wd = LIBRARY / paper_id
+    pdf = wd / "source.pdf"
+    if not pdf.is_file():
+        raise HTTPException(404, "paper not found")
+    from .pdf_extract import extract_paper  # noqa: PLC0415
+    try:
+        paper = extract_paper(pdf)
+    except ValueError as e:
+        raise HTTPException(400, f"could not extract metadata: {e}") from e
+    _atomic_write(wd / "paper.json", json.dumps(asdict(paper), ensure_ascii=False, indent=2))
+    (wd / "cover.png").unlink(missing_ok=True)  # regenerate first-page thumbnail
+    try:
+        _render_cover(pdf, wd / "cover.png")
+    except Exception:  # noqa: BLE001 - a missing cover is non-fatal for a refresh
+        pass
+    _enrich_meta_from_paper(paper_id)
+
+    mp = wd / "meta.json"
+    meta = {}
+    if mp.is_file():
+        try:
+            meta = json.loads(mp.read_text())
+        except (OSError, ValueError):
+            meta = {}
+    sp = wd / "status.json"
+    status = {}
+    if sp.is_file():
+        try:
+            status = json.loads(sp.read_text())
+        except (OSError, ValueError):
+            status = {}
+    return _library_entry(wd, meta, True, status)
+
+
 _KINDS = {"pdf": "source.pdf", "srt": "podcast.srt", "script": "script.md"}
 
 
@@ -327,6 +561,20 @@ async def update_paper_meta(paper_id: str, request: Request):
         if not isinstance(updates["favorite"], bool):
             raise HTTPException(400, "'favorite' must be a boolean")
         meta["favorite"] = updates["favorite"]
+    if "read" in updates:
+        if not isinstance(updates["read"], bool):
+            raise HTTPException(400, "'read' must be a boolean")
+        meta["read"] = updates["read"]
+    progress_changed = "progress" in updates or "duration" in updates
+    if "progress" in updates:
+        if not isinstance(updates["progress"], (int, float)) or updates["progress"] < 0:
+            raise HTTPException(400, "'progress' must be a non-negative number")
+        meta["progress"] = round(float(updates["progress"]), 1)
+    if "duration" in updates:
+        if isinstance(updates["duration"], (int, float)) and updates["duration"] > 0:
+            meta["duration"] = round(float(updates["duration"]), 1)
+    if progress_changed:
+        meta["progress_ts"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
     _atomic_write(mp, json.dumps(meta, indent=2))
 

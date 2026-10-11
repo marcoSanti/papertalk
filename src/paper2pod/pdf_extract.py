@@ -31,6 +31,8 @@ REFERENCE_TITLES = {"references", "bibliography", "literature cited"}
 NUMBERED_RE = re.compile(r"^((\d+(\.\d+){0,3})\.?|[IVXLC]+\.|[A-Z]\.(\d+)?)\s+\S")
 CAPTION_RE = re.compile(r"^(fig(ure)?\.?|table|tab\.)\s*\d+[a-z]?\s*[:.|]", re.I)
 LIGATURES = {"ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl"}
+DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b")
+_AUTHOR_SEP = re.compile(r"[;,]\s*|\s+and\s+", re.I)
 
 
 @dataclass
@@ -53,12 +55,23 @@ class Paper:
     captions: list[str] = field(default_factory=list)
     page_count: int = 0
     source: str = ""
+    authors: list[str] = field(default_factory=list)
+    affiliations: list[str] = field(default_factory=list)
+    doi: str = ""
+    
+    def header(self) -> str:
+        parts = [f"TITLE: {self.title}"]
+        if self.authors:
+            parts.append("AUTHORS: " + ", ".join(self.authors))
+        if self.doi:
+            parts.append(f"DOI: {self.doi}")
+        return "\n".join(parts)
 
     def body_sections(self, include_references: bool = False) -> list[Section]:
         return [s for s in self.sections if include_references or not s.is_references]
 
     def full_text(self, include_references: bool = False) -> str:
-        parts = [f"TITLE: {self.title}"]
+        parts = [self.header()]
         if self.abstract:
             parts.append(f"ABSTRACT:\n{self.abstract}")
         for s in self.body_sections(include_references):
@@ -81,6 +94,161 @@ def _clean(s: str) -> str:
         s = s.replace(k, v)
     s = unicodedata.normalize("NFKC", s)
     return re.sub(r"[ \t]+", " ", s).strip()
+
+
+_AFFIL_SIGNAL = re.compile(
+    r"\b(?:university|univ\.?|college|school|institute|institut|department|dept\.?|"
+    r"laborator|research center|research group|research|centre|center|academy|medicine|"
+    r"hospital|faculty|physics|computer science|biology|chemistry|engineering|"
+    r"mathematics|google|microsoft|amazon|facebook|meta\b|apple|ibm|technolog)\b",
+    re.I)
+
+
+def _looks_like_title(text: str) -> bool:
+    """True for a line that could be a paper title (excludes stamps/mastheads)."""
+    t = text.strip()
+    if len(t) < 3 or len(t) > 220:
+        return False
+    low = t.lower()
+    # arXiv submission stamps / DOIs / bare page numbers / lone journal years.
+    if re.search(r"\barxiv:|\[\s*cs\.[a-z]+\s*\]", low):
+        return False
+    if re.search(r"^10\.\d{4,}/\S+", low):
+        return False
+    if re.fullmatch(r"[\d.,\s-]+", t):
+        return False
+    # "Future Generation Computer Systems" style journal-only header is caught by
+    # _drop_running_heads; here just reject lines that are short + only a year/vol.
+    if re.fullmatch(r"[A-Za-z&.,' -]*\d{4}", t) and len(t) < 40:
+        return False
+    return True
+
+
+def _plausible_title(t: str, stem: str) -> bool:
+    """Trust a metadata/other title only if it actually looks like a paper title."""
+    t = t.strip()
+    return (8 <= len(t) <= 250 and "arxiv:" not in t.lower()
+            and t not in (stem, stem.strip()) and t != "Untitled")
+
+
+_AFFIL_SEP = re.compile(r"[;,]")
+
+_AFFIL_STOP = re.compile(
+    r"\b(?:university|univ\.?|department|dept\.?|institute|institut|faculty|school|"
+    r"college|laboratory|lab\b|research|centre|center|academy|medicine|hospital)\b",
+    re.I)
+
+
+def _authors_from_page(p1: list[_Line], title_end_y: float) -> list[str]:
+    """Author names: the capitalized block directly beneath the title.
+
+    Scans from the title's bottom edge down page 1, collecting contiguous lines
+    that read as names (mostly Title Case, footnote keys allowed), stopping at
+    the first affiliation/prose line. Each split-off name has its trailing
+    footnote key (``, a``, ``1``) removed.
+    """
+    block: list[str] = []
+    started = False
+    for ln in p1:
+        if ln.y0 <= title_end_y:
+            continue
+        t = ln.text.strip()
+        if not t:
+            continue
+        if _stops_author_block(t):
+            if started:
+                break
+            continue
+        if not _is_author_line(t):
+            if started:
+                break
+            continue
+        started = True
+        block.append(t)
+    names: list[str] = []
+    for part in _AUTHOR_SEP.split(" ".join(block)):
+        part = re.sub(r"[*†‡#\u0301\u030a]", "", part).strip()
+        part = re.sub(r"\s+[a-z0-9]\s*$", "", part).strip()   # "Name, a" -> "Name"
+        part = re.sub(r"\d+$", "", part).strip()               # "Name1" -> "Name"
+        part = part.strip(" .,;:")
+        if _plausible_author_name(part):
+            names.append(part)
+    return names
+
+
+def _is_author_line(t: str) -> bool:
+    s = re.sub(r"[*†‡#]", "", t).strip()
+    if not s or len(s) > 180 or "@" in s or "[" in s or "(" in s or ")" in s or "/" in s:
+        return False
+    low = s.lower()
+    if re.search(r"\b(university|department|dept|institut|faculty|school|college|"
+                 r"research|center|centre|laboratory|journal|homepage|elsevier|"
+                 r"sciencedirect|highlights|abstract|article info|keywords)\b", low):
+        return False
+    words = [w for w in s.split() if re.search(r"[A-Za-z]", w)]
+    if len(words) < 2:
+        return False
+    capped = sum(1 for w in words if w[0].isupper())
+    return capped >= max(2, int(0.5 * len(words)))
+
+
+def _stops_author_block(t: str) -> bool:
+    """A line that clearly ends the author block (affiliation / section head)."""
+    low = t.lower()
+    return bool(re.search(r"\b(contributing authors|corresponding author|email|address|"
+                          r"universidade|\d{4}"
+                          r"|university|department|dept|institut|faculty|college|"
+                          r"research center|abstract|highlights|article info)\b", low))
+
+
+def _plausible_author_name(n: str) -> bool:
+    n = n.strip(" .,;:")
+    if len(n) < 3 or len(n) > 60 or not re.search(r"[A-Za-z]", n):
+        return False
+    if n.isupper() and len(n) < 4:
+        return False
+    return bool(re.search(r"\b[A-Z]", n))
+
+
+def _affiliations(p1: list[_Line], title: str, authors: list[str]) -> list[str]:
+    """Best-effort affiliations: institution-looking lines on page. 1.
+
+    Up to 6 distinct institution lines, dropping emails, reference brackets and
+    prose that merely *mentions* an org (e.g. "…using IBM's…"). A footnote-style
+    leading key (``a``, ``1``) is stripped. Correctly tying each author to their
+    key needs a layout parse; this is display-only.
+    """
+    # ponytail: crude heuristic; structured footnotes with 1-letter superscript
+    # keys are frequent — correctly tying author->affiliation needs a layout parse
+    # (see pdfplumber tables) that isn't worth it for display-only metadata.
+    known = {n.lower() for n in authors} | {title.lower()}
+    out: list[str] = []
+    seen: set[str] = set()
+    for ln in p1:
+        t = ln.text.strip()
+        if (len(t) < 6 or len(t) > 140 or "@" in t or "[" in t or t.lower() in known
+                or len(re.findall(r"[A-Za-z]", t)) < 4):
+            continue
+        # strip a leading footnote key ("a " / "1 ") only if it precedes a Capital.
+        m = re.match(r"^([0-9]|[a-z])(?=\s+[A-Z])", t)
+        if m:
+            t = t[m.end():].strip()
+        head = t.split()[0] if t.split() else ""
+        if not head or (head[0].islower() and not head[0].isdigit()):
+            continue  # lowercase prose line, not an institution
+        if _AFFIL_SIGNAL.search(t):
+            low = t.lower()
+            m = _AFFIL_STOP.search(low)
+            if m and low.index(m.group(0)) > 60:
+                continue  # org mentioned deep in a sentence -> prose
+            t = re.sub(r"^[a-z0-9*#]+\s+", "", t, count=1)  # leading footnote key
+            k = t.lower()
+            if k not in seen:
+                seen.add(k)
+                out.append(t)
+        if len(out) >= 6:
+            break
+    return out
 
 
 def _norm_for_repeat(s: str) -> str:
@@ -111,7 +279,7 @@ def _read_lines(doc: pymupdf.Document) -> list[_Line]:
 
 
 def _drop_running_heads(lines: list[_Line], n_pages: int) -> list[_Line]:
-    if n_pages < 3:
+    if n_pages < 2:
         return lines
     pages_with = Counter()
     seen = set()
@@ -171,16 +339,47 @@ def extract_paper(path: str | Path, reporter=None) -> Paper:
         size_weights[ln.size] += len(ln.text)
     body_size = size_weights.most_common(1)[0][0]
 
-    # Title: largest text on page 1 (top half), excluding tiny fragments.
+    # Title: largest text in the top half of page 1, taken as a contiguous run of
+    # same-size lines. A real title is usually a multi-line block; an isolated
+    # large line sitting above it is a journal masthead ("J. Parallel Distrib.
+    # Comput." style) that running-head removal missed because it only appears on
+    # page 1. So prefer the first multi-line cluster, else the topmost large line.
     p1 = [ln for ln in lines if ln.page == 0]
+    page_h = doc[0].rect.height if doc else 0
+    top = [ln for ln in p1 if ln.y0 < page_h * 0.55 and _looks_like_title(ln.text)]
     meta_title = (doc.metadata or {}).get("title", "").strip()
     title = meta_title
-    if p1:
-        max_size = max(ln.size for ln in p1)
-        title_lines = [ln.text for ln in p1 if ln.size == max_size and ln.size > body_size * 1.2]
-        if title_lines and (not meta_title or len(meta_title) < 8):
-            title = " ".join(title_lines[:4])
+    title_end_y = -1.0
+    if not (isinstance(title, str) and _plausible_title(title, path.stem)) and top:
+        target = max(ln.size for ln in top)
+        kept = [ln for ln in top if ln.size >= target * 0.95]
+        clusters: list[list[_Line]] = []
+        for ln in kept:
+            if clusters and clusters[-1][-1].y0 + 40 > ln.y0:
+                clusters[-1].append(ln)
+            else:
+                clusters.append([ln])
+        run = next((c for c in clusters if len(c) >= 2), clusters[0])
+        title = " ".join(ln.text for ln in run).strip()
+        title_end_y = run[-1].y0
     title = title or path.stem
+
+    # Authors: PDF metadata first, else the name block directly under the title.
+    authors: list[str] = []
+    meta = doc.metadata or {}
+    raw_authors = (meta.get("author") or "").strip()
+    if raw_authors:
+        authors = [_clean(p) for p in _AUTHOR_SEP.split(raw_authors) if p.strip()]
+    if not authors and p1:
+        authors = _authors_from_page(p1, title_end_y)
+
+    # DOI: metadata first, else the first one anywhere on page 1.
+    doi = (meta.get("doi") or "").strip()
+    p1_text = _clean(" ".join(ln.text for ln in p1)) if p1 else ""
+    if not doi and p1_text and DOI_RE.search(p1_text):
+        doi = DOI_RE.search(p1_text).group(0)
+
+    affiliations = _affiliations(p1, title, authors)
 
     sections: list[Section] = []
     captions: list[str] = []
@@ -244,4 +443,5 @@ def extract_paper(path: str | Path, reporter=None) -> Paper:
                 sections.append(Section(f"Page {pno + 1}", 1, t))
 
     return Paper(title=title, abstract=abstract, sections=sections,
-                 captions=captions, page_count=doc.page_count, source=str(path))
+                 captions=captions, page_count=doc.page_count, source=str(path),
+                 authors=authors, affiliations=affiliations, doi=doi)

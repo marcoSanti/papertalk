@@ -26,6 +26,11 @@ script:
   include_references: false
   recent_turns_verbatim: 8
 
+  # Cast the presenter/expert speaker as the paper's first author when the PDF has authors:
+  # they take the author's name and a TTS voice matched to the name's gender.
+  author_speaker: expert            # role of the speaker to rename
+  author_gender: auto               # auto (infer from name) | male | female
+
   # Override or add styles. Each style needs exactly two speakers.
   # speakers:
   #   peers:

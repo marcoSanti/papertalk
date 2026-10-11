@@ -108,13 +108,6 @@
 
         <div class="lib-context" id="lib-context" hidden></div>
 
-        <div class="lib-list-head" id="lib-list-head" aria-hidden="true">
-          <span class="h-title">Title</span>
-          <span class="h-status">Status</span>
-          <span class="h-date">Created</span>
-          <span class="h-files">Available</span>
-        </div>
-
         <ul class="lib-list" id="lib-list" aria-live="polite"></ul>
 
         <div class="empty" id="empty" hidden>
@@ -138,20 +131,21 @@
     </div>
   </div>
 
-  <!-- ================= ACTIVE CONVERSION TOOLBAR ================= -->
-  <nav class="toolbar" id="toolbar" aria-label="Active conversion" hidden>
-    <div class="toolbar-inner">
-      <div class="tb-idx" id="tb-index">1 / 1</div>
-      <div class="tb-main">
-        <p class="tb-title" id="tb-title">Converting…</p>
-        <p class="tb-stage" id="tb-stage">Starting</p>
-      </div>
-      <div class="tb-progress"><div class="tb-fill" id="tb-fill"></div></div>
-      <button class="ghost-btn" id="toolbar-open" type="button">View</button>
-    </div>
-  </nav>
-
+  <!-- ================= TOASTS ================= -->
   <div class="toast-region" id="toast-region" aria-live="assertive"></div>
+
+  <!-- ================= TRANSCRIPT OVERLAY ================= -->
+  <div class="overlay" id="transcript-overlay" hidden aria-hidden="true">
+    <div class="overlay-inner" role="dialog" aria-modal="true" aria-label="Transcript">
+      <header class="overlay-head">
+        <h3 id="tx-title">Transcript</h3>
+        <button class="icon-btn" id="tx-close" type="button" aria-label="Close transcript">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="overlay-body" id="tx-body"></div>
+    </div>
+  </div>
 
   <script src="/static/app.js" defer></script>
 </body>

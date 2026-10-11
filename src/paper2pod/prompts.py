@@ -77,13 +77,17 @@ experimental setup (data, baselines, metrics), every main result with its number
 analyses, limitations and threats to validity, relation to prior work, and implications/open questions.
 
 Return ONLY a JSON object, no commentary, in exactly this shape:
-{{"segments": [
+{{"tags": ["topic1", "topic2", "..."],
+  "segments": [
   {{"title": "short title",
     "goal": "what the listener should understand by the end of this segment",
     "sections": [list of section numbers from the SECTION INDEX that this segment draws on],
     "key_points": ["specific point to cover, with concrete numbers/terms", "..."],
     "weight": relative length as a number (1.0 = average)}}
 ]}}
+
+"tags" is 3-6 short, distinctive topical tags for this paper (lowercase, 1-2 words each,
+e.g. ["contrastive learning", "retrieval-augmented generation", "llm"]).
 
 Rules: {min_seg}-{max_seg} segments in listening order. The first segment introduces the paper
 (title, what problem it tackles, why it matters); the last wraps up with the verdict and takeaways.

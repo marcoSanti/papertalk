@@ -5,7 +5,6 @@
 /*  Config                                                             */
 /* ------------------------------------------------------------------ */
 
-const POLL_MS = 1500;
 const API_BASE = "/api";
 
 const STAGE_LABELS = {
@@ -39,7 +38,6 @@ const els = {
   sortSelect: $("#sort-select"),
   statusFilter: $("#status-filter"),
   libContext: $("#lib-context"),
-  listHead: $("#lib-list-head"),
   list: $("#lib-list"),
   empty: $("#empty"),
   emptyTitle: $("#empty-title"),
@@ -47,12 +45,10 @@ const els = {
   detail: $("#detail"),
   detailBody: $("#detail-body"),
   detailClose: $("#detail-close"),
-  toolbar: $("#toolbar"),
-  tbIndex: $("#tb-index"),
-  tbTitle: $("#tb-title"),
-  tbStage: $("#tb-stage"),
-  tbFill: $("#tb-fill"),
-  toolbarOpen: $("#toolbar-open"),
+  txOverlay: $("#transcript-overlay"),
+  txBody: $("#tx-body"),
+  txTitle: $("#tx-title"),
+  txClose: $("#tx-close"),
   toastRegion: $("#toast-region"),
   headerNote: $("#header-note"),
 };
@@ -63,12 +59,12 @@ const els = {
 
 const store = {
   papers: new Map(),          // id -> library record
-  byNumber: [],               // ordered ids for toolbar index
   activeConverting: [],       // ids currently converting (running/queued)
   selectedId: null,           // paper shown in detail panel
-  pollTimers: new Map(),      // id -> interval handle
   audioEl: null,              // currently playing <audio>
+  overlayAudio: null,         // audio currently inside the transcript overlay
   statusCache: {},            // id -> latest /status payload
+  cueCache: {},               // id -> [{start,end,speaker,words}] captions
   // UI filters
   view: "all",                // "all" | "fav" | "tag"
   activeTag: null,            // tag name when filtering by tag
@@ -284,64 +280,53 @@ function clearView() {
 
 /* -- Library list -- */
 
-function rowMeta(p) {
-  const date = formatDate(p.created_iso || p.created_at);
-  let tags = "";
-  const tagArr = Array.isArray(p.tags) ? p.tags : [];
-  if (tagArr.length) {
-    tags = `<span class="row-tags">${tagArr.map((t) =>
-      `<button class="tag-chip" data-rowtag="${escaped(t)}" type="button">#${escaped(t)}</button>`
-    ).join("")}</span>`;
-  }
-  return { date, tags, tagArr };
-}
-
-function stateBadge(p) {
-  const st = p.state || "queued";
-  if (st === "running" || st === "queued") {
-    const prog = Math.round((p.progress || 0) * 100);
-    return `<span class="row-state">
-      <span class="state-badge running">${st === "running" ? "Running" : "Queued"}</span>
-      <span class="state-pct">${prog}%</span>
-    </span>`;
-  }
-  if (st === "done") {
-    return `<span class="row-state"><span class="state-badge done">Done</span></span>`;
-  }
-  return `<span class="row-state"><span class="state-badge error">Error</span></span>`;
-}
-
-function fileIcons(p) {
-  const audioCls = (isDone(p) || p.has_audio) ? "on" : "dim";
-  const scriptCls = p.has_script ? "on" : "dim";
-  return `
-    <span class="file-ic ${audioCls}" title="Audio">
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21a9 9 0 1 0-9-9m9 9a5 5 0 1 1 2-9.9m-2 9.9v-3"/><path d="M12 16a3 3 0 1 0-3-3"/></svg>
-    </span>
-    <span class="file-ic ${scriptCls}" title="Script">
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6M13 4l-2 16"/></svg>
-    </span>`;
-}
-
 function rowContent(p) {
-  const { date, tags } = rowMeta(p);
   const title = p.title || p.filename || "Untitled";
+  const st = (p.state === "running" || p.state === "queued") ? "running"
+    : p.state === "done" ? "done" : p.state === "error" ? "error" : "unknown";
   const fav = p.favorite ? "on" : "";
   const isSel = store.selectedId === p.id ? "selected" : "";
+  const busy = st === "running";
+  const read = !!p.read;
+  const frac = p.duration > 0 && p.progress > 0 ? Math.min(1, p.progress / p.duration) : 0;
+  const coverUrl = p.has_pdf ? `${API_BASE}/papers/${p.id}/cover` : null;
   return `
-    <li class="row ${isSel}" data-id="${escaped(p.id)}">
-      <button class="row-star ${fav}" data-fav="${escaped(p.id)}" type="button"
-        aria-label="${p.favorite ? "Remove from favorites" : "Add to favorites"}" aria-pressed="${p.favorite ? "true" : "false"}">
-        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="1.6"><path d="M12 3.6l2.6 5.3 5.9.9-4.3 4.1 1 5.9-5.2-2.7-5.2 2.7 1-5.9-4.3-4.1 5.9-.9z"/></svg>
+    <li class="book book-${st} ${isSel} ${read ? "read" : "new"}" data-id="${escaped(p.id)}">
+      <button class="book-open" data-open="${escaped(p.id)}" type="button" aria-label="Open ${escaped(title)}">
+        <span class="book-cover">
+          ${read ? "" : '<span class="book-badge" aria-hidden="true">NEW</span>'}
+          ${coverUrl
+            ? `<img class="book-img" src="${coverUrl}" alt="" loading="lazy" decoding="async" />`
+            : '<span class="book-ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M4 4h7a2 2 0 0 1 2 2v13a2 2 0 0 0-2 2H4V4zm11 0v15a2 2 0 0 1 2-2V4h-2z"/><path d="M17 4h3v13a2 2 0 0 1-3 1.7V4z" opacity=".85"/></svg></span>'}
+          ${busy ? '<span class="book-spin" aria-hidden="true"></span>' : ""}
+          ${frac > 0 && !busy ? `<span class="book-readbar" aria-hidden="true"><i style="width:${Math.round(frac * 100)}%"></i></span>` : ""}
+        </span>
+        <span class="book-title">${escaped(title)}</span>
       </button>
-      <div class="row-main">
-        <button class="row-open" data-open="${escaped(p.id)}" type="button">${escaped(title)}</button>
-        ${tags}
-      </div>
-      ${stateBadge(p)}
-      <span class="row-date">${date}</span>
-      <span class="row-files">${fileIcons(p)}</span>
+      <button class="book-star ${fav}" data-fav="${escaped(p.id)}" type="button"
+        aria-label="${p.favorite ? "Remove from favorites" : "Add to favorites"}" aria-pressed="${p.favorite ? "true" : "false"}">
+        <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="1.6"><path d="M12 3.6l2.6 5.3 5.9.9-4.3 4.1 1 5.9-5.2-2.7-5.2 2.7 1-5.9-4.3-4.1 5.9-.9z"/></svg>
+      </button>
+      <button class="book-read" data-read="${escaped(p.id)}" type="button"
+        aria-label="${read ? "Mark as unread" : "Mark as read"}" title="${read ? "Mark as unread" : "Mark as read"}">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.2" fill="none"><path d="M4 12.5l5 5L20 6.5"/></svg>
+      </button>
     </li>`;
+}
+
+function cardSig(p) {
+  const st = (p.state === "running" || p.state === "queued") ? "running"
+    : p.state === "done" ? "done" : p.state === "error" ? "error" : "unknown";
+  const frac = p.duration > 0 && p.progress > 0 ? Math.min(1, p.progress / p.duration) : 0;
+  return [p.title || p.filename || "Untitled", st, !!p.favorite, !!p.read,
+          Math.round(frac * 100), store.selectedId === p.id, !!p.has_pdf].join("|");
+}
+
+/** Signature of the detail-panel fields, so poll ticks don't rebuild/mute the player. */
+function detailSig(p) {
+  return [p.title, !!p.has_audio, !!p.has_script, p.state, p.stage, p.message,
+          p.stageLabel, p.statusMessage, (p.authors || []).join("|"),
+          (p.tags || []).join("|"), !!p.favorite, !!p.read].join("|");
 }
 
 function renderList() {
@@ -350,23 +335,27 @@ function renderList() {
   const hasAny = papers.length > 0;
   const isFiltering = !!(store.search || store.statusFilter !== "all" || store.view !== "all");
 
-  els.listHead.hidden = !hasPapers;
   els.empty.hidden = hasAny || !hasPapers;
-  if (!hasPapers) {
-    els.emptyTitle.textContent = "Your library is empty";
-    els.emptyMsg.textContent = "Upload a PDF to start converting it into a podcast.";
-    els.list.innerHTML = "";
-    return;
+  if (!hasPapers) { els.emptyTitle.textContent = "Your library is empty"; els.emptyMsg.textContent = "Upload a PDF to start converting it into a podcast."; els.list.innerHTML = ""; return; }
+  if (!hasAny) { els.emptyTitle.textContent = "No results"; els.emptyMsg.textContent = isFiltering ? "Nothing matches your current filters. Try clearing the search or status filter." : "Nothing in this collection yet."; els.list.innerHTML = ""; return; }
+
+  const seen = new Set();
+  const frag = document.createDocumentFragment();
+  for (const p of papers) {
+    seen.add(p.id);
+    const existing = els.list.querySelector(`li[data-id="${CSS.escape(p.id)}"]`);
+    if (existing && existing.dataset.sig === cardSig(p)) { frag.appendChild(existing); continue; }
+    if (existing) existing.remove();
+    const li = document.createElement("li");
+    li.innerHTML = rowContent(p);
+    li.dataset.sig = cardSig(p);
+    frag.appendChild(li.firstElementChild);
   }
-  if (!hasAny) {
-    els.emptyTitle.textContent = "No results";
-    els.emptyMsg.textContent = isFiltering
-      ? "Nothing matches your current filters. Try clearing the search or status filter."
-      : "Nothing in this collection yet.";
-    els.list.innerHTML = "";
-    return;
-  }
-  els.list.innerHTML = papers.map(rowContent).join("");
+  // Drop cards that are no longer visible (e.g. removed by a filter).
+  els.list.querySelectorAll("li[data-id]").forEach((li) => {
+    if (!seen.has(li.dataset.id)) li.remove();
+  });
+  els.list.appendChild(frag);
 }
 
 /** Re-render sidebar + list (cheap for single-record updates when supplied). */
@@ -487,13 +476,11 @@ async function loadLibrary() {
   for (const id of store.papers.keys()) {
     if (!seen.has(id)) {
       store.papers.delete(id);
-      stopPolling(id);
       if (store.selectedId === id) closeDetail();
     }
   }
   reconcileConverting();
   renderAll();
-  renderToolbar();
 }
 
 /* ================================================================== */
@@ -505,28 +492,6 @@ function reconcileConverting() {
     .filter(([, p]) => p.state === "running" || p.state === "queued")
     .sort((a, b) => (b[1].created_iso || "").localeCompare(a[1].created_iso || ""))
     .map(([id]) => id);
-}
-
-function currentConverting() {
-  return store.activeConverting[0];
-}
-
-function renderToolbar() {
-  const id = currentConverting();
-  if (!id) {
-    els.toolbar.hidden = true;
-    return;
-  }
-  const p = store.papers.get(id);
-  const total = store.activeConverting.length;
-  const idx = store.activeConverting.indexOf(id) + 1;
-  els.toolbar.hidden = false;
-  if (total > 1) els.tbIndex.textContent = `${idx} / ${total}`;
-  else els.tbIndex.textContent = "";
-  els.tbTitle.textContent = p.title || p.filename || "Converting…";
-  els.tbStage.textContent = p.statusMessage || p.stageLabel || stageLabel(p.stage);
-  const prog = Math.round((p.progress || 0) * 100);
-  els.tbFill.style.width = prog + "%";
 }
 
 /* ================================================================== */
@@ -596,6 +561,16 @@ function renderDetail() {
     ? `<p class="detail-kicker">Ready to play</p>`
     : statusBlockHTML(p);
 
+  const authors = Array.isArray(p.authors) ? p.authors : [];
+  const affils = Array.isArray(p.affiliations) ? p.affiliations : [];
+  const metaBlock = (authors.length || affils.length || p.doi)
+    ? `<div class="d-meta-block">
+        ${authors.length ? `<p class="d-authors">${escaped(authors.join(" · "))}</p>` : ""}
+        ${affils.length ? `<p class="d-affil">${escaped(affils.join(" · "))}</p>` : ""}
+        ${p.doi ? `<p class="d-doi">DOI: <a href="https://doi.org/${escaped(p.doi)}" target="_blank" rel="noopener">${escaped(p.doi)}</a></p>` : ""}
+      </div>`
+    : "";
+
   els.detailBody.innerHTML = `
     <p class="d-kicker">Paper</p>
     <div class="d-head">
@@ -606,6 +581,8 @@ function renderDetail() {
         ${favBtn}
       </div>
     </div>
+
+    ${metaBlock}
 
     <div class="d-tags">
       <div class="d-tags-head">
@@ -619,17 +596,30 @@ function renderDetail() {
     </div>
 
     ${statusHTML}
-    ${hasAudio ? `<div class="d-audio">
-      <audio class="player-audio" id="d-audio" controls preload="metadata" src="${API_BASE}/papers/${p.id}/audio?t=${cacheBust}"></audio>
+    ${hasAudio ? `
+    <div class="d-player" id="d-player">
+      <audio class="player-audio" id="d-audio" preload="metadata" src="${API_BASE}/papers/${p.id}/audio?t=${cacheBust}"></audio>
+      <button class="p-play" id="d-play" type="button" aria-label="Play or pause"></button>
+      <div class="p-main">
+        <div class="p-caption" id="p-caption">
+          <span class="p-spk" id="p-spk"></span><span class="p-txt" id="p-txt"></span>
+        </div>
+        <div class="p-bar">
+          <input class="p-seek" id="p-seek" type="range" min="0" max="1000" value="0" aria-label="Seek" />
+        </div>
+        <div class="p-time"><span id="p-cur">0:00</span>/<span id="p-dur">–:––</span></div>
+      </div>
     </div>` : ""}
 
     <div class="d-downloads">
       <a class="dl-btn" href="${API_BASE}/papers/${p.id}/file?kind=pdf">PDF</a>
-      <a class="dl-btn ${p.has_script ? "" : "disabled"}" href="${API_BASE}/papers/${p.id}/file?kind=script">Script</a>
+      <button class="dl-btn ${p.has_script ? "" : "disabled"}" id="d-transcript" type="button">Transcript</button>
+      <button class="dl-btn ${p.has_script ? "" : "disabled"}" id="d-script" type="button">Script</button>
       <a class="dl-btn ${p.has_script ? "" : "disabled"}" href="${API_BASE}/papers/${p.id}/file?kind=srt">SRT</a>
     </div>
 
     <div class="d-danger">
+      <button id="d-refresh-meta" type="button">Refresh metadata</button>
       <button id="d-rerun" type="button">Rerun</button>
       <button id="d-delete" class="d-del" type="button">Delete</button>
     </div>`;
@@ -657,10 +647,135 @@ function renderDetail() {
   });
 
   const audio = $("#d-audio");
-  if (audio) store.audioEl = audio;
+  if (audio) {
+    store.audioEl = audio;
+    wirePlayer(p);
+  }
 
   $("#d-rerun").addEventListener("click", onRerun);
   $("#d-delete").addEventListener("click", onDelete);
+
+  const refreshBtn = $("#d-refresh-meta");
+  if (refreshBtn) refreshBtn.addEventListener("click", onRefreshMeta);
+
+  const txBtn = $("#d-transcript");
+  if (txBtn) txBtn.addEventListener("click", () => openTranscript(store.selectedId));
+
+  const scriptBtn = $("#d-script");
+  if (scriptBtn) scriptBtn.addEventListener("click", () => openScript(store.selectedId));
+}
+
+/* ================================================================== */
+/*  Transcript overlay                                                */
+/* ================================================================== */
+
+function openTranscript(id) {
+  const p = store.papers.get(id);
+  els.txTitle.textContent = (p && (p.title || p.filename)) || "Transcript";
+  if (store.overlayAudio) { store.overlayAudio.pause(); store.overlayAudio = null; }
+  els.txBody.innerHTML = '<p class="tx-loading">Loading…</p>';
+  els.txOverlay.hidden = false;
+  els.txOverlay.setAttribute("aria-hidden", "false");
+  els.txBody.scrollTop = 0;
+
+  api(`/papers/${id}/captions`)
+    .then((cues) => {
+      if (!Array.isArray(cues) || !cues.length) {
+        // No timed audio yet: fall back to the static structured transcript.
+        api(`/papers/${id}/transcript`)
+          .then((script) => renderTranscript(id, script))
+          .catch((err) => { els.txBody.innerHTML = `<p class="tx-error">${escaped(err.message)}</p>`; });
+        return;
+      }
+      els.txBody.innerHTML = "";
+      const playerWrap = document.createElement("div");
+      playerWrap.className = "tx-player";
+      els.txBody.appendChild(playerWrap);
+
+      const list = document.createElement("div");
+      list.className = "tx-live";
+      list.innerHTML = cues.map((c, i) =>
+        `<div class="tx-turn" data-i="${i}">
+          <span class="tx-speaker tx-c${i % 2}">${escaped(c.speaker || "Speaker")}</span>
+          <span class="tx-text">${escaped(c.text)}</span>
+        </div>`).join("");
+      els.txBody.appendChild(list);
+
+      store.overlayAudio = installPlayer(playerWrap, p, (t) => {
+        let idx = cues.findIndex((c) => t >= c.start && t <= c.end);
+        if (idx === -1 && cues.length && t > 0 && t < cues[0].start) idx = 0;
+        list.querySelectorAll(".tx-turn.on").forEach((n) => n.classList.remove("on"));
+        if (idx !== -1) {
+          const el = list.querySelector(`[data-i="${idx}"]`);
+          if (el) { el.classList.add("on"); el.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+        }
+      });
+    })
+    .catch(() => {
+      els.txBody.innerHTML = '<p class="tx-error">Could not load captions.</p>';
+    });
+}
+
+/** Build a self-contained player inside `host` and wire it. Returns the <audio>. */
+function installPlayer(host, p, onTick) {
+  host.innerHTML = `
+    <div class="d-player">
+      <audio class="player-audio" preload="metadata" src="${API_BASE}/papers/${p.id}/audio?t=${Date.now()}"></audio>
+      <button class="p-play" type="button" aria-label="Play or pause"></button>
+      <div class="p-main">
+        <div class="p-caption"><span class="p-spk"></span><span class="p-txt"></span></div>
+        <div class="p-bar"><input class="p-seek" type="range" min="0" max="1000" value="0" aria-label="Seek" /></div>
+        <div class="p-time"><span class="p-cur">0:00</span>/<span class="p-dur">–:––</span></div>
+      </div>
+    </div>`;
+  return wirePlayerCtl({
+    audio: host.querySelector(".player-audio"),
+    playBtn: host.querySelector(".p-play"),
+    seek: host.querySelector(".p-seek"),
+    curEl: host.querySelector(".p-cur"),
+    durEl: host.querySelector(".p-dur"),
+    spkEl: host.querySelector(".p-spk"),
+    txtEl: host.querySelector(".p-txt"),
+  }, p, onTick);
+}
+
+function closeTranscript() {
+  if (store.overlayAudio) { store.overlayAudio.pause(); store.overlayAudio = null; }
+  els.txOverlay.hidden = true;
+  els.txOverlay.setAttribute("aria-hidden", "true");
+}
+
+/** Show the full written episode script in the same floating overlay (no navigation). */
+function openScript(id) {
+  const p = store.papers.get(id);
+  els.txTitle.textContent = (p && (p.title || p.filename)) || "Script";
+  if (store.overlayAudio) { store.overlayAudio.pause(); store.overlayAudio = null; }
+  els.txBody.innerHTML = '<p class="tx-loading">Loading…</p>';
+  els.txOverlay.hidden = false;
+  els.txOverlay.setAttribute("aria-hidden", "false");
+  els.txBody.scrollTop = 0;
+  api(`/papers/${id}/transcript`)
+    .then((script) => renderTranscript(id, script))
+    .catch((err) => { els.txBody.innerHTML = `<p class="tx-error">${escaped(err.message)}</p>`; });
+}
+
+function renderTranscript(id, script) {
+  const speakers = new Map((script.speakers || []).map((s, i) => [s.name, { color: i % 2, name: s.name, persona: s.persona }]));
+  const speakersInUse = new Set();
+  const blocks = (script.segments || []).map((seg, si) => {
+    const turns = (seg.turns || []).map((t) => {
+      speakersInUse.add(t.speaker);
+      return `<div class="tx-turn">
+        <span class="tx-speaker tx-c${speakers.get(t.speaker)?.color ?? 0}">${escaped(t.speaker)}</span>
+        <span class="tx-text">${escaped(t.text)}</span>
+      </div>`;
+    }).join("");
+    return `<section class="tx-seg">
+      <h4 class="tx-seg-head"><span>${si + 1}</span> ${escaped(seg.title || "")}</h4>
+      ${turns}
+    </section>`;
+  }).join("");
+  els.txBody.innerHTML = blocks || '<p class="tx-error">No transcript yet.</p>';
 }
 
 /* ================================================================== */
@@ -674,9 +789,7 @@ async function onRerun() {
   try {
     await api(`/papers/${id}/rerun`, { method: "POST" });
     adoptStatus(id, { state: "queued", stage: "extract", progress: 0, message: "Queued" });
-    startPolling(id);
     renderAll();
-    renderToolbar();
     renderDetail();
   } catch (err) {
     toast("Rerun failed: " + err.message);
@@ -695,11 +808,181 @@ async function onDelete() {
   }
   if (store.audioEl) { store.audioEl.pause(); store.audioEl = null; }
   if (store.selectedId === id) closeDetail();
-  stopPolling(id);
   store.papers.delete(id);
   reconcileConverting();
   renderAll();
-  renderToolbar();
+}
+
+async function toggleRead(id) {
+  const p = store.papers.get(id);
+  if (!p) return;
+  const next = !p.read;
+  const prev = p.read;
+  p.read = next;
+  updateRow(id);
+  try {
+    store.papers.set(id, await patchMeta(id, { read: next }));
+  } catch (err) {
+    p.read = prev;
+    toast("Could not update read state: " + err.message);
+  }
+  updateRow(id);
+}
+
+/** Persist a paper's listening position + known duration. Fire-and-forget. */
+async function saveProgress(id, progress, duration) {
+  const p = store.papers.get(id);
+  if (p) { p.progress = progress; if (duration) p.duration = duration; }
+  try {
+    const updated = await patchMeta(id, {
+      progress: Math.round((progress || 0) * 10) / 10,
+      ...(duration ? { duration: Math.round(duration * 10) / 10 } : {}),
+    });
+    store.papers.set(id, updated);
+    renderList(); // refresh shelf read-bars only; detail must not be rebuilt mid-play
+  } catch (_) { /* ignore transient save errors */ }
+}
+
+async function onRefreshMeta() {
+  const id = store.selectedId;
+  if (!id || !store.papers.has(id)) return;
+  const btn = $("#d-refresh-meta");
+  if (btn) btn.disabled = true;
+  try {
+    const entry = await api(`/papers/${id}/refresh-meta`, { method: "POST" });
+    store.papers.set(id, entry);
+    renderAll();
+    renderDetail();
+    toast("Metadata refreshed");
+  } catch (err) {
+    toast("Refresh failed: " + err.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ================================================================== */
+/*  Custom audio player (word-tracked captions)                        */
+/* ================================================================== */
+
+function fmtTime(s) {
+  if (!isFinite(s)) return "–:––";
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+function wirePlayerCtl(a, p, onTick) {
+  // a = { audio, playBtn, seek, curEl, durEl, spkEl, txtEl } — each an element.
+  let cues = store.cueCache[p.id] || null;
+  let duration = 0;
+  let lastSave = 0;
+
+  const persistPos = (force) => {
+    const now = Date.now();
+    if (!force && now - lastSave < 5000) return;
+    lastSave = now;
+    const cur = a.audio.currentTime || 0;
+    const dur = a.audio.duration || 0;
+    if (!dur) return;
+    saveProgress(p.id, cur, dur);
+  };
+
+  const syncCaptions = (t) => {
+    if (!cues) return;
+    const c = cues.find((x) => t >= x.start && t <= x.end);
+    a.spkEl.textContent = c && c.speaker ? c.speaker + ":" : "";
+    if (!c) { a.txtEl.innerHTML = ""; return; }
+    const frac = c.end > c.start ? Math.min(1, Math.max(0, (t - c.start) / (c.end - c.start))) : 1;
+    const active = Math.floor(frac * c.words.length);
+    a.txtEl.innerHTML = c.words.map((w, i) =>
+      `<span class="p-w${i < active ? " on" : ""}">${escaped(w)}</span>`).join(" ");
+  };
+
+  const syncSeek = () => {
+    if (!duration) return;
+    a.seek.value = String(Math.round((a.audio.currentTime / duration) * 1000));
+    a.curEl.textContent = fmtTime(a.audio.currentTime);
+  };
+
+  const refreshPlayBtn = () => {
+    a.playBtn.classList.toggle("playing", !a.audio.paused);
+    a.playBtn.setAttribute("aria-label", a.audio.paused ? "Play" : "Pause");
+  };
+
+  const togglePlay = () => {
+    if (!cues) fetchCaptions(); // kick off captions on first interaction
+    if (a.audio.paused) { a.audio.play().catch(() => {}); }
+    else a.audio.pause();
+  };
+
+  const fetchCaptions = () => {
+    if (cues !== null) return;
+    syncCaptions(0);
+    api(`/papers/${p.id}/captions`).then((list) => {
+      cues = Array.isArray(list) ? list : [];
+      store.cueCache[p.id] = cues;
+      syncCaptions(a.audio.currentTime);
+    }).catch(() => { cues = []; store.cueCache[p.id] = []; });
+  };
+
+  a.playBtn.addEventListener("click", togglePlay);
+  a.playBtn.addEventListener("keydown", (e) => {
+    if (e.code === "Space") { e.preventDefault(); togglePlay(); }
+  });
+
+  a.seek.addEventListener("input", () => {
+    if (!duration) return;
+    a.audio.currentTime = (a.seek.value / 1000) * duration;
+    syncSeek();
+    syncCaptions(a.audio.currentTime);
+    if (onTick) onTick(a.audio.currentTime);
+  });
+
+  a.audio.addEventListener("loadedmetadata", () => {
+    duration = a.audio.duration;
+    a.durEl.textContent = fmtTime(duration);
+    // Resume where the user left off (unless they'd already finished it).
+    const saved = p.progress > 0 && p.progress < duration - 5 ? p.progress : 0;
+    if (saved > 0) {
+      a.audio.currentTime = saved;
+      syncSeek();
+      syncCaptions(saved);
+      if (onTick) onTick(saved);
+    } else {
+      syncSeek();
+    }
+  });
+  a.audio.addEventListener("timeupdate", () => {
+    syncSeek();
+    syncCaptions(a.audio.currentTime);
+    if (onTick) onTick(a.audio.currentTime);
+    persistPos(false);
+  });
+  a.audio.addEventListener("play", refreshPlayBtn);
+  a.audio.addEventListener("pause", refreshPlayBtn);
+  a.audio.addEventListener("ended", () => {
+    refreshPlayBtn();
+    a.seek.value = "0";
+    a.curEl.textContent = "0:00";
+    syncCaptions(0);
+    if (onTick) onTick(0);
+    persistPos(true);
+  });
+
+  fetchCaptions();
+  return a.audio;
+}
+
+function wirePlayer(p) {
+  store.audioEl = wirePlayerCtl({
+    audio: $("#d-audio"),
+    playBtn: $("#d-play"),
+    seek: $("#p-seek"),
+    curEl: $("#p-cur"),
+    durEl: $("#p-dur"),
+    spkEl: $("#p-spk"),
+    txtEl: $("#p-txt"),
+  }, p, null);
 }
 
 /* ================================================================== */
@@ -743,7 +1026,7 @@ function uploadFile(file) {
     if (xhr.status >= 200 && xhr.status < 300) {
       try {
         const data = JSON.parse(xhr.responseText);
-        onUploaded(data.id);
+        onUploaded(data.id, file.name);
         toast("Upload started", true);
       } catch (_) {
         toast("Upload succeeded but response was malformed.");
@@ -766,9 +1049,9 @@ function uploadFile(file) {
   xhr.send(fd);
 }
 
-function onUploaded(id) {
+function onUploaded(id, filename) {
   const rec = {
-    id, title: "", filename: els.fileInput.files[0]?.name || "New paper",
+    id, title: "", filename: filename || "Untitled",
     has_audio: false, has_pdf: true, has_script: false,
     created_iso: new Date().toISOString(),
     state: "queued", stage: "extract", progress: 0, message: "Queued",
@@ -778,9 +1061,8 @@ function onUploaded(id) {
   adoptStatus(id, { state: "queued", stage: "extract", progress: 0, message: "Queued" });
   reconcileConverting();
   renderAll();
-  renderToolbar();
   openDetail(id);
-  startPolling(id);
+  startStatusStream();
   els.fileInput.value = "";
 }
 
@@ -788,35 +1070,33 @@ function onUploaded(id) {
 /*  Polling                                                            */
 /* ================================================================== */
 
-function startPolling(id) {
-  if (store.pollTimers.has(id)) return;
-  pollOnce(id);
-  const timer = setInterval(() => pollOnce(id), POLL_MS);
-  store.pollTimers.set(id, timer);
+let statusStream = null;
+
+/** Open one persistent SSE stream; the server pushes status changes (no polling). */
+function startStatusStream() {
+  if (statusStream) return;
+  const es = new EventSource(API_BASE + "/events");
+  statusStream = es;
+  es.addEventListener("status", (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch (_) { return; }
+    onStatusEvent(data);
+  });
+  // On reconnect (or first open) re-sync so we don't miss changes while disconnected.
+  es.onopen = () => loadLibrary();
+  es.onerror = () => loadLibrary(); // EventSource auto-reconnects; refresh state meanwhile
 }
 
-function stopPolling(id) {
-  const t = store.pollTimers.get(id);
-  if (t) { clearInterval(t); store.pollTimers.delete(id); }
-}
-
-async function pollOnce(id) {
-  let status;
-  try {
-    status = await api(`/papers/${id}/status`);
-  } catch (err) {
-    return; // transient — keep record as-is
-  }
+function onStatusEvent(status) {
+  const id = status.paper_id;
+  if (!store.papers.get(id)) return; // unknown/just-deleted paper
   store.statusCache = store.statusCache || {};
   store.statusCache[id] = status;
   adoptStatus(id, status);
-
   if (status.state === "done") {
-    stopPolling(id);
-    await loadLibrary();
+    loadLibrary();
     if (store.selectedId === id) renderDetail();
   } else if (status.state === "error") {
-    stopPolling(id);
     if (store.selectedId === id) renderDetail();
   }
 }
@@ -839,8 +1119,10 @@ function adoptStatus(id, status) {
   }
   reconcileConverting();
   renderAll();
-  renderToolbar();
-  if (store.selectedId === id) renderDetail();
+  if (store.selectedId === id && detailSig(p) !== p.__detailSig) {
+    renderDetail();
+    p.__detailSig = detailSig(p);
+  }
 }
 
 /* ================================================================== */
@@ -947,7 +1229,7 @@ els.statusFilter.addEventListener("click", (e) => {
 
 // ---- List delegation (rows) ----
 els.list.addEventListener("click", (e) => {
-  const row = e.target.closest(".row");
+  const row = e.target.closest(".book");
   if (!row) return;
   const id = row.dataset.id;
   // Tag chip in a row -> filter by that tag
@@ -966,6 +1248,13 @@ els.list.addEventListener("click", (e) => {
     toggleFavorite(id);
     return;
   }
+  // Mark as read / unread
+  const rd = e.target.closest("[data-read]");
+  if (rd) {
+    e.preventDefault();
+    toggleRead(id);
+    return;
+  }
   // Open detail
   const open = e.target.closest("[data-open]");
   if (open) {
@@ -976,10 +1265,19 @@ els.list.addEventListener("click", (e) => {
 // ---- Detail close ----
 els.detailClose.addEventListener("click", closeDetail);
 
-// ---- Toolbar "View" ----
-els.toolbarOpen.addEventListener("click", () => {
-  const id = currentConverting();
-  if (id) openDetail(id);
+// Persist playback position before the tab/iframe is torn down.
+window.addEventListener("pagehide", () => {
+  const a = store.audioEl;
+  if (a && store.selectedId && !a.paused) {
+    saveProgress(store.selectedId, a.currentTime || 0, a.duration || 0);
+  }
+});
+
+// ---- Transcript overlay ----
+els.txClose.addEventListener("click", closeTranscript);
+els.txOverlay.addEventListener("click", (e) => { if (e.target === els.txOverlay) closeTranscript(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !els.txOverlay.hidden) closeTranscript();
 });
 
 // ---- Refresh ----
@@ -993,7 +1291,10 @@ document.addEventListener("drop", (e) => e.preventDefault());
 //  Init
 // ==================================================================
 
-loadLibrary();
+(async () => {
+  await loadLibrary();
+  startStatusStream();  // server pushes status changes; no per-second polling
+})();
 setInterval(() => {
   // Refresh library when nothing is converting to avoid clobbering optimistic records.
   if (!store.activeConverting.length) loadLibrary();

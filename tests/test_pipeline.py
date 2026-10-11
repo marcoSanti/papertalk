@@ -41,6 +41,19 @@ def test_extract_structure(pdf):
     assert p.abstract
     assert "Preprint" not in p.full_text(True)          # running header removed
     assert len(p.captions) == 2
+    assert p.authors == ["Ada Lovelace", "Alan Turing"]  # metadata author list
+    assert p.doi == "10.48550/arXiv.2405.00000"
+
+
+def test_gender_and_voice_heuristics():
+    from paper2pod.gender import guess_gender, voice_for
+    assert guess_gender("Ada Lovelace") == "female"
+    assert guess_gender("Marco Rossi") == "male"
+    assert guess_gender("Alan Turing") == "male"
+    assert guess_gender("Something Ambiguousx") is None   # won't silently guess
+    assert voice_for("female", "am_michael") == "af_heart"
+    assert voice_for("male", "if_sara") == "im_nicola"
+    assert voice_for("male", "zz_unknown") == "zz_unknown"  # unknown language keeps voice
 
 
 def test_parse_dialogue_tolerant():
@@ -105,6 +118,18 @@ def test_end_to_end_digest_mode(server, pdf, tmp_path, capsys):
     audio, sr = sf.read(wd / "podcast.wav")
     assert len(audio) / sr > 30
     assert (wd / "podcast.srt").read_text().startswith("1\n00:00:00")
+
+
+def test_first_author_cast_into_host_expert(pdf, tmp_path):
+    server = FakeOpenWebUI(ctx=32000)
+    main(["script", str(pdf), "-o", str(tmp_path), "--base-url", server.url,
+          "--model", "fake-openai", "--style", "host_expert"])
+    script = json.loads((tmp_path / "paper" / "script.json").read_text())
+    byrole = {s["role"]: s for s in script["speakers"]}
+    assert byrole["expert"]["name"] == "Ada"            # renamed to the first author
+    assert byrole["expert"]["voice"] == "af_heart"      # female voice for "Ada"
+    assert byrole["host"]["name"] == "Alex"             # other speaker untouched
+    server.close()
 
 
 def test_resume_skips_llm(pdf, tmp_path):

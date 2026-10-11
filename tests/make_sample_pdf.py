@@ -54,6 +54,7 @@ def build(path: str, paras_per_section: int = 6, seed: int = 0) -> None:
     new_page()
     write("Sparse Routing Attention for Long Sequences", size=18, bold=True, gap=10)
     write("Ada Lovelace, Alan Turing", size=10)
+    write("DOI: 10.48550/arXiv.2405.00000", size=9)
     write("Abstract", size=12, bold=True)
     write(" ".join(rng.sample(SENTS, 4)))
     for s in SECTIONS:
@@ -68,6 +69,8 @@ def build(path: str, paras_per_section: int = 6, seed: int = 0) -> None:
                 write("Table 1: Accuracy on the benchmark. Our method outperforms all baselines.", size=9)
             if s == "3 Method" and p == 0:
                 write("Figure 2: Overview of the routing mechanism.", size=9)
+    doc.set_metadata({"title": "Sparse Routing Attention for Long Sequences",
+                      "author": "Ada Lovelace, Alan Turing"})
     doc.save(path)
 
 

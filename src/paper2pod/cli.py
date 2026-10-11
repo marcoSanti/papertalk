@@ -87,10 +87,10 @@ def _synth_audio(cfg: Config, script, wd: Path) -> None:
 
     wd = Path(wd)
     _progress(f"Loading TTS backend '{cfg.tts.backend}' (device={cfg.tts.device})...")
-    with create_backend(cfg.tts.backend, cfg.tts.device, **cfg.tts.options) as backend:
-        _progress(f"  using device: {backend.device}")
-        res = render(script, backend, cfg.tts, wd / "podcast", Path(cfg.cache_dir).expanduser(),
-                     progress=_progress)
+    backend = create_backend(cfg.tts.backend, cfg.tts.device, **cfg.tts.options)
+    _progress(f"  using device: {backend.device}")
+    res = render(script, backend, cfg.tts, wd / "podcast", Path(cfg.cache_dir).expanduser(),
+                 progress=_progress)
     rtf = res.synth_s / res.duration_s if res.duration_s else 0
     _progress(f"Audio: {res.duration_s / 60:.1f} min (synthesis {res.synth_s:.0f}s, RTF {rtf:.2f})")
     for p in (res.mp3, res.wav, res.srt):

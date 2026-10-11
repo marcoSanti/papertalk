@@ -57,6 +57,10 @@ class ScriptConfig:
     include_references: bool = False
     # Rolling memory passed to each segment call
     recent_turns_verbatim: int = 8
+    # Role of the speaker cast as the first author (renamed + revoiced when authors are found).
+    author_speaker: str = "expert"
+    # auto (= infer from the name) | male | female. "auto" picks the voice by name gender.
+    author_gender: str = "auto"
     speakers: dict[str, list[Speaker]] = field(default_factory=dict)
 
 

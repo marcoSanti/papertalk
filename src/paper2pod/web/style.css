@@ -76,6 +76,7 @@ button { font-family: inherit; }
 .brand-text { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
 .brand-text em { font-style: normal; color: var(--accent); }
 .header-note { font-size: 13px; color: var(--text-dim); }
+.header-right { display: flex; align-items: center; gap: 10px; }
 
 /* ---------- App body layout ---------- */
 .app-body {
@@ -593,6 +594,32 @@ button { font-family: inherit; }
 }
 .tx-speaker.tx-c1 { color: var(--good); }
 .tx-text { flex: 1; font-size: 14px; line-height: 1.55; color: var(--text); }
+
+/* ======== Settings overlay ======== */
+.overlay-narrow { width: min(480px, 100%); }
+.settings-note { font-size: 13px; line-height: 1.5; color: var(--text-dim); margin: 0 0 16px; }
+.set-field {
+  display: block; font-size: 12px; font-weight: 600; color: var(--text);
+  margin-bottom: 14px; letter-spacing: 0.01em;
+}
+.set-hint { display: block; font-size: 11px; font-weight: 400; color: var(--text-faint); margin-top: 3px; }
+.set-hint code, .set-precedence code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.set-field input, .set-field textarea {
+  display: block; width: 100%; margin-top: 6px; padding: 9px 11px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border-strong);
+  border-radius: 9px; font-size: 13px; font-weight: 400; box-sizing: border-box;
+  font-family: inherit; resize: vertical;
+}
+.set-field input:focus, .set-field textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+.d-head-actions { display: flex; align-items: center; gap: 8px; }
+.set-save {
+  width: 100%; margin-top: 6px; padding: 11px; border: none; border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #0b0d12; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.set-save:hover { filter: brightness(1.05); }
+.set-save:active { transform: scale(0.98); }
+.set-precedence { font-size: 11px; color: var(--text-faint); margin: 12px 0 0; text-align: center; }
 
 /* ======== Motion ======== */
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

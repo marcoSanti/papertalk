@@ -51,6 +51,24 @@ const els = {
   txClose: $("#tx-close"),
   toastRegion: $("#toast-region"),
   headerNote: $("#header-note"),
+  settingsBtn: $("#settings-btn"),
+  settingsOverlay: $("#settings-overlay"),
+  settingsClose: $("#settings-close"),
+  settingsNote: $("#settings-note"),
+  settingsForm: $("#settings-form"),
+  setBaseUrl: $("#set-base-url"),
+  setApiKey: $("#set-api-key"),
+  setModel: $("#set-model"),
+  setBackend: $("#set-backend"),
+  setDevice: $("#set-device"),
+  editOverlay: $("#edit-overlay"),
+  editClose: $("#edit-close"),
+  editForm: $("#edit-form"),
+  editTitle: $("#edit-title"),
+  editAuthors: $("#edit-authors"),
+  editAffils: $("#edit-affils"),
+  editDoi: $("#edit-doi"),
+  editFilename: $("#edit-filename"),
 };
 
 /* ------------------------------------------------------------------ */
@@ -143,6 +161,136 @@ function toast(message, ok) {
     setTimeout(() => el.remove(), 300);
   }, 4200);
 }
+
+/* ------------------------------------------------------------------ */
+/*  Settings (web UI config for when no config.yaml is present)        */
+/* ------------------------------------------------------------------ */
+
+let settingsState = { config_file: true, applied: { llm: {} }, editable: {} };
+
+async function openSettings() {
+  try {
+    settingsState = await api("/settings");
+  } catch (_) { /* keep last known state */ }
+  const a = settingsState.applied || {};
+  const e = settingsState.editable || {};
+  // Show the EFFECTIVE values (config.yaml/env/CLI) when the web file leaves them
+  // unset. The API key is returned only as a boolean when it comes from config or
+  // env, so it can't be echoed — only a web-saved value is shown there.
+  els.setBaseUrl.value = (a.llm && a.llm.base_url) || (e.llm && e.llm.base_url) || "";
+  els.setApiKey.value = (e.llm && e.llm.api_key) || "";
+  els.setModel.value = (a.llm && a.llm.model) || (e.llm && e.llm.model) || "";
+  els.setBackend.value = (a.tts && a.tts.backend) || (e.tts && e.tts.backend) || "";
+  els.setDevice.value = (a.tts && a.tts.device) || (e.tts && e.tts.device) || "";
+  els.setApiKey.placeholder = (a.llm && a.llm.api_key) && !(e.llm && e.llm.api_key)
+    ? "Configured by config.yaml / env (not shown)"
+    : "sk-…";
+  els.settingsNote.textContent = settingsState.config_file
+    ? "Configured by config.yaml — these fields show the effective values; the file and env vars take precedence."
+    : "No config.yaml found. Configure the LLM endpoint and key here to enable conversions.";
+  els.settingsOverlay.hidden = false;
+  els.settingsOverlay.setAttribute("aria-hidden", "false");
+}
+
+function closeSettings() {
+  els.settingsOverlay.hidden = true;
+  els.settingsOverlay.setAttribute("aria-hidden", "true");
+}
+
+async function saveSettings(e) {
+  e.preventDefault();
+  const body = {
+    llm: {
+      base_url: els.setBaseUrl.value.trim(),
+      api_key: els.setApiKey.value.trim(),
+      model: els.setModel.value.trim(),
+    },
+    tts: {
+      backend: els.setBackend.value.trim(),
+      device: els.setDevice.value.trim(),
+    },
+  };
+  try {
+    const res = await api("/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    settingsState = res;
+    closeSettings();
+    toast("Settings saved", true);
+    refreshConfigWarning();
+  } catch (err) {
+    toast("Could not save settings: " + err.message);
+  }
+}
+
+function refreshConfigWarning() {
+  const a = settingsState.applied && settingsState.applied.llm;
+  const needsSetup = !settingsState.config_file && (!a || !a.model || !a.base_url ||
+    a.base_url === "http://localhost:3000/api");
+  if (needsSetup) {
+    els.headerNote.textContent = "⚠ Needs LLM setup — open Settings";
+    els.headerNote.style.color = "var(--bad, #e5484d)";
+  } else {
+    els.headerNote.textContent = "Local conversion";
+    els.headerNote.style.color = "";
+  }
+}
+
+els.settingsBtn.addEventListener("click", openSettings);
+els.settingsClose.addEventListener("click", closeSettings);
+els.settingsOverlay.addEventListener("click", (e) => { if (e.target === els.settingsOverlay) closeSettings(); });
+els.settingsForm.addEventListener("submit", saveSettings);
+
+/* ------------------------------------------------------------------ */
+/*  Edit metadata (per-paper manual fixes)                             */
+/* ------------------------------------------------------------------ */
+
+function openEdit(id) {
+  const p = store.papers.get(id);
+  if (!p) return;
+  els.editTitle.value = p.title || "";
+  els.editAuthors.value = (Array.isArray(p.authors) ? p.authors : []).join("\n");
+  els.editAffils.value = (Array.isArray(p.affiliations) ? p.affiliations : []).join("\n");
+  els.editDoi.value = p.doi || "";
+  els.editFilename.value = p.filename || "";
+  els.editOverlay.hidden = false;
+  els.editOverlay.setAttribute("aria-hidden", "false");
+}
+
+function closeEdit() {
+  els.editOverlay.hidden = true;
+  els.editOverlay.setAttribute("aria-hidden", "true");
+}
+
+async function saveEdit(e) {
+  e.preventDefault();
+  const p = store.papers.get(store.selectedId);
+  if (!p) return;
+  const splitLines = (s) => s.split("\n").map((x) => x.trim()).filter(Boolean);
+  const body = {
+    title: els.editTitle.value.trim(),
+    filename: els.editFilename.value.trim(),
+    authors: splitLines(els.editAuthors.value),
+    affiliations: splitLines(els.editAffils.value),
+    doi: els.editDoi.value.trim(),
+  };
+  try {
+    const updated = await patchMeta(p.id, body);
+    store.papers.set(p.id, updated);
+    closeEdit();
+    renderDetail();
+    renderAll();
+    toast("Saved", true);
+  } catch (err) {
+    toast("Could not save: " + err.message);
+  }
+}
+
+els.editClose.addEventListener("click", closeEdit);
+els.editOverlay.addEventListener("click", (e) => { if (e.target === els.editOverlay) closeEdit(); });
+els.editForm.addEventListener("submit", saveEdit);
 
 /* ------------------------------------------------------------------ */
 /*  Stage helpers                                                      */
@@ -571,16 +719,26 @@ function renderDetail() {
       </div>`
     : "";
 
-  els.detailBody.innerHTML = `
-    <p class="d-kicker">Paper</p>
+  const dHeadRow = `
+        <p class="d-meta">${escaped(p.filename || "—")}${date ? " · " + date : ""}</p>
+        <div class="d-head-actions">
+          ${favBtn}
+          <button class="icon-btn d-edit" id="d-edit" type="button" aria-label="Edit metadata"
+            title="Edit metadata">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+          </button>
+        </div>`;
+
+  const dHead = `
     <div class="d-head">
       <input class="d-title-input" id="d-title" type="text" value="${escaped(title)}"
         placeholder="Untitled" aria-label="Paper title" maxlength="200" />
-      <div class="d-head-row">
-        <p class="d-meta">${escaped(p.filename || "—")}${date ? " · " + date : ""}</p>
-        ${favBtn}
-      </div>
-    </div>
+      ${dHeadRow}
+    </div>`;
+
+  els.detailBody.innerHTML = `
+    <p class="d-kicker">Paper</p>
+    ${dHead}
 
     ${metaBlock}
 
@@ -634,6 +792,8 @@ function renderDetail() {
   });
 
   $("#d-fav").addEventListener("click", () => toggleFavorite(store.selectedId));
+  const editBtn = $("#d-edit");
+  if (editBtn) editBtn.addEventListener("click", () => openEdit(store.selectedId));
 
   const tagForm = $("#d-tag-form");
   const tagInput = $("#d-tag-input");
@@ -1279,6 +1439,12 @@ els.txOverlay.addEventListener("click", (e) => { if (e.target === els.txOverlay)
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !els.txOverlay.hidden) closeTranscript();
 });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !els.settingsOverlay.hidden) closeSettings();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !els.editOverlay.hidden) closeEdit();
+});
 
 // ---- Refresh ----
 // (bind on demand in loadLibrary; no refresh button in new layout, so keep global poll)
@@ -1292,6 +1458,10 @@ document.addEventListener("drop", (e) => e.preventDefault());
 // ==================================================================
 
 (async () => {
+  try {
+    settingsState = await api("/settings");
+  } catch (_) { /* server pre-dates /api/settings; leave defaults */ }
+  refreshConfigWarning();
   await loadLibrary();
   startStatusStream();  // server pushes status changes; no per-second polling
 })();

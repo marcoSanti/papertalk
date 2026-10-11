@@ -29,6 +29,7 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 paper2pod = "paper2pod.cli:main"
+paper2pod-server = "paper2pod.cli:server_main"
 
 # Third-party TTS plugins register themselves under this group, e.g.
 #   [project.entry-points."paper2pod.tts"]

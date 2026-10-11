@@ -1,0 +1,14 @@
+.git
+.venv
+venv
+build
+dist
+*.egg-info
+library
+out
+__pycache__
+*.pyc
+*.pyo
+tests
+DESIGN.md
+todo.md

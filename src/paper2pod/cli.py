@@ -1,11 +1,16 @@
 """Command line interface.
 
-  paper2pod run paper.pdf                 # PDF -> script -> audio (resumable)
-  paper2pod script paper.pdf              # stop after the script (edit it, then synth)
+  paper2pod                 # run the web UI (default; `serve` is the default command)
+  paper2pod serve           # same as above
+  paper2pod run paper.pdf   # PDF -> script -> audio (resumable)
+  paper2pod script paper.pdf# stop after the script (edit it, then synth)
   paper2pod synth out/paper/script.json   # script -> audio only
   paper2pod extract paper.pdf             # inspect PDF structure detection
   paper2pod models [--probe]              # list remote models, discover context window
   paper2pod backends                      # list TTS plugins, devices
+
+config.yaml is auto-detected (cwd, then ~/.config/paper2pod/). `paper2pod-server`
+is a short alias for `paper2pod serve`.
 """
 from __future__ import annotations
 
@@ -16,7 +21,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from .config import Config, load_config
+from .config import Config, find_config, load_config
 
 
 def _progress(msg: str) -> None:
@@ -112,6 +117,9 @@ def cmd_serve(cfg: Config, a) -> None:
         if v is not None:
             overrides[key] = v
     webapp.set_serving_options(a.config, overrides)
+    if not find_config(a.config):
+        _progress(f"No config.yaml found — configure the LLM endpoint/key in the web UI "
+                  f"(gear button) or export OPENWEBUI_BASE_URL / OPENWEBUI_API_KEY.")
     _progress(f"Serving web UI on http://{a.host}:{a.port}  (library: {webapp.LIBRARY})")
     uvicorn.run(webapp.app, host=a.host, port=a.port)
 
@@ -142,12 +150,15 @@ def cmd_backends(cfg: Config, a) -> None:
         print(f"  {name:12s} {path}")
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="paper2pod", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("-c", "--config", help="YAML config file")
+    ap.add_argument("-c", "--config", help="YAML config file (default: auto-detect ./config.yaml)")
     ap.add_argument("-v", "--verbose", action="store_true")
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    # Run the web server by default (`paper2pod` with no subcommand == `serve`).
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--port", type=int, default=8170)
+    sub = ap.add_subparsers(dest="cmd", required=False)
 
     def llm_opts(p):
         p.add_argument("--model")
@@ -213,7 +224,13 @@ def main(argv: list[str] | None = None) -> None:
     for noisy in ("httpx", "openai", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     cfg = _apply_overrides(load_config(a.config), a)
-    a.fn(cfg, a)
+    fn = a.fn if a.cmd else cmd_serve  # no subcommand → serve (the default)
+    return fn(cfg, a) or 0
+
+
+def server_main() -> int:
+    """Entry point for `paper2pod-server`: spin up the web server with defaults."""
+    return main(["serve"])
 
 
 if __name__ == "__main__":

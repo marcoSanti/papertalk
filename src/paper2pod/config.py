@@ -146,11 +146,33 @@ def _merge(dc: Any, data: dict[str, Any]) -> Any:
     return dc
 
 
+def find_config(path: str | os.PathLike | None = None) -> Path | None:
+    """Resolve the YAML config file: explicit path, else env, else auto-detect.
+
+    ``PAPER2POD_CONFIG`` chooses a file explicitly (set it to ``none`` to use
+    defaults only); otherwise auto-detect ``config.yaml`` in cwd or the user dir.
+    """
+    if path:
+        return Path(path)
+    env = os.environ.get("PAPER2POD_CONFIG")
+    if env:
+        return None if env.lower() == "none" else Path(env)
+    cands = [Path("config.yaml"), Path.home() / ".config" / "paper2pod" / "config.yaml"]
+    lib = os.environ.get("PAPER2POD_LIBRARY")
+    if lib:
+        cands.append(Path(lib).expanduser() / "config.yaml")  # keep config with the library (e.g. sidecar on a mounted share)
+    for cand in cands:
+        if cand.is_file():
+            return cand
+    return None
+
+
 def load_config(path: str | os.PathLike | None = None) -> Config:
     cfg = Config()
     cfg.script.speakers = {k: list(v) for k, v in DEFAULT_SPEAKERS.items()}
-    if path:
-        data = yaml.safe_load(Path(path).read_text()) or {}
+    conf = find_config(path)
+    if conf is not None:
+        data = yaml.safe_load(Path(conf).read_text()) or {}
         user_speakers = (data.get("script") or {}).pop("speakers", None)
         _merge(cfg, data)
         if user_speakers:

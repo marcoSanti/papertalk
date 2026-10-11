@@ -32,7 +32,14 @@
             <span class="brand-text">paper<em>2</em>pod</span>
           </a>
         </div>
-        <span class="header-note" id="header-note">Local conversion</span>
+        <div class="header-right">
+          <span class="header-note" id="header-note">Local conversion</span>
+          <button class="icon-btn" id="settings-btn" type="button" title="LLM &amp; TTS settings" aria-label="LLM &amp; TTS settings">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.09a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.09a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -133,6 +140,81 @@
 
   <!-- ================= TOASTS ================= -->
   <div class="toast-region" id="toast-region" aria-live="assertive"></div>
+
+  <!-- ================= EDIT METADATA OVERLAY ================= -->
+  <div class="overlay" id="edit-overlay" hidden aria-hidden="true">
+    <div class="overlay-inner overlay-narrow" role="dialog" aria-modal="true" aria-label="Edit paper">
+      <header class="overlay-head">
+        <h3>Edit paper</h3>
+        <button class="icon-btn" id="edit-close" type="button" aria-label="Close edit">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="overlay-body">
+        <p class="settings-note">Fix auto-extracted metadata. Manual edits survive re-runs; blank fields fall back to the PDF.</p>
+        <form id="edit-form" autocomplete="off">
+          <label class="set-field">Title
+            <input id="edit-title" type="text" spellcheck="false" maxlength="200" />
+          </label>
+          <label class="set-field">Authors
+            <span class="set-hint">One per line</span>
+            <textarea id="edit-authors" rows="3" spellcheck="false"></textarea>
+          </label>
+          <label class="set-field">Affiliations
+            <span class="set-hint">One per line</span>
+            <textarea id="edit-affils" rows="3" spellcheck="false"></textarea>
+          </label>
+          <label class="set-field">DOI
+            <input id="edit-doi" type="text" spellcheck="false" placeholder="10.xxxx/xxxxx" />
+          </label>
+          <label class="set-field">Filename
+            <span class="set-hint">Shown in the library list</span>
+            <input id="edit-filename" type="text" spellcheck="false" />
+          </label>
+          <button type="submit" class="set-save">Save</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= SETTINGS OVERLAY ================= -->
+  <div class="overlay" id="settings-overlay" hidden aria-hidden="true">
+    <div class="overlay-inner overlay-narrow" role="dialog" aria-modal="true" aria-label="LLM &amp; TTS settings">
+      <header class="overlay-head">
+        <h3>Settings</h3>
+        <button class="icon-btn" id="settings-close" type="button" aria-label="Close settings">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="overlay-body">
+        <p class="settings-note" id="settings-note"></p>
+        <form id="settings-form" autocomplete="off">
+          <label class="set-field">LLM base URL
+            <span class="set-hint">OpenWebUI: <code>&lt;host&gt;/api</code> — vLLM/LM Studio: <code>&lt;host&gt;/v1</code></span>
+            <input id="set-base-url" type="url" spellcheck="false" placeholder="http://localhost:3000/api" />
+          </label>
+          <label class="set-field">API key
+            <span class="set-hint">Leave blank to use <code>OPENWEBUI_API_KEY</code>, or clear to remove</span>
+            <input id="set-api-key" type="password" autocomplete="new-password" placeholder="sk-…" />
+          </label>
+          <label class="set-field">Model
+            <span class="set-hint">Exact id from <code>paper2pod models</code></span>
+            <input id="set-model" type="text" spellcheck="false" placeholder="llama3.1:70b" />
+          </label>
+          <label class="set-field">TTS backend
+            <span class="set-hint"><code>kokoro</code> | <code>openai_http</code> | <code>null</code></span>
+            <input id="set-backend" type="text" spellcheck="false" />
+          </label>
+          <label class="set-field">TTS device
+            <span class="set-hint"><code>auto</code> | <code>cuda</code> | <code>mps</code> | <code>cpu</code></span>
+            <input id="set-device" type="text" spellcheck="false" />
+          </label>
+          <button type="submit" class="set-save">Save settings</button>
+          <p class="set-precedence">Values in <code>config.yaml</code> or env vars take priority over these.</p>
+        </form>
+      </div>
+    </div>
+  </div>
 
   <!-- ================= TRANSCRIPT OVERLAY ================= -->
   <div class="overlay" id="transcript-overlay" hidden aria-hidden="true">

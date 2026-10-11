@@ -29,12 +29,20 @@ from starlette.responses import StreamingResponse
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import load_config
+from .config import find_config, load_config
 from .pipeline import PipelineCancelled, run_paper
 from .progress import ProgressReporter
 
 LIBRARY = Path(os.environ.get("PAPER2POD_LIBRARY", "./library")).expanduser()
 WEB_DIR = Path(__file__).parent / "web"
+# Web-managed LLM/TTS settings (used when no config.yaml is present, and merged over it).
+SETTINGS_PATH = Path(os.environ.get("PAPER2POD_SETTINGS", "~/.config/paper2pod/settings.json")).expanduser()
+
+# Settings fields the UI can edit, keyed as "<section>.<attr>".
+_EDITABLE = {
+    "llm": ("base_url", "api_key", "model"),
+    "tts": ("backend", "device"),
+}
 
 # Serving options set by the CLI's `serve` subcommand before uvicorn starts.
 _CFG_PATH: str | None = None
@@ -98,8 +106,47 @@ def set_serving_options(config_path: str | None, overrides: dict[str, object]) -
     _OVERRIDES = overrides
 
 
+def _load_settings() -> dict:
+    if SETTINGS_PATH.is_file():
+        try:
+            s = json.loads(SETTINGS_PATH.read_text())
+            if isinstance(s, dict):
+                return s
+        except (OSError, ValueError):
+            pass
+    return {}
+
+
+def _save_settings(settings: dict) -> None:
+    # Keep only editable fields, drop empty values.
+    clean: dict[str, dict] = {}
+    for section, attrs in _EDITABLE.items():
+        sub = {a: settings.get(section, {}).get(a) for a in attrs}
+        values = {a: v for a, v in sub.items() if isinstance(v, str) and v.strip()}
+        if values:
+            clean[section] = values
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write(SETTINGS_PATH, json.dumps(clean, indent=2))
+    return clean
+
+
 def _serving_config():
     cfg = load_config(_CFG_PATH)
+    # Web-managed settings only fill fields the YAML/env defaults left untouched
+    # (precedence: CLI > env > YAML > web settings > hard defaults). We detect
+    # "not set elsewhere" by comparing the current value to the dataclass default.
+    from dataclasses import fields as dc_fields
+    for section, sub in _load_settings().items():
+        obj = getattr(cfg, section, None)
+        if obj is None:
+            continue
+        default_obj = type(obj)()
+        for attr, val in sub.items():
+            if not hasattr(obj, attr) or val in (None, ""):
+                continue
+            if getattr(obj, attr) != getattr(default_obj, attr):
+                continue  # already set by env/YAML/CLI — don't clobber
+            setattr(obj, attr, val)
     for key, val in _OVERRIDES.items():
         section, _, attr = key.partition(".")
         if val is not None:
@@ -205,6 +252,8 @@ def _enrich_meta_from_paper(paper_id: str) -> None:
         except (OSError, ValueError, json.JSONDecodeError):
             info = {}
         for key in ("authors", "affiliations", "doi"):
+            if meta.get(f"{key}_enriched"):
+                continue  # user manually edited this — keep their value
             val = info.get(key)
             if val not in (None, "", [], {}):
                 meta[key] = val
@@ -347,6 +396,46 @@ def _library_entry(wd: Path, meta: dict, meta_ok: bool, status: dict) -> dict:
     entry["duration"] = float(meta.get("duration", 0) or 0)
     entry["progress_ts"] = meta.get("progress_ts", "")
     return entry
+
+
+@app.get("/api/settings")
+def get_settings():
+    """Web-managed LLM/TTS settings plus whether a config.yaml is authoritative."""
+    cfg = _serving_config()
+    return {
+        "config_file": find_config(_CFG_PATH) is not None,
+        "applied": {
+            "llm": {"base_url": cfg.llm.base_url, "model": cfg.llm.model,
+                    "api_key": bool(cfg.llm.api_key)},
+            "tts": {"backend": cfg.tts.backend, "device": cfg.tts.device},
+        },
+        "editable": _load_settings(),
+        "edit_fields": {s: list(a) for s, a in _EDITABLE.items()},
+    }
+
+
+@app.put("/api/settings")
+async def put_settings(request: Request):
+    """Save web-managed LLM/TTS settings. Accepts any subset; empties clear fields."""
+    raw = await request.body()
+    try:
+        body = json.loads(raw) if raw else {}
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(400, "invalid JSON body") from None
+    if not isinstance(body, dict):
+        raise HTTPException(400, "body must be a JSON object") from None
+    current = _load_settings()
+    for section, attrs in _EDITABLE.items():
+        sub = body.get(section)
+        if not isinstance(sub, dict):
+            continue
+        current.setdefault(section, {})
+        for attr in attrs:
+            val = sub.get(attr)
+            if isinstance(val, str):
+                current[section][attr] = val.strip()
+    clean = _save_settings(current)
+    return {"config_file": find_config(_CFG_PATH) is not None, "editable": clean}
 
 
 @app.get("/api/library")
@@ -565,6 +654,22 @@ async def update_paper_meta(paper_id: str, request: Request):
         if not isinstance(updates["read"], bool):
             raise HTTPException(400, "'read' must be a boolean")
         meta["read"] = updates["read"]
+    if "filename" in updates:
+        if not isinstance(updates["filename"], str):
+            raise HTTPException(400, "'filename' must be a string")
+        meta["filename"] = updates["filename"].strip() or meta.get("filename")
+    for key in ("authors", "affiliations"):
+        if key in updates:
+            v = updates[key]
+            if not (isinstance(v, list) and all(isinstance(x, str) for x in v)):
+                raise HTTPException(400, f"'{key}' must be an array of strings")
+            meta[key] = [s for s in v if s.strip()]
+            meta[f"{key}_enriched"] = True  # user override: keep on re-extraction
+    if "doi" in updates:
+        if not isinstance(updates["doi"], str):
+            raise HTTPException(400, "'doi' must be a string")
+        meta["doi"] = updates["doi"].strip()  # empty clears a wrong DOI
+        meta["doi_enriched"] = True
     progress_changed = "progress" in updates or "duration" in updates
     if "progress" in updates:
         if not isinstance(updates["progress"], (int, float)) or updates["progress"] < 0:

@@ -29,6 +29,10 @@ LIB_KEYS = {"id", "title", "filename", "has_pdf", "has_script", "has_audio",
 def client(tmp_path, monkeypatch):
     lib = tmp_path / "lib"
     monkeypatch.setenv("PAPER2POD_LIBRARY", str(lib))
+    monkeypatch.setenv("PAPER2POD_SETTINGS", str(tmp_path / "settings.json"))
+    monkeypatch.setenv("PAPER2POD_CONFIG", "none")  # don't pick up a dev config.yaml
+    for v in ("OPENWEBUI_BASE_URL", "OPENWEBUI_API_KEY", "PAPER2POD_MODEL"):
+        monkeypatch.delenv(v, raising=False)
     importlib.reload(webapp)  # re-read the env-injected library root
     return TestClient(webapp.app)
 
@@ -123,6 +127,26 @@ def test_library_title_keeps_filename_on_useless_fallback(client):
 
 def _patch_meta(client, pid, payload):
     return client.patch(f"/api/papers/{pid}/meta", json=payload)
+
+
+def test_settings_roundtrip(client):
+    assert client.get("/api/settings").json() == {
+        "config_file": False,  # PAPER2POD_CONFIG=none in the fixture
+        "applied": {"llm": {"base_url": "http://localhost:3000/api", "model": "",
+                            "api_key": False},
+                    "tts": {"backend": "kokoro", "device": "auto"}},
+        "editable": {},
+        "edit_fields": {"llm": ["base_url", "api_key", "model"],
+                        "tts": ["backend", "device"]},
+    }
+    r = client.put("/api/settings", json={"llm": {"base_url": "http://server/api",
+                                                  "api_key": "KEY", "model": "M"},
+                                          "tts": {"backend": "null", "device": "cpu"}})
+    assert r.status_code == 200
+    assert r.json()["editable"]["llm"]["base_url"] == "http://server/api"
+    # empty strings clear a field
+    r2 = client.put("/api/settings", json={"llm": {"api_key": ""}})
+    assert "api_key" not in r2.json()["editable"]["llm"]
 
 
 def test_patch_meta_sets_tags_and_favorite(client, pdf):

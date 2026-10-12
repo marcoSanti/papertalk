@@ -26,6 +26,11 @@ script:
   include_references: false
   recent_turns_verbatim: 8
 
+  # Section titles (beyond the built-in methodology heuristics) whose content should be delivered
+  # as a faithful single-speaker monologue rather than summarized into a discussion. This keeps a
+  # paper's theoretical/approach content from being hallucinated when shortened for the podcast.
+  monologue_sections: []
+
   # Cast the presenter/expert speaker as the paper's first author when the PDF has authors:
   # they take the author's name and a TTS voice matched to the name's gender.
   author_speaker: expert            # role of the speaker to rename
@@ -41,15 +46,16 @@ script:
   #     - {name: Marco,  role: expert, voice: im_nicola, persona: "Esperto del settore..."}
 
 tts:
-  backend: kokoro                # kokoro | openai_http | null | "my_module:MyBackend"
+  backend: openai_http           # kokoro | openai_http | null | "my_module:MyBackend"
   device: auto                   # auto picks cuda > mps > cpu
   output_format: mp3
   pause_same_speaker_s: 0.25
   pause_speaker_change_s: 0.45
   pause_segment_s: 1.2
-  options: {}                    # passed to the backend constructor
-  # Example for a separate local TTS server (Kokoro-FastAPI, openedai-speech/XTTS, ...):
-  # backend: openai_http
-  # options: {base_url: "http://localhost:8880/v1", model: kokoro, sample_rate: 24000}
+  # Passed to the backend constructor. api_key defaults to $OPENWEBUI_API_KEY.
+  # OpenWebUI /api/v1/audio/speech (TTS model on the LLM host), or any OpenAI-compatible
+  # local TTS server: openai_http; options: {base_url: "http://localhost:8880/v1", model: kokoro}
+  options:
+    base_url: "http://localhost:3000/api/v1"
 
 cache_dir: ~/.cache/paper2pod

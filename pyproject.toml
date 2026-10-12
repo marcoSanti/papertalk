@@ -18,10 +18,6 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "python-multipart",
-    # Kokoro backend (torch + model). A single `pip install .` brings everything.
-    # Install a hardware-matched torch first on NVIDIA: pip install torch --index-url ...cu124
-    "kokoro>=0.7.16",
-    "torch>=2.1",
 ]
 
 [project.optional-dependencies]

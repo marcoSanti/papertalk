@@ -62,11 +62,14 @@ class ScriptConfig:
     # auto (= infer from the name) | male | female. "auto" picks the voice by name gender.
     author_gender: str = "auto"
     speakers: dict[str, list[Speaker]] = field(default_factory=dict)
+    # Additional section titles (beyond the built-in methodology heuristics) whose content
+    # should be delivered as a faithful single-speaker monologue rather than a summary.
+    monologue_sections: list[str] = field(default_factory=list)
 
 
 @dataclass
 class TTSConfig:
-    backend: str = "kokoro"          # registry name or "package.module:ClassName"
+    backend: str = "openai_http"   # registry name or "package.module:ClassName"
     device: str = "auto"             # auto | cuda | mps | cpu
     options: dict[str, Any] = field(default_factory=dict)
     pause_same_speaker_s: float = 0.25
@@ -186,6 +189,8 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
     if env.get("PAPER2POD_CONTEXT_WINDOW"):
         cfg.llm.context_window = int(env["PAPER2POD_CONTEXT_WINDOW"])
     cfg.tts.device = env.get("PAPER2POD_DEVICE", cfg.tts.device)
+    if not cfg.tts.options.get("api_key") and env.get("OPENWEBUI_API_KEY"):
+        cfg.tts.options["api_key"] = env["OPENWEBUI_API_KEY"]
     return cfg
 
 

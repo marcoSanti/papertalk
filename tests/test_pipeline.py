@@ -12,10 +12,11 @@ from make_sample_pdf import build  # noqa: E402
 
 from paper2pod.audio import normalize_for_tts
 from paper2pod.cli import main
-from paper2pod.config import LLMConfig
-from paper2pod.llm import LLMClient
-from paper2pod.pdf_extract import extract_paper
-from paper2pod.script import extract_json, parse_dialogue, split_text
+from paper2pod.config import Config, DEFAULT_SPEAKERS, LLMConfig
+from paper2pod.llm import Budget, LLMClient, TokenEstimator
+from paper2pod.pdf_extract import Section, extract_paper
+from paper2pod.script import (Segment, ScriptGenerator, extract_json,
+                              parse_dialogue, split_text)
 
 
 @pytest.fixture
@@ -94,6 +95,64 @@ def test_context_from_metadata(server, tmp_path):
     cfg = LLMConfig(base_url=server.url, model="fake-openai")
     info = LLMClient(cfg, tmp_path).discover_context()
     assert info.window == 32000 and info.source == "models metadata"
+
+
+def test_methodology_ids_heuristic_and_config(pdf, tmp_path):
+    p = extract_paper(pdf)
+    llm = LLMClient(LLMConfig(base_url="http://x", model="m"), tmp_path)
+    cfg = Config()
+    cfg.script.speakers = {k: list(v) for k, v in DEFAULT_SPEAKERS.items()}
+    gen = ScriptGenerator(llm, cfg, tmp_path)
+    titles = [s.title for s in p.body_sections()]
+    ids = gen._methodology_ids(p.body_sections())
+    practical = {i for i, t in enumerate(titles) if t.split(" ", 1)[-1].lower() in
+                 ("method", "methods", "methodology", "approach", "model")}
+    assert practical, "sample paper should have a methodology-ish section"
+    assert practical <= ids  # heuristic caught at least those
+    # config list adds extra titles
+    gen.cfg.script.monologue_sections = ["Limitations"]
+    ids2 = gen._methodology_ids(p.body_sections())
+    lim = {i for i, t in enumerate(titles) if t.split(" ", 1)[-1].lower() == "limitations"}
+    assert lim and lim <= ids2
+
+
+def test_monologue_chunks_oversized_section(pdf, tmp_path):
+    """An oversized methodology section is split into same-voice audio chunks, never truncated or notes."""
+    p = extract_paper(pdf)
+    sections = [s for s in p.sections if not s.is_references]
+    cfg = Config()
+    cfg.script.speakers = {k: list(v) for k, v in DEFAULT_SPEAKERS.items()}
+    calls: list[str] = []
+
+    class StubLLM:
+        tokens = TokenEstimator(3.3)
+
+        @staticmethod
+        def budget():
+            return Budget(window=6000, max_output=10000, max_input=5000)
+
+        def chat(self, msgs, max_tokens, temperature=None):
+            calls.append(msgs[1]["content"])
+            sys = msgs[0]["content"]
+            names = [l.split(" (", 1)[0].replace("- ", "") for l in sys.splitlines()
+                     if l.startswith("- ")][:2]
+            a, b = names
+            return type("R", (), {"text": f"{b}: chunk content explained here.\n{b}: more of it.",
+                                  "finish_reason": "stop", "prompt_tokens": 1, "completion_tokens": 1})()
+
+    gen = ScriptGenerator(StubLLM(), cfg, tmp_path)
+    # A methodology section whose text is far larger than the input window forces chunking.
+    big = Section(title="3 Method", level=1, text="word " * 4000)
+    seg = Segment(title=big.title, goal="methods", sections=[0], monologue=True)
+    turns = gen._write_segment(0, [seg], [big], p, [], StubLLM.budget())
+    assert len(calls) > 1, "oversized source should be chunked into multiple LLM calls"
+    assert all("RELEVANT CAPTIONS" not in c and "TRUNCATED" not in c for c in calls[:1])
+    # every chunk is carried by the same (single, non-first-author) voice
+    assert len({t.speaker for t in turns}) == 1
+    # the full original text is covered across chunk calls (no notes summarization)
+    joined = "\n".join(calls)
+    assert "[SECTION 0]" in joined
+    assert "notes" not in calls[0].lower()[:200]
 
 
 def test_end_to_end_digest_mode(server, pdf, tmp_path, capsys):

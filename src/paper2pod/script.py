@@ -45,6 +45,7 @@ class Segment:
     weight: float = 1.0
     target_words: int = 0
     turns: list[Turn] = field(default_factory=list)
+    monologue: bool = False  # methodology/approach section delivered as one speaker's monologue
 
 
 @dataclass
@@ -318,7 +319,8 @@ class ScriptGenerator:
                                           if str(x).strip().lstrip("-").isdigit()
                                           and 0 <= int(x) < len(sections)],
                                 key_points=[str(k) for k in s.get("key_points", [])],
-                                weight=float(s.get("weight", 1.0) or 1.0))
+                                weight=float(s.get("weight", 1.0) or 1.0),
+                                monologue=bool(s.get("monologue", False)))
                         for s in data["segments"]]
                 if len(segs) >= 2:
                     tags = [str(t).strip().lower() for t in data.get("tags", []) if str(t).strip()]
@@ -345,6 +347,25 @@ class ScriptGenerator:
         return segs
 
     # -- 3. segments
+    def _methodology_ids(self, sections: list[Section]) -> set[int]:
+        """Section indices whose title marks them as methodology/approach content.
+
+        Built from a title heuristic plus the configured ``monologue_sections`` titles.
+        These sections are delivered as a faithful monologue rather than summarized.
+        """
+        extra = {t.strip().lower() for t in self.cfg.script.monologue_sections if t.strip()}
+        return {
+            i for i, s in enumerate(sections)
+            if self._lean_title(s.title) in P.METHODOLOGY_TITLES or self._lean_title(s.title) in extra
+        }
+
+    @staticmethod
+    def _lean_title(title: str) -> str:
+        """Strip leading numbering/prefix (e.g. '3 Method', '2.1 Approach') for title matching."""
+        t = title.strip().lower()
+        t = re.sub(r"^([\d.]+|[ivxlc]+\.?|[a-z]\.)\s+", "", t).strip()
+        return t.rstrip(".:")
+
     def _source_for(self, seg: Segment, sections: list[Section], budget_tok: int,
                     paper: Paper, b: Budget) -> tuple[str, str]:
         ids = sorted(set(seg.sections)) or list(range(len(sections)))
@@ -362,25 +383,72 @@ class ScriptGenerator:
         return "notes (truncated)", notes[: self.llm.tokens.chars_for(budget_tok)]
 
     def _write_segment(self, k: int, segs: list[Segment], sections: list[Section],
-                       paper: Paper, history: list[Turn], b: Budget) -> list[Turn]:
+                       paper: Paper, history: list[Turn], b: Budget,
+                       methodology_ids: set[int] | None = None) -> list[Turn]:
         seg = segs[k]
         a, bb = self.names
         n = len(segs)
         pos = "only" if n == 1 else "first" if k == 0 else "last" if k == n - 1 else "middle"
         plan = "\n".join(f"{'>>' if i == k else '  '} {i + 1}. {s.title}" for i, s in enumerate(segs))
-        covered = "\n".join(f"- {s.title}: " + "; ".join(s.key_points[:4]) for s in segs[:k]) or "(nothing yet)"
         kp = "\n".join(f"- {p}" for p in seg.key_points) or "- (derive from the source)"
+        # A methodology/approach segment (flagged by the outline or by section title) becomes a
+        # faithful monologue delivered by the expert, so the technical content is never summarized away.
+        monologue = seg.monologue or bool(
+            methodology_ids and any(i in methodology_ids for i in seg.sections))
+        tem = P.MONOLOGUE_PROMPT if monologue else P.SEGMENT_PROMPT
+        covered = ""
+        if not monologue:
+            covered = "\n".join(f"- {s.title}: " + "; ".join(s.key_points[:4]) for s in segs[:k]) or "(nothing yet)"
 
         # Output budget: ~1.4 tokens per word; split into parts if one call can't hold it.
         words_per_call = int(b.max_output * 0.8 / 1.4)
         n_parts = max(1, math.ceil(seg.target_words / words_per_call))
         turns: list[Turn] = []
+
+        # For a monologue, the segment is carried by ONE voice, so the source must never change
+        # voice or get truncated to fit. Instead we split the ORIGINAL text into blocks that each
+        # fit the window and generate one audio chunk per block, all in the same voice. Chunk count
+        # is therefore driven by source size, not by word target.
+        chunks: list[str] | None = None
+        if monologue:
+            ids = sorted(set(seg.sections)) or list(range(len(sections)))
+            raw = "\n\n".join(self._section_text(i, sections[i]) for i in ids)
+            caps = [c for c in paper.captions if c[:60] not in raw and _caption_referenced(c, raw)]
+            if caps:
+                raw += "\n\nRELEVANT CAPTIONS:\n" + "\n".join(caps)
+            # Estimate the source budget against the real template (incl. plan/part_note overhead),
+            # then chunk the original text into blocks that each fit within that budget.
+            probe = tem.format(
+                seg_no=k + 1, n_segs=n, title=paper.title, plan=plan, seg_title=seg.title,
+                goal=seg.goal, key_points=kp,
+                part_note="\nThis methodology is spoken across N audio chunks in the SAME voice.\n",
+                covered=covered, recent="",
+                source_kind="{source_kind}", source="{source}",
+                position_rules=P.POSITION_RULES["only"].format(a=a, b=bb),
+                words=seg.target_words, a=a, b=bb)
+            probe_budget = b.max_input - self._tok(self.system + probe) - 64
+            if probe_budget < MIN_ROOM:
+                raise RuntimeError(f"Context window {b.window} too small for a monologue segment "
+                                   f"({probe_budget} tokens left for source text)")
+            # Leave room for verbatim recent-turns memory plus the real part_note, so a chunk that
+            # fits here also fits the tighter per-part src_budget computed inside the loop below.
+            chars = self.llm.tokens.chars_for(int(probe_budget * 0.8))
+            chunks = split_text(raw, max(200, chars))
+            n_parts = max(1, len(chunks))
+
         for part in range(n_parts):
-            part_note = ""
-            if n_parts > 1:
-                share = "first" if part == 0 else "next" if part < n_parts - 1 else "remaining"
-                part_note = (f"\nThis segment is written in {n_parts} parts; write PART {part + 1} of "
-                             f"{n_parts}, covering roughly the {share} share of the key points.\n")
+            if monologue and chunks:
+                # each block is its own chunk of audio, spoken in the same (expert) voice
+                share = "first" if part == 0 else "next" if part < n_parts - 1 else "final"
+                part_note = (f"\nThis methodology is spoken across {n_parts} audio chunks in the SAME voice. "
+                             f"This is chunk {part + 1} (the {share} part). Carried by {bb} throughout, "
+                             f"continuing seamlessly from the previous chunk.\n")
+            else:
+                part_note = ""
+                if n_parts > 1:
+                    share = "first" if part == 0 else "next" if part < n_parts - 1 else "remaining"
+                    part_note = (f"\nThis segment is written in {n_parts} parts; write PART {part + 1} of "
+                                 f"{n_parts}, covering roughly the {share} share of the key points.\n")
             opens = pos in ("first", "only") and part == 0
             closes = pos in ("last", "only") and part == n_parts - 1
             this_pos = "only" if opens and closes else "first" if opens else "last" if closes else "middle"
@@ -391,7 +459,7 @@ class ScriptGenerator:
                 recent_turns = (history + turns)[-n_recent:] if n_recent else []
                 recent = ("LAST LINES SO FAR (continue from here):\n" +
                           "\n".join(f"{t.speaker}: {t.text}" for t in recent_turns) + "\n") if recent_turns else ""
-                fixed = P.SEGMENT_PROMPT.format(
+                fixed = tem.format(
                     seg_no=k + 1, n_segs=n, title=paper.title, plan=plan, seg_title=seg.title,
                     goal=seg.goal, key_points=kp, part_note=part_note, covered=covered, recent=recent,
                     source_kind="{source_kind}", source="{source}",
@@ -404,14 +472,20 @@ class ScriptGenerator:
             if src_budget < MIN_ROOM:
                 raise RuntimeError(f"Context window {b.window} too small for segment prompts "
                                    f"({src_budget} tokens left for source text)")
-            kind, source = self._source_for(seg, sections, src_budget, paper, b)
+            if monologue and chunks is not None:
+                kind, source = "original text", chunks[part]
+            else:
+                kind, source = self._source_for(seg, sections, src_budget, paper, b)
             user = fixed.replace("{source_kind}", kind).replace("{source}", source)
 
             msgs = [{"role": "system", "content": self.system}, {"role": "user", "content": user}]
             for attempt in range(3):
                 res = self.llm.chat(msgs, max_tokens=b.max_output)
                 got = parse_dialogue(res.text, self.names)
-                if len(got) >= 2 and len({t.speaker for t in got}) == 2:
+                ok = len(got) >= 1
+                if not monologue:
+                    ok = len(got) >= 2 and len({t.speaker for t in got}) == 2
+                if ok:
                     break
                 log.warning("segment %d: unparseable dialogue, retrying", k + 1)
                 # Re-ask with the format reminder appended (not the failed answer: keeps size bounded).
@@ -461,6 +535,9 @@ class ScriptGenerator:
                       f"input budget {b.max_input}, output {b.max_output}")
         sections = paper.body_sections(self.cfg.script.include_references)
 
+        # Sections carrying methodology/approach content (flag from outline or title heuristic).
+        methodology_ids: set[int] = self._methodology_ids(sections)
+
         outline_path = self.workdir / "outline.json"
         if outline_path.exists():
             segs = [Segment(**{**s, "turns": [Turn(**t) for t in s.get("turns", [])]})
@@ -484,7 +561,7 @@ class ScriptGenerator:
             if self.reporter is not None:
                 self.reporter.set_stage("segments", f"Writing segment {k + 1}/{len(segs)}")
                 self.reporter.advance(k / len(segs))
-            seg.turns = self._write_segment(k, segs, sections, paper, history, b)
+            seg.turns = self._write_segment(k, segs, sections, paper, history, b, methodology_ids)
             history += seg.turns
             if self.reporter is not None:
                 self.reporter.advance((k + 1) / len(segs))

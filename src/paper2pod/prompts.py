@@ -3,6 +3,15 @@ from __future__ import annotations
 
 from .config import Speaker
 
+# Section titles that carry the paper's theoretical/approach content. These are delivered as a
+# faithful single-speaker monologue so that summarizing them into a discussion cannot hallucinate.
+METHODOLOGY_TITLES = {
+    "method", "methods", "methodology", "approach", "model", "models", "the model",
+    "our method", "our approach", "proposed method", "proposed approach", "method",
+    "methods and materials", "materials and methods", "experimental setup",
+    "preliminaries", "problem setup", "methods and experiments", "algorithm",
+}
+
 STYLE_GUIDES = {
     "host_expert": (
         "FORMAT: an in-depth podcast episode. {a} is the host and drives the conversation: "
@@ -83,7 +92,10 @@ Return ONLY a JSON object, no commentary, in exactly this shape:
     "goal": "what the listener should understand by the end of this segment",
     "sections": [list of section numbers from the SECTION INDEX that this segment draws on],
     "key_points": ["specific point to cover, with concrete numbers/terms", "..."],
-    "weight": relative length as a number (1.0 = average)}}
+    "weight": relative length as a number (1.0 = average),
+    "monologue": true}}  <!-- set true ONLY if this segment's content is primarily a methodology /
+                            approach / theoretical section that should be read through faithfully
+                            as one speaker's monologue rather than summarized into a discussion -->
 ]}}
 
 "tags" is 3-6 short, distinctive topical tags for this paper (lowercase, 1-2 words each,
@@ -137,6 +149,42 @@ POSITION_RULES = {
     "only": "This is the whole episode: open with a welcome and introduction, and close with "
             "takeaways and a sign-off.",
 }
+
+# --- monologue (methodology / approach sections) ---------------------------
+# The methodology is read through faithfully rather than summarized, so the podcast cannot
+# hallucinate the paper's theoretical/technical content when it is shortened or reformatted.
+MONOLOGUE_PROMPT = """\
+You are writing segment {seg_no} of {n_segs} of the discussion of "{title}".
+
+This segment is a MONOLOGUE. It presents a methodology / approach section and its technical content
+must be carried over FAITHFULLY from the source, not paraphrased away.
+
+FULL EPISODE PLAN (for orientation — cover ONLY the current segment now):
+{plan}
+
+CURRENT SEGMENT: "{seg_title}"
+Goal: {goal}
+
+{recent}
+BEGINNING: {a} briefly introduces why this methodological part matters, then hands over. Optionally
+{a} can interject once with a genuinely clarifying question, but the bulk is carried by {b}.
+DELIVERY: {b} presents the section as a continuous, faithful monologue. Reproduce every method detail
+as it is in the source: the full procedure/architecture, every step, definitions, assumptions, the
+precise equations (explained in words AND symbols), and all hyperparameters, datasets, baselines and
+settings. Keep the numbers and choices exactly as the paper states them. Explain what each piece does
+and why it was chosen, in the authors' own framing. Do not collapse or compress the technical content;
+the listener should be able to re-derive the method from what {b} says. Never invent anything not in
+the source — if a detail is missing, {b} says so rather than guessing.
+
+SOURCE MATERIAL ({source_kind}):
+{source}
+
+{position_rules}
+Length: about {words} words of dialogue.
+Output ONLY dialogue lines, each starting with the speaker name and a colon, e.g.
+{a}: ...
+{b}: ...
+"""
 
 FIX_FORMAT = (
     "Your previous answer could not be parsed. Output ONLY dialogue lines, each beginning with "

@@ -11,6 +11,8 @@ without changing this project's dependencies.
 from __future__ import annotations
 
 import io
+import shutil
+import subprocess
 from typing import ClassVar
 
 import httpx
@@ -18,6 +20,20 @@ import numpy as np
 import soundfile as sf
 
 from .base import TTSBackend
+
+
+def _decode(data: bytes) -> tuple[np.ndarray, int]:
+    """Decode wav (via soundfile) or any other codec (via ffmpeg) to (audio, sr)."""
+    try:
+        return sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
+    except Exception:
+        if not shutil.which("ffmpeg"):
+            raise
+        p = subprocess.run(["ffmpeg", "-v", "quiet", "-i", "pipe:0", "-f", "wav", "pipe:1"],
+                           input=data, capture_output=True)
+        if p.returncode != 0:
+            raise RuntimeError(f"ffmpeg decode failed: {p.stderr.decode(errors='replace')}")
+        return sf.read(io.BytesIO(p.stdout), dtype="float32", always_2d=True)
 
 
 class OpenAIHTTPBackend(TTSBackend):
@@ -48,7 +64,7 @@ class OpenAIHTTPBackend(TTSBackend):
         r = self.http.post(self.url, json={"model": self.model, "input": text, "voice": voice,
                                            "speed": speed, "response_format": "wav", **self.extra})
         r.raise_for_status()
-        audio, sr = sf.read(io.BytesIO(r.content), dtype="float32", always_2d=True)
+        audio, sr = _decode(r.content)
         audio = audio.mean(axis=1)
         if sr != self._sr:
             from ..audio import resample  # noqa: PLC0415

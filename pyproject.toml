@@ -22,8 +22,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Native desktop window (pywebview) + NAS/Samba storage (smbprotocol).
+gui = ["pywebview>=5"]
+smb = ["smbprotocol>=1.13"]
 
 [project.scripts]
+paper2pod = "paper2pod.cli:main"
 paper2pod-server = "paper2pod.server:main"
 
 # Third-party TTS plugins register themselves under this group, e.g.

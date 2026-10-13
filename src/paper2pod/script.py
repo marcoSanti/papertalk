@@ -294,7 +294,9 @@ class ScriptGenerator:
         minutes = self.cfg.script.target_minutes
         min_seg = max(3, min(6, int(minutes / 5)))
         max_seg = max(min_seg + 2, min(18, int(minutes / 2)))
-        fmt = dict(minutes=minutes, min_seg=min_seg, max_seg=max_seg, index=index)
+        depth_guide = self._depth_guide()
+        fmt = dict(minutes=minutes, min_seg=min_seg, max_seg=max_seg, index=index,
+                   depth_guide=depth_guide)
         room = self._room(b, OUTLINE_SYS, P.OUTLINE_PROMPT.format(kind="TEXT", text="", **fmt))
         if self.reporter is not None:
             self.reporter.set_stage("notes", "Preparing paper summary")
@@ -325,7 +327,7 @@ class ScriptGenerator:
                 if len(segs) >= 2:
                     tags = [str(t).strip().lower() for t in data.get("tags", []) if str(t).strip()]
                     if tags:
-                        self.tags = tags[:6]
+                        self.tags = tags[:3]
                     break
             except (ValueError, KeyError, TypeError) as e:
                 log.warning("outline parse failed (%s), retrying", e)
@@ -366,6 +368,19 @@ class ScriptGenerator:
         t = re.sub(r"^([\d.]+|[ivxlc]+\.?|[a-z]\.)\s+", "", t).strip()
         return t.rstrip(".:")
 
+    def _depth_guide(self) -> str:
+        """A short instruction appended to the outline prompt that sets the discussion depth."""
+        depth = self.cfg.script.depth
+        if depth == "summary":
+            return ("DEPTH: SUMMARY. Overview-style episode. Summarize method and results at a high "
+                    "level so a general listener follows along; do NOT read any section verbatim.")
+        if depth == "custom":
+            note = (self.cfg.script.depth_note or "").strip()
+            if note:
+                return f"USER-REQUESTED DEPTH:\n{note}"
+            return ""
+        return "DEPTH: IN-DEPTH. Cover methods and results fully, including technical detail."
+
     def _source_for(self, seg: Segment, sections: list[Section], budget_tok: int,
                     paper: Paper, b: Budget) -> tuple[str, str]:
         ids = sorted(set(seg.sections)) or list(range(len(sections)))
@@ -393,8 +408,10 @@ class ScriptGenerator:
         kp = "\n".join(f"- {p}" for p in seg.key_points) or "- (derive from the source)"
         # A methodology/approach segment (flagged by the outline or by section title) becomes a
         # faithful monologue delivered by the expert, so the technical content is never summarized away.
-        monologue = seg.monologue or bool(
-            methodology_ids and any(i in methodology_ids for i in seg.sections))
+        # "summary" depth never reads a section verbatim — everything is discussed.
+        monologue = (self.cfg.script.depth != "summary") and (
+            seg.monologue or bool(
+                methodology_ids and any(i in methodology_ids for i in seg.sections)))
         tem = P.MONOLOGUE_PROMPT if monologue else P.SEGMENT_PROMPT
         covered = ""
         if not monologue:

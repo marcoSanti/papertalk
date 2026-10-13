@@ -1,15 +1,19 @@
-# paper2pod — self-contained image (LLM calls only need the internet).
+# paper2pod — self-contained Library *serving* server.
 #
-#   docker build -t paper2pod .
+#   docker build -t paper2pod-server .
 #   docker run -d --name paper2pod -p 8170:8170 \
 #     -v /path/to/unraid/share:/library \
 #     -e OPENWEBUI_BASE_URL=... -e OPENWEBUI_API_KEY=... \
-#     paper2pod
+#     -e PAPER2POD_API_TOKEN=... \
+#     paper2pod-server
 #
-# The library lives OUTSIDE the container, on the mounted /library volume (an
-# Unraid share). Put a config.yaml in the library root (auto-detected) or point
-# the LLM endpoint/key via env vars / the Settings gear. Model weights are baked
-# in at build time so the runtime never needs to download them.
+# The serving server owns storage + the pipeline (it still queries the remote
+# LLM server for script/audio) and exposes the HTTP API. The desktop
+# (Electron) is the primary presentation layer and points at this server over
+# the network (see desktop/). The library lives OUTSIDE the container, on the
+# mounted /library volume (an Unraid share). Set PAPER2POD_API_TOKEN to require
+# a bearer token on every /api call (see desktop/ "Set server address…").
+# Model weights are baked in at build time so the runtime never downloads them.
 
 # Kokoro/misaki require Python < 3.13.
 FROM python:3.12-slim

@@ -1,3 +1,0 @@
-- nome intervierwer quello del primo autore.
-- voce del primo autore in base a genere del nome
-- estendere metadati includendo doi, e autori se possibili

@@ -1,7 +1,8 @@
-"""paper2pod web server — single entry point.
+"""paper2pod loopback web server — debugging / API entry point.
 
-Runs the web UI (the only supported interface). Config and the LLM/TTS settings
-are read from env vars / config.yaml / the web UI's Settings gear.
+Runs the embedded UI on 127.0.0.1 only. The desktop app opens this same app in
+a native pywebview window (see `cli.gui`); this module exists for running the
+server standalone.
 """
 
 import os
@@ -12,10 +13,10 @@ from . import webapp
 
 
 def main() -> None:
-    host = os.environ.get("PAPER2POD_HOST", "0.0.0.0")
+    host = os.environ.get("PAPER2POD_HOST", "127.0.0.1")
     port = int(os.environ.get("PAPER2POD_PORT", "8170"))
     webapp.set_serving_options(None, {})
-    print(f"Serving web UI on http://{host}:{port}  (library: {webapp.LIBRARY})")
+    print(f"Serving web UI on http://{host}:{port}  (library: {webapp.STORE.root})", flush=True)
     uvicorn.run(webapp.app, host=host, port=port)
 
 

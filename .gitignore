@@ -16,3 +16,6 @@ __pycache__/
 
 # generated outputs
 library/
+
+# desktop app
+desktop/node_modules/

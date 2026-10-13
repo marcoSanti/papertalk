@@ -57,6 +57,24 @@ def test_rejects_missing_and_non_pdf(client):
     assert r.json()["detail"]
 
 
+def test_upload_depth_stored_and_validated(client, pdf, tmp_path):
+    data = pdf.read_bytes()
+    r = client.post("/api/papers",
+                    files={"pdf": (pdf.name, data, "application/pdf")},
+                    data={"depth": "custom", "depth_note": "emphasize results"})
+    assert r.status_code == 202
+    pid = r.json()["id"]
+    import json
+    meta = json.loads((tmp_path / "lib" / pid / "meta.json").read_text())
+    assert meta["depth"] == "custom"
+    assert meta["depth_note"] == "emphasize results"
+
+    r = client.post("/api/papers",
+                    files={"pdf": (pdf.name, data, "application/pdf")},
+                    data={"depth": "bogus"})
+    assert r.status_code == 422
+
+
 def test_upload_and_library_schema(client, pdf):
     r = _upload(client, pdf)
     assert r.status_code == 202
@@ -96,7 +114,7 @@ def test_delete_and_rerun(client, pdf):
 
 def _seed(client, pid, meta_title, paper_title=None):
     """Write an uploaded-style entry (title=filename) plus an optional paper.json."""
-    wd = webapp.LIBRARY / pid
+    wd = webapp.STORE.local_path(pid)
     wd.mkdir(parents=True, exist_ok=True)
     (wd / "meta.json").write_text(json.dumps(
         {"id": pid, "title": meta_title, "filename": meta_title}))
@@ -109,7 +127,7 @@ def _seed(client, pid, meta_title, paper_title=None):
 def test_library_title_promoted_from_paper(client):
     _seed(client, "paper_abc", "paper.pdf", paper_title="Deep Learning for Pod Metaphors")
     webapp._enrich_meta_from_paper("paper_abc")
-    meta = json.loads((webapp.LIBRARY / "paper_abc" / "meta.json").read_text())
+    meta = json.loads((webapp.STORE.local_path("paper_abc") / "meta.json").read_text())
     assert meta["title"] == "Deep Learning for Pod Metaphors"
     assert meta["title_enriched"] is True
     # /api/library surfaces the enriched title, not the filename
@@ -193,3 +211,18 @@ def test_patch_meta_validates_body(client, pdf):
 
 def test_patch_meta_404_for_missing_paper(client):
     assert _patch_meta(client, "paper_ghost", {"tags": ["x"]}).status_code == 404
+
+
+def test_library_pagination(client, pdf):
+    ids = [_upload(client, pdf).json()["id"] for _ in range(5)]
+    # no limit -> bare list (backward compatible)
+    flat = client.get("/api/library").json()
+    assert isinstance(flat, list) and {e["id"] for e in flat} >= set(ids)
+    # with limit -> envelope, sliced desc by created_iso
+    env = client.get("/api/library?limit=2").json()
+    assert set(env) == {"entries", "total", "offset", "limit"}
+    assert env["limit"] == 2 and env["offset"] == 0 and env["total"] >= 5
+    assert len(env["entries"]) == 2
+    page2 = client.get("/api/library?limit=2&offset=2").json()
+    got = [e["id"] for e in env["entries"] + page2["entries"]]
+    assert len(got) == len(set(got))  # no overlap between pages

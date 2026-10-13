@@ -98,8 +98,9 @@ Return ONLY a JSON object, no commentary, in exactly this shape:
                             as one speaker's monologue rather than summarized into a discussion -->
 ]}}
 
-"tags" is 3-6 short, distinctive topical tags for this paper (lowercase, 1-2 words each,
-e.g. ["contrastive learning", "retrieval-augmented generation", "llm"]).
+"tags" is 2-3 BROAD, high-level topical tags for this paper (lowercase, 1-3 words each, e.g.
+["deep learning"], ["neural compression", "language modeling"]). Prefer coarse subject areas over narrow
+specifics so papers cluster into a small set of topics.
 
 Rules: {min_seg}-{max_seg} segments in listening order. The first segment introduces the paper
 (title, what problem it tackles, why it matters); the last wraps up with the verdict and takeaways.
@@ -107,6 +108,7 @@ Every section in the index (except references) must be used by at least one segm
 be specific to THIS paper (e.g. "LoRA rank 8 matches full fine-tuning on GLUE at 0.1% parameters"),
 not generic ("discuss results").
 
+{depth_guide}
 SECTION INDEX:
 {index}
 

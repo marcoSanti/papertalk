@@ -50,6 +50,8 @@ class Speaker:
 @dataclass
 class ScriptConfig:
     # "host_expert" or "peers" (or any key under `styles` in your YAML)
+    depth: str = "in_depth"   # summary | in_depth | custom (per-paper override, defaults here unused)
+    depth_note: str = ""      # free-text level of detail for "custom"
     style: str = "host_expert"
     language: str = "English"
     target_minutes: float = 25.0
@@ -79,10 +81,26 @@ class TTSConfig:
 
 
 @dataclass
+class StorageConfig:
+    # "local" = a folder on this machine; "smb" = a Samba/NAS share.
+    backend: str = "local"
+    root: str = "./library"          # local backend: library folder
+    # SMB backend
+    host: str = ""
+    share: str = ""
+    path: str = ""                   # subfolder inside the share (optional)
+    user: str = ""
+    password: str = ""
+    cache: str = "~/.cache/paper2pod/library"   # local mirror for smb
+    env_prefix: str = "PAPER2POD_STORAGE"
+
+
+@dataclass
 class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     script: ScriptConfig = field(default_factory=ScriptConfig)
     tts: TTSConfig = field(default_factory=TTSConfig)
+    storage: StorageConfig = field(default_factory=StorageConfig)
     cache_dir: str = "~/.cache/paper2pod"
 
 
@@ -191,6 +209,21 @@ def load_config(path: str | os.PathLike | None = None) -> Config:
     cfg.tts.device = env.get("PAPER2POD_DEVICE", cfg.tts.device)
     if not cfg.tts.options.get("api_key") and env.get("OPENWEBUI_API_KEY"):
         cfg.tts.options["api_key"] = env["OPENWEBUI_API_KEY"]
+
+    # Storage: PAPER2POD_LIBRARY still selects the local folder (back-compat);
+    # otherwise the SMB fields come from PAPER2POD_STORAGE_* env vars.
+    lib = env.get("PAPER2POD_LIBRARY")
+    if lib:
+        cfg.storage.backend = "local"
+        cfg.storage.root = lib
+        cfg.storage.cache = os.path.join(
+            os.path.expanduser(cfg.storage.cache), os.path.basename(os.path.normpath(lib)))
+    for var, attr in (("PAPER2POD_STORAGE", "backend"), ("PAPER2POD_SMB_HOST", "host"),
+                      ("PAPER2POD_SMB_SHARE", "share"), ("PAPER2POD_SMB_PATH", "path"),
+                      ("PAPER2POD_SMB_USER", "user"), ("PAPER2POD_SMB_PASSWORD", "password"),
+                      ("PAPER2POD_SMB_CACHE", "cache")):
+        if env.get(var):
+            setattr(cfg.storage, attr, env[var])
     return cfg
 
 

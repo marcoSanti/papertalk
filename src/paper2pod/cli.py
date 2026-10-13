@@ -1,7 +1,8 @@
 """Command line interface.
 
-  paper2pod                 # run the web UI (default; `serve` is the default command)
-  paper2pod serve           # same as above
+  paper2pod                 # open the desktop app (default; `gui` is the default command)
+  paper2pod gui             # same as above
+  paper2pod serve           # loopback-only web UI (for debugging, or as an API)
   paper2pod run paper.pdf   # PDF -> script -> audio (resumable)
   paper2pod script paper.pdf# stop after the script (edit it, then synth)
   paper2pod synth out/paper/script.json   # script -> audio only
@@ -108,7 +109,7 @@ def cmd_serve(cfg: Config, a) -> None:
     import uvicorn
 
     from . import webapp
-    # Point workers at the effective (CLI-overridden) config and TTS/LLM flags.
+    # Point the app at the effective (CLI-overridden) config and library/store.
     overrides = {}
     for attr, key in [("backend", "tts.backend"), ("device", "tts.device"),
                       ("format", "tts.output_format"), ("model", "llm.model"),
@@ -121,8 +122,41 @@ def cmd_serve(cfg: Config, a) -> None:
     if not find_config(a.config):
         _progress(f"No config.yaml found — configure the LLM endpoint/key in the web UI "
                   f"(gear button) or export OPENWEBUI_BASE_URL / OPENWEBUI_API_KEY.")
-    _progress(f"Serving web UI on http://{a.host}:{a.port}  (library: {webapp.LIBRARY})")
+    _progress(f"Serving web UI on http://{a.host}:{a.port}  (library: {webapp.STORE})")
     uvicorn.run(webapp.app, host=a.host, port=a.port)
+
+
+def cmd_gui(cfg: Config, a) -> None:
+    """Open the app inside a native desktop window (pywebview) — no browser."""
+    import threading
+
+    import webview  # pywebview
+
+    from . import webapp
+
+    overrides = {}
+    for attr, key in [("backend", "tts.backend"), ("device", "tts.device"),
+                      ("format", "tts.output_format"), ("model", "llm.model"),
+                      ("style", "script.style"), ("minutes", "script.target_minutes"),
+                      ("language", "script.language")]:
+        v = getattr(a, attr, None)
+        if v is not None:
+            overrides[key] = v
+    webapp.set_serving_options(a.config, overrides)
+    if not find_config(a.config):
+        _progress("No config.yaml found — configure the LLM endpoint/key in the web UI "
+                  "(gear button) or export OPENWEBUI_BASE_URL / OPENWEBUI_API_KEY.")
+
+    from .config import load_config as _lc
+    def _run_server():
+        import uvicorn
+        # Loopback only: the UI is served into the native window, nothing remote.
+        uvicorn.run(webapp.app, host="127.0.0.1", port=a.port)
+
+    threading.Thread(target=_run_server, daemon=True, name="paper2pod-server").start()
+    _progress(f"Opening paper2pod in a window on http://127.0.0.1:{a.port}")
+    webview.create_window("paper2pod", f"http://127.0.0.1:{a.port}", width=1280, height=860)
+    webview.start()
 
 
 def cmd_models(cfg: Config, a) -> None:
@@ -156,8 +190,8 @@ def main(argv: list[str] | None = None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-c", "--config", help="YAML config file (default: auto-detect ./config.yaml)")
     ap.add_argument("-v", "--verbose", action="store_true")
-    # Run the web server by default (`paper2pod` with no subcommand == `serve`).
-    ap.add_argument("--host", default=os.environ.get("PAPER2POD_HOST", "0.0.0.0"))
+    # Open the GUI by default (`paper2pod` with no subcommand == `gui`).
+    ap.add_argument("--host", default=os.environ.get("PAPER2POD_HOST", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=8170)
     sub = ap.add_subparsers(dest="cmd", required=False)
 
@@ -219,18 +253,28 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--language", dest="language")
     p.set_defaults(fn=cmd_serve)
 
+    p = sub.add_parser("gui", help="open the app in a native window (default)")
+    p.add_argument("--host", default=os.environ.get("PAPER2POD_HOST", "127.0.0.1"))
+    p.add_argument("--port", type=int, default=8170)
+    llm_opts(p)
+    tts_opts(p)
+    p.add_argument("--style", dest="style")
+    p.add_argument("--minutes", dest="minutes", type=float)
+    p.add_argument("--language", dest="language")
+    p.set_defaults(fn=cmd_gui)
+
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
                         format="%(levelname)s %(name)s: %(message)s")
     for noisy in ("httpx", "openai", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     cfg = _apply_overrides(load_config(a.config), a)
-    fn = a.fn if a.cmd else cmd_serve  # no subcommand → serve (the default)
+    fn = a.fn if a.cmd else cmd_gui  # no subcommand → GUI window (default)
     return fn(cfg, a) or 0
 
 
 def server_main() -> int:
-    """Entry point for `paper2pod-server`: spin up the web server with defaults."""
+    """Entry point for `paper2pod-server`: spin up the loopback web server."""
     return main(["serve"])
 
 

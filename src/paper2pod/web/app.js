@@ -5,7 +5,30 @@
 /*  Config                                                             */
 /* ------------------------------------------------------------------ */
 
-const API_BASE = "/api";
+// The desktop shell (Electron) injects window.PAPER2POD_SERVER as
+// { apiBase, token } pointing at the remote Library server. In the browser the
+// UI is served by the same origin, so /api is the default (unless the in-app
+// Connection overlay saved an override in localStorage).
+const injected = window.PAPER2POD_SERVER;
+let saved = null;
+try { if (localStorage.getItem("paper2pod.conn")) saved = JSON.parse(localStorage.getItem("paper2pod.conn")); } catch (_) {}
+const SERVER = injected || saved || { apiBase: "/api", token: "" };
+const API_BASE = String(SERVER.apiBase || "/api").replace(/\/+$/, "");
+const API_TOKEN = SERVER.token || "";
+
+function authHeaders(extra) {
+  const h = Object.assign({}, extra);
+  if (API_TOKEN) h["Authorization"] = "Bearer " + API_TOKEN;
+  return h;
+}
+
+/** URL (relative to API_BASE) with the auth token as a query param when configured.
+ *  Needed for <img>/<audio>/<a href> which cannot set the Authorization header. */
+function authUrl(path) {
+  if (!API_TOKEN) return API_BASE + path;
+  const sep = path.includes("?") ? "&" : "?";
+  return API_BASE + path + sep + "token=" + encodeURIComponent(API_TOKEN);
+}
 
 const STAGE_LABELS = {
   extract: "Extracting text from PDF",
@@ -51,7 +74,15 @@ const els = {
   txClose: $("#tx-close"),
   toastRegion: $("#toast-region"),
   headerNote: $("#header-note"),
+  hmenu: $("#hmenu"),
+  hmenuSettings: $("#hmenu-settings"),
+  hmenuConnection: $("#hmenu-connection"),
   settingsBtn: $("#settings-btn"),
+  connOverlay: $("#conn-overlay"),
+  connForm: $("#conn-form"),
+  connBase: $("#conn-base"),
+  connToken: $("#conn-token"),
+  connClose: $("#conn-close"),
   settingsOverlay: $("#settings-overlay"),
   settingsClose: $("#settings-close"),
   settingsNote: $("#settings-note"),
@@ -69,7 +100,13 @@ const els = {
   editAffils: $("#edit-affils"),
   editDoi: $("#edit-doi"),
   editFilename: $("#edit-filename"),
+  depthOverlay: $("#depth-overlay"),
+  depthForm: $("#depth-form"),
+  depthClose: $("#depth-close"),
+  depthNoteWrap: $("#depth-note-wrap"),
+  depthNote: $("#depth-note"),
 };
+let pendingUpload = null;
 
 /* ------------------------------------------------------------------ */
 /*  State                                                              */
@@ -96,6 +133,8 @@ const store = {
 /* ------------------------------------------------------------------ */
 
 async function api(path, opts) {
+  opts = opts || {};
+  opts.headers = authHeaders(opts.headers);
   const res = await fetch(API_BASE + path, opts);
   if (!res.ok) {
     let msg = `Request failed (${res.status})`;
@@ -238,10 +277,46 @@ function refreshConfigWarning() {
   }
 }
 
-els.settingsBtn.addEventListener("click", openSettings);
+if (els.settingsBtn) els.settingsBtn.addEventListener("click", openSettings);
 els.settingsClose.addEventListener("click", closeSettings);
 els.settingsOverlay.addEventListener("click", (e) => { if (e.target === els.settingsOverlay) closeSettings(); });
 els.settingsForm.addEventListener("submit", saveSettings);
+
+/* Connection settings (which server this UI points at) */
+async function openConnection() {
+  let base = API_BASE;
+  let token = API_TOKEN;
+  if (window.PAPER2POD && window.PAPER2POD.getConfig) {
+    try { const c = await window.PAPER2POD.getConfig(); base = c.apiBase || base; token = c.token || token; } catch (_) {}
+  }
+  els.connBase.value = base;
+  els.connToken.value = token;
+  els.connOverlay.hidden = false;
+  els.connOverlay.setAttribute("aria-hidden", "false");
+}
+
+function closeConnection() {
+  els.connOverlay.hidden = true;
+  els.connOverlay.setAttribute("aria-hidden", "true");
+}
+
+async function saveConnection(e) {
+  e.preventDefault();
+  const base = els.connBase.value.trim().replace(/\/+$/, "");
+  const token = els.connToken.value.trim();
+  if (!base) { toast("API base URL is required."); return; }
+  if (window.PAPER2POD && window.PAPER2POD.setConfig) {
+    // Desktop: save to server.json and reload the window against the new server.
+    try { await window.PAPER2POD.setConfig({ apiBase: base, token }); closeConnection(); return; } catch (err) { toast("Could not save: " + err.message); return; }
+  }
+  // Browser: persist an override and reload same page.
+  localStorage.setItem("paper2pod.conn", JSON.stringify({ apiBase: base, token }));
+  location.reload();
+}
+
+els.connClose.addEventListener("click", closeConnection);
+els.connOverlay.addEventListener("click", (e) => { if (e.target === els.connOverlay) closeConnection(); });
+els.connForm.addEventListener("submit", saveConnection);
 
 /* ------------------------------------------------------------------ */
 /*  Edit metadata (per-paper manual fixes)                             */
@@ -301,7 +376,7 @@ function stageLabel(stage) {
 }
 
 function isActive(p) {
-  return p && (p.state === "running" || p.state === "queued");
+  return p && (p.state === "running" || p.state === "queued" || p.state === "awaiting_audio");
 }
 
 function isDone(p) {
@@ -428,16 +503,19 @@ function clearView() {
 
 /* -- Library list -- */
 
+const DEPTH_LABELS = { summary: "Summary", in_depth: "In-depth", custom: "Custom" };
+function depthLabel(p) { return DEPTH_LABELS[p.depth] || (p.depth ? p.depth : ""); }
+
 function rowContent(p) {
   const title = p.title || p.filename || "Untitled";
-  const st = (p.state === "running" || p.state === "queued") ? "running"
+  const st = (p.state === "running" || p.state === "queued" || p.state === "awaiting_audio") ? "running"
     : p.state === "done" ? "done" : p.state === "error" ? "error" : "unknown";
   const fav = p.favorite ? "on" : "";
   const isSel = store.selectedId === p.id ? "selected" : "";
   const busy = st === "running";
   const read = !!p.read;
   const frac = p.duration > 0 && p.progress > 0 ? Math.min(1, p.progress / p.duration) : 0;
-  const coverUrl = p.has_pdf ? `${API_BASE}/papers/${p.id}/cover` : null;
+  const coverUrl = p.has_pdf ? authUrl(`/papers/${p.id}/cover`) : null;
   return `
     <li class="book book-${st} ${isSel} ${read ? "read" : "new"}" data-id="${escaped(p.id)}">
       <button class="book-open" data-open="${escaped(p.id)}" type="button" aria-label="Open ${escaped(title)}">
@@ -450,6 +528,7 @@ function rowContent(p) {
           ${frac > 0 && !busy ? `<span class="book-readbar" aria-hidden="true"><i style="width:${Math.round(frac * 100)}%"></i></span>` : ""}
         </span>
         <span class="book-title">${escaped(title)}</span>
+        ${depthLabel(p) ? `<span class="book-depth">${escaped(depthLabel(p))}</span>` : ""}
       </button>
       <button class="book-star ${fav}" data-fav="${escaped(p.id)}" type="button"
         aria-label="${p.favorite ? "Remove from favorites" : "Add to favorites"}" aria-pressed="${p.favorite ? "true" : "false"}">
@@ -463,18 +542,18 @@ function rowContent(p) {
 }
 
 function cardSig(p) {
-  const st = (p.state === "running" || p.state === "queued") ? "running"
+  const st = (p.state === "running" || p.state === "queued" || p.state === "awaiting_audio") ? "running"
     : p.state === "done" ? "done" : p.state === "error" ? "error" : "unknown";
   const frac = p.duration > 0 && p.progress > 0 ? Math.min(1, p.progress / p.duration) : 0;
   return [p.title || p.filename || "Untitled", st, !!p.favorite, !!p.read,
-          Math.round(frac * 100), store.selectedId === p.id, !!p.has_pdf].join("|");
+          Math.round(frac * 100), store.selectedId === p.id, !!p.has_pdf, p.depth].join("|");
 }
 
 /** Signature of the detail-panel fields, so poll ticks don't rebuild/mute the player. */
 function detailSig(p) {
   return [p.title, !!p.has_audio, !!p.has_script, p.state, p.stage, p.message,
           p.stageLabel, p.statusMessage, (p.authors || []).join("|"),
-          (p.tags || []).join("|"), !!p.favorite, !!p.read].join("|");
+          (p.tags || []).join("|"), !!p.favorite, !!p.read, p.depth].join("|");
 }
 
 function renderList() {
@@ -613,12 +692,17 @@ async function loadLibrary() {
     if (!store.papers.size) renderList();
     return;
   }
+  if (Array.isArray(items) === false && items && Array.isArray(items.entries)) items = items.entries;
   if (!Array.isArray(items)) items = [];
   const seen = new Set();
   for (const p of items) {
     seen.add(p.id);
     if (p.tags == null) p.tags = [];
     if (p.favorite == null) p.favorite = false;
+    p.stageLabel = p.stage ? STAGE_LABELS[p.stage] : undefined;
+    p.statusMessage = p.message
+      ? p.message
+      : (p.state === "error" ? (p.status_error || "Error") : undefined);
     store.papers.set(p.id, p);
   }
   for (const id of store.papers.keys()) {
@@ -637,7 +721,7 @@ async function loadLibrary() {
 
 function reconcileConverting() {
   store.activeConverting = [...store.papers.entries()]
-    .filter(([, p]) => p.state === "running" || p.state === "queued")
+    .filter(([, p]) => p.state === "running" || p.state === "queued" || p.state === "awaiting_audio")
     .sort((a, b) => (b[1].created_iso || "").localeCompare(a[1].created_iso || ""))
     .map(([id]) => id);
 }
@@ -652,7 +736,6 @@ function openDetail(id) {
   els.detailBody.innerHTML = "";
   renderDetail();
   renderList(); // highlight selected row
-  if (window.innerWidth <= 980) els.detail.scrollIntoView({ behavior: "smooth" });
 }
 
 function closeDetail() {
@@ -733,6 +816,7 @@ function renderDetail() {
     <div class="d-head">
       <input class="d-title-input" id="d-title" type="text" value="${escaped(title)}"
         placeholder="Untitled" aria-label="Paper title" maxlength="200" />
+      ${depthLabel(p) ? `<span class="book-depth detail-depth">${escaped(depthLabel(p))}</span>` : ""}
       ${dHeadRow}
     </div>`;
 
@@ -756,7 +840,7 @@ function renderDetail() {
     ${statusHTML}
     ${hasAudio ? `
     <div class="d-player" id="d-player">
-      <audio class="player-audio" id="d-audio" preload="metadata" src="${API_BASE}/papers/${p.id}/audio?t=${cacheBust}"></audio>
+      <audio class="player-audio" id="d-audio" preload="metadata" src="${authUrl(`/papers/${p.id}/audio`)}?t=${cacheBust}"></audio>
       <button class="p-play" id="d-play" type="button" aria-label="Play or pause"></button>
       <div class="p-main">
         <div class="p-caption" id="p-caption">
@@ -770,10 +854,10 @@ function renderDetail() {
     </div>` : ""}
 
     <div class="d-downloads">
-      <a class="dl-btn" href="${API_BASE}/papers/${p.id}/file?kind=pdf">PDF</a>
+      <a class="dl-btn" href="${authUrl(`/papers/${p.id}/file?kind=pdf`)}">PDF</a>
       <button class="dl-btn ${p.has_script ? "" : "disabled"}" id="d-transcript" type="button">Transcript</button>
       <button class="dl-btn ${p.has_script ? "" : "disabled"}" id="d-script" type="button">Script</button>
-      <a class="dl-btn ${p.has_script ? "" : "disabled"}" href="${API_BASE}/papers/${p.id}/file?kind=srt">SRT</a>
+      <a class="dl-btn ${p.has_script ? "" : "disabled"}" href="${authUrl(`/papers/${p.id}/file?kind=srt`)}">SRT</a>
     </div>
 
     <div class="d-danger">
@@ -833,6 +917,7 @@ function openTranscript(id) {
   const p = store.papers.get(id);
   els.txTitle.textContent = (p && (p.title || p.filename)) || "Transcript";
   if (store.overlayAudio) { store.overlayAudio.pause(); store.overlayAudio = null; }
+  if (store.audioEl) { store.audioEl.pause(); } // stop the detail player too, or two audio streams compete
   els.txBody.innerHTML = '<p class="tx-loading">Loading…</p>';
   els.txOverlay.hidden = false;
   els.txOverlay.setAttribute("aria-hidden", "false");
@@ -880,7 +965,7 @@ function openTranscript(id) {
 function installPlayer(host, p, onTick) {
   host.innerHTML = `
     <div class="d-player">
-      <audio class="player-audio" preload="metadata" src="${API_BASE}/papers/${p.id}/audio?t=${Date.now()}"></audio>
+      <audio class="player-audio" preload="metadata" src="${authUrl(`/papers/${p.id}/audio`)}?t=${Date.now()}"></audio>
       <button class="p-play" type="button" aria-label="Play or pause"></button>
       <div class="p-main">
         <div class="p-caption"><span class="p-spk"></span><span class="p-txt"></span></div>
@@ -910,6 +995,7 @@ function openScript(id) {
   const p = store.papers.get(id);
   els.txTitle.textContent = (p && (p.title || p.filename)) || "Script";
   if (store.overlayAudio) { store.overlayAudio.pause(); store.overlayAudio = null; }
+  if (store.audioEl) { store.audioEl.pause(); } // stop the detail player too, or two audio streams compete
   els.txBody.innerHTML = '<p class="tx-loading">Loading…</p>';
   els.txOverlay.hidden = false;
   els.txOverlay.setAttribute("aria-hidden", "false");
@@ -973,10 +1059,10 @@ async function onDelete() {
   renderAll();
 }
 
-async function toggleRead(id) {
+async function toggleRead(id, force) {
   const p = store.papers.get(id);
   if (!p) return;
-  const next = !p.read;
+  const next = force !== undefined ? force : !p.read;
   const prev = p.read;
   p.read = next;
   updateRow(id);
@@ -1127,6 +1213,7 @@ function wirePlayerCtl(a, p, onTick) {
     syncCaptions(0);
     if (onTick) onTick(0);
     persistPos(true);
+    if (!p.read) toggleRead(id, true); // finishing = that paper is now "read"
   });
 
   fetchCaptions();
@@ -1166,14 +1253,26 @@ function uploadFile(file) {
   if (!file) return;
   els.dzPreview.hidden = false;
   els.dzPreview.innerHTML = `<span>${escaped(file.name)}</span>${formatBytes(file.size) ? `<small>${formatBytes(file.size)}</small>` : ""}`;
+  pendingUpload = file;
+  els.depthNoteWrap.hidden = true;
+  els.depthNote.value = "";
+  els.depthForm.reset();
+  els.depthOverlay.hidden = false;
+  els.depthOverlay.setAttribute("aria-hidden", "false");
+}
 
+function doUpload(file) {
   const fd = new FormData();
   fd.append("pdf", file);
+  const depth = new FormData(els.depthForm).get("depth") || "in_depth";
+  fd.append("depth", depth);
+  if (depth === "custom") fd.append("depth_note", els.depthNote.value.trim());
   setDropzoneBusy(true, file.name);
 
   // XHR for real upload progress.
   const xhr = new XMLHttpRequest();
   xhr.open("POST", API_BASE + "/papers");
+  if (API_TOKEN) xhr.setRequestHeader("Authorization", "Bearer " + API_TOKEN);
   xhr.upload.onprogress = (e) => {
     if (e.lengthComputable) {
       const pct = Math.round((e.loaded / e.total) * 100);
@@ -1183,6 +1282,7 @@ function uploadFile(file) {
   xhr.onload = () => {
     setDropzoneBusy(false);
     els.dzPreview.hidden = true;
+    pendingUpload = null;
     if (xhr.status >= 200 && xhr.status < 300) {
       try {
         const data = JSON.parse(xhr.responseText);
@@ -1204,6 +1304,7 @@ function uploadFile(file) {
   xhr.onerror = () => {
     setDropzoneBusy(false);
     els.dzPreview.hidden = true;
+    pendingUpload = null;
     toast("Upload failed — is the server running?");
   };
   xhr.send(fd);
@@ -1235,7 +1336,7 @@ let statusStream = null;
 /** Open one persistent SSE stream; the server pushes status changes (no polling). */
 function startStatusStream() {
   if (statusStream) return;
-  const es = new EventSource(API_BASE + "/events");
+  const es = new EventSource(API_BASE + "/events" + (API_TOKEN ? `?token=${encodeURIComponent(API_TOKEN)}` : ""));
   statusStream = es;
   es.addEventListener("status", (e) => {
     let data;
@@ -1258,6 +1359,9 @@ function onStatusEvent(status) {
     if (store.selectedId === id) renderDetail();
   } else if (status.state === "error") {
     if (store.selectedId === id) renderDetail();
+  } else if (store.selectedId === id && isActive({ state: status.state })) {
+    // Live synthesis progress — repaint the detail panel so the bar/message move.
+    renderDetail();
   }
 }
 
@@ -1289,12 +1393,23 @@ function adoptStatus(id, status) {
 /*  Wiring                                                             */
 /* ================================================================== */
 
-// ---- Sidebar / mobile ----
-els.menuBtn.addEventListener("click", () => {
-  const open = els.sidebar.classList.toggle("open");
-  els.menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
-  els.backdrop.classList.toggle("show", open);
+// ---- Menu (hamburger) ----
+els.menuBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (window.matchMedia("(max-width: 980px)").matches) {
+    // Mobile: the hamburger toggles the sidebar drawer as before.
+    const open = els.sidebar.classList.toggle("open");
+    els.menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    els.backdrop.classList.toggle("show", open);
+    return;
+  }
+  const showing = !els.hmenu.hidden;
+  els.hmenu.hidden = showing;
+  els.menuBtn.setAttribute("aria-expanded", String(!showing));
 });
+document.addEventListener("click", () => { els.hmenu.hidden = true; els.menuBtn.setAttribute("aria-expanded", "false"); });
+els.hmenuSettings.addEventListener("click", () => { els.hmenu.hidden = true; openSettings(); });
+els.hmenuConnection.addEventListener("click", () => { els.hmenu.hidden = true; openConnection(); });
 els.backdrop.addEventListener("click", () => {
   els.sidebar.classList.remove("open");
   els.backdrop.classList.remove("show");
@@ -1337,6 +1452,28 @@ function closeMobileDrawer() {
   els.backdrop.classList.remove("show");
   els.menuBtn.setAttribute("aria-expanded", "false");
 }
+
+// ---- Depth overlay (asked before upload) ----
+els.depthForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  els.depthOverlay.hidden = true;
+  if (pendingUpload) doUpload(pendingUpload);
+});
+els.depthClose.addEventListener("click", () => {
+  els.depthOverlay.hidden = true;
+  pendingUpload = null;
+  els.dzPreview.hidden = true;
+});
+els.depthForm.addEventListener("change", () => {
+  els.depthNoteWrap.hidden = new FormData(els.depthForm).get("depth") !== "custom";
+});
+els.depthForm.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !els.depthOverlay.hidden) {
+    els.depthOverlay.hidden = true;
+    pendingUpload = null;
+    els.dzPreview.hidden = true;
+  }
+});
 
 // ---- Upload (persistent sidebar dropzone) ----
 els.dropzone.addEventListener("click", () => els.fileInput.click());
@@ -1424,6 +1561,8 @@ els.list.addEventListener("click", (e) => {
 
 // ---- Detail close ----
 els.detailClose.addEventListener("click", closeDetail);
+els.detail.addEventListener("click", (e) => { if (e.target === els.detail) closeDetail(); });
+els.detail.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
 
 // Persist playback position before the tab/iframe is torn down.
 window.addEventListener("pagehide", () => {

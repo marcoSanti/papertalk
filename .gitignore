@@ -14,8 +14,13 @@ __pycache__/
 
 **.DS_Store
 
-# generated outputs
+# generated library outputs
 library/
 
-# desktop app
-desktop/node_modules/
+# swift/sourcekit build
+client/.build/
+.xcodebuild/
+DerivedData/
+
+# storage server runtime data
+~/.paper2pod/

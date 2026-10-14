@@ -1,22 +1,31 @@
 name: Release
 
-# Pushing a tag v<VERSION> (e.g. `make -C client tag && git push origin v0.0.2`)
-# tests the tagged commit, builds the optimized app and publishes a GitHub
-# release with the zipped Papertalk.app attached.
+# Two kinds of release, both: test, build the optimized app, publish a GitHub
+# release with the zipped Papertalk.app and its SHA-256.
+#
+#  - Stable: pushing a tag v<VERSION> (`make -C client tag && git push origin v0.0.2`)
+#    publishes a full release, marked Latest. The tag must match the VERSION file.
+#  - Dev: every push to main (i.e. every merged pull request) publishes a
+#    pre-release v<VERSION>-dev.<short commit>, so the newest merged code is
+#    always downloadable. Only the newest few dev builds are kept.
 on:
   push:
-    tags: ['v*.*.*']
+    branches: [main]
+    tags: ['v*.*.*', '!v*-dev.*']   # dev tags are made by this workflow; never rebuild them
 
 permissions:
-  contents: write   # create the release and upload the zip
+  contents: write   # create releases, upload assets, delete old dev builds
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  KEEP_DEV_RELEASES: 10
+
 jobs:
   release:
-    name: Build and publish
+    name: ${{ github.ref_type == 'tag' && 'Stable release' || 'Dev pre-release' }}
     runs-on: macos-26
     timeout-minutes: 45
     defaults:
@@ -27,8 +36,24 @@ jobs:
         with:
           fetch-depth: 0   # full history for the generated release notes
 
-      - name: Tag must match VERSION
-        run: ../scripts/version.sh check-tag "${GITHUB_REF_NAME}"
+      - name: Decide the version
+        id: version
+        run: |
+          BASE="$(make -s version)"
+          SHORT="$(git rev-parse --short HEAD)"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            ../scripts/version.sh check-tag "${GITHUB_REF_NAME}"
+            VERSION="${BASE}"
+            KIND=stable
+          else
+            VERSION="${BASE}-dev.${SHORT}"
+            KIND=dev
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "kind=${KIND}" >> "$GITHUB_OUTPUT"
+          echo "short=${SHORT}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${KIND} build ${VERSION}"
 
       - name: Toolchain
         run: |
@@ -48,37 +73,70 @@ jobs:
         run: make test
 
       - name: Build release
-        run: make release
+        # VERSION on the command line overrides the VERSION file, so a dev
+        # build carries its -dev.<commit> version in the app and the zip name.
+        run: make release VERSION="${{ steps.version.outputs.version }}"
 
       - name: Checksum
         id: artifact
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="$(make -s version)"
           ZIP="dist/Papertalk-${VERSION}.zip"
           shasum -a 256 "$ZIP" | tee "${ZIP}.sha256"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "zip=client/${ZIP}" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.artifact.outputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          KIND: ${{ steps.version.outputs.kind }}
+          SHORT: ${{ steps.version.outputs.short }}
           ZIP: ${{ steps.artifact.outputs.zip }}
         run: |
-          cat > notes.md <<EOF
-          Papertalk ${VERSION} for macOS 26 or later.
+          {
+            if [ "$KIND" = "dev" ]; then
+              echo "**Development build** of \`main\` at commit ${SHORT}: the latest merged changes, not a"
+              echo "stable release. Expect rough edges; for everyday use pick the latest non-pre-release."
+              echo
+            fi
+            echo "Papertalk ${VERSION} for macOS 26 or later."
+            echo
+            echo "Download \`Papertalk-${VERSION}.zip\`, unzip it and move **Papertalk.app** to Applications."
+            echo "The app is only ad-hoc signed, so the first time macOS may refuse to open it:"
+            echo "right-click the app and choose **Open**."
+            echo
+            echo "> This app is vibecoded. I had the need not the time. bugs are expected and help is appreciated"
+          } > notes.md
 
-          Download \`Papertalk-${VERSION}.zip\`, unzip it and move **Papertalk.app** to Applications.
-          The app is only ad-hoc signed, so the first time macOS may refuse to open it:
-          right-click the app and choose **Open**.
+          if [ "$KIND" = "dev" ]; then
+            # The tag is created here, on the merged commit.
+            gh release create "$TAG" "$ZIP" "${ZIP}.sha256" \
+              --target "$GITHUB_SHA" \
+              --title "Papertalk ${VERSION}" \
+              --notes-file notes.md \
+              --prerelease
+          else
+            gh release create "$TAG" "$ZIP" "${ZIP}.sha256" \
+              --title "Papertalk ${VERSION}" \
+              --notes-file notes.md \
+              --generate-notes \
+              --latest
+          fi
 
-          > This app is vibecoded. I had the need not the time. bugs are expected and help is appreciated
-          EOF
-          PRERELEASE=""
-          case "$VERSION" in 0.*) PRERELEASE="--prerelease" ;; esac
-          gh release create "${GITHUB_REF_NAME}" "$ZIP" "${ZIP}.sha256" \
-            --title "Papertalk ${VERSION}" \
-            --notes-file notes.md \
-            --generate-notes \
-            $PRERELEASE
+      - name: Prune old dev builds
+        if: steps.version.outputs.kind == 'dev'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Dev pre-releases, newest first; delete all but the newest few (and their tags).
+          gh release list --limit 200 --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | test("-dev\\."))) ] | sort_by(.createdAt) | reverse | .[].tagName' \
+            | tail -n "+$((KEEP_DEV_RELEASES + 1))" \
+            | while read -r old; do
+                echo "Deleting old dev build ${old}"
+                gh release delete "$old" --yes --cleanup-tag
+              done

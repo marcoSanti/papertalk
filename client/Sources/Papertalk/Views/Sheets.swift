@@ -43,6 +43,10 @@ struct UploadSheet: View {
     @State private var isTargeted = false
 
     private var hasFile: Bool { pdfData != nil }
+    private var needsLLM: Bool { depth != .direct }
+    private var canStart: Bool {
+        hasFile && (depth != .custom || !depthNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -93,6 +97,27 @@ struct UploadSheet: View {
             }
             .animation(.snappy, value: depth)
 
+            if needsLLM && store.llm.baseUrl.trimmingCharacters(in: .whitespaces).isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("No LLM is configured, so this paper will be read out as-is instead of as a discussion.")
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Open LLM Settings…") {
+                            dismiss()
+                            store.settingsPage = .llm
+                            store.showSettings = true
+                        }
+                        .buttonStyle(.link)
+                        .font(.callout)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -105,7 +130,8 @@ struct UploadSheet: View {
                     }
                 }
                 .buttonStyle(.glassProminent)
-                .disabled(!hasFile)
+                .disabled(!canStart)
+                .help(canStart ? "" : (hasFile ? "Describe the depth you want first" : "Choose a PDF first"))
                 .keyboardShortcut(.defaultAction)
             }
             .controlSize(.large)
@@ -113,6 +139,12 @@ struct UploadSheet: View {
         .padding(24)
         .frame(width: 480)
         .tint(Color.appAccent)
+        .onAppear {
+            if let url = store.pendingUploadURL {
+                store.pendingUploadURL = nil
+                load(url)
+            }
+        }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.pdf]) { result in
             switch result {
             case .success(let url):
@@ -328,9 +360,9 @@ struct ServerSettingsPage: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Connection settings").font(.title3).fontWeight(.semibold)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Library server API base URL").font(.caption)
-                TextField("http://localhost:8170/api", text: $apiBase).textFieldStyle(.roundedBorder)
-                Text("Server that stores papers & runs conversions.").font(.caption2).foregroundStyle(.secondary)
+                Text("Storage server URL").font(.caption)
+                TextField("http://host:9170", text: $apiBase).textFieldStyle(.roundedBorder)
+                Text("Optional storage_server.py for sharing the library between Macs. Leave empty to keep papers on this Mac. Conversion always runs in the app.").font(.caption2).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("API token").font(.caption)
@@ -350,7 +382,8 @@ struct ServerSettingsPage: View {
     private func save() {
         let trimmed = apiBase.trimmingCharacters(in: .whitespaces)
         // empty = self-hosted (store locally, run pipeline in this app)
-        store.config = ServerConfig(apiBase: trimmed.replacingOccurrences(of: "/+$", with: "", options: .regularExpression), token: token)
+        let next = ServerConfig(apiBase: trimmed.replacingOccurrences(of: "/+$", with: "", options: .regularExpression), token: token)
+        if next != store.config { store.config = next }
         saved = true
     }
 }
@@ -385,7 +418,7 @@ struct LLMSettingsPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("LLM Settings").font(.title3).fontWeight(.semibold)
-            Text("The in-app pipeline calls this OpenAI-compatible chat endpoint to turn a PDF into a podcast script; audio is synthesized with system voices on this Mac.")
+            Text("The in-app pipeline calls this OpenAI-compatible chat endpoint to turn a PDF into a podcast script; audio is synthesized on this Mac with on-device Kokoro voices.")
                 .font(.caption).foregroundStyle(.secondary)
             field("LLM base URL") { TextField("http://localhost:3000/api", text: $baseUrl).textFieldStyle(.roundedBorder) }
 
@@ -439,6 +472,9 @@ struct LLMSettingsPage: View {
         }
         .onDisappear { save() }
         .onReceive(NotificationCenter.default.publisher(for: .papertalkSaveSettings)) { _ in save() }
+        .onChange(of: keySource) { _, source in
+            if source == .env, selectedEnv.isEmpty { selectedEnv = envOptions.first ?? "" }
+        }
     }
 
     @ViewBuilder private var modelPicker: some View {
@@ -446,7 +482,6 @@ struct LLMSettingsPage: View {
             ProgressView().controlSize(.small)
         } else if models.isEmpty {
             TextField("llama3.1:70b (manual)", text: $model).textFieldStyle(.roundedBorder)
-                .disabled(true)
         } else {
             Picker("", selection: $model) {
                 ForEach(models, id: \.self) { m in
@@ -500,12 +535,14 @@ struct LLMSettingsPage: View {
         case .manual: apiKey = manualKey.trimmingCharacters(in: .whitespaces)
         case .none: break
         }
-        store.llm = LLMSettings(baseUrl: baseUrl.trimmingCharacters(in: .whitespaces),
-                                apiKey: apiKey,
-                                model: model.trimmingCharacters(in: .whitespaces),
-                                keyEnv: keyEnv)
-        store.llm.saveResolvedKey()
-        store.show("LLM settings saved")
+        let next = LLMSettings(baseUrl: baseUrl.trimmingCharacters(in: .whitespaces),
+                               apiKey: apiKey,
+                               model: model.trimmingCharacters(in: .whitespaces),
+                               keyEnv: keyEnv)
+        if next != store.llm {
+            store.llm = next
+            store.llm.saveResolvedKey()
+        }
         saved = true
         saving = false
     }
@@ -587,9 +624,9 @@ struct PromptsSettingsPage: View {
     }
 
     private func save() {
-        store.prompts = PromptSettings(outlineRules: outlineRules, dialoguePersona: dialoguePersona,
-                                       monologuePersona: monologuePersona, writeForEar: writeForEar)
-        store.show("Prompts saved")
+        let next = PromptSettings(outlineRules: outlineRules, dialoguePersona: dialoguePersona,
+                                  monologuePersona: monologuePersona, writeForEar: writeForEar)
+        if next != store.prompts { store.prompts = next }
         saved = true
     }
 }
@@ -679,6 +716,8 @@ struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
     @AppStorage("papertalk.settingsPage") private var pageRaw: Int = 0
+    @State private var showSaved = false
+    @State private var savedTask: Task<Void, Never>?
 
     private var selectedIndex: Binding<Int> {
         Binding(
@@ -719,6 +758,12 @@ struct SettingsView: View {
                     Button("Restore prompt defaults") { restorePrompts() }
                 }
                 Spacer()
+                if showSaved {
+                    Label("Saved", systemImage: "checkmark.circle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.green)
+                        .transition(.opacity)
+                }
                 Button("Save") { saveCurrent() }.buttonStyle(.borderedProminent)
             }
         }
@@ -737,6 +782,12 @@ struct SettingsView: View {
 
     private func saveCurrent() {
         NotificationCenter.default.post(name: .papertalkSaveSettings, object: nil)
+        withAnimation(.snappy) { showSaved = true }
+        savedTask?.cancel()
+        savedTask = Task {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            if !Task.isCancelled { withAnimation(.snappy) { showSaved = false } }
+        }
     }
 }
 

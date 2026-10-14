@@ -3,7 +3,6 @@ import SwiftUI
 // MARK: - First-run setup wizard: storage backend + LLM endpoint.
 struct OnboardingView: View {
     @EnvironmentObject private var store: AppStore
-    @Environment(\.dismiss) private var dismiss
 
     private enum Step { case storage, llm, done }
     @State private var step: Step = .storage
@@ -45,9 +44,13 @@ struct OnboardingView: View {
         .padding(24)
         .frame(width: 500, height: 560)
         .tint(Color.appAccent)
+        .onChange(of: keySource) { _, source in
+            if source == .env, selectedEnv.isEmpty { selectedEnv = envOptions.first ?? "" }
+        }
         .onAppear {
             apiBase = store.config.apiBase
             token = store.config.token
+            storageMode = apiBase.isEmpty ? "local" : "remote"
             baseUrl = store.llm.baseUrl
             model = store.llm.model
             if envOptions.contains(store.llm.keyEnv) { keySource = .env; selectedEnv = store.llm.keyEnv }
@@ -83,8 +86,8 @@ struct OnboardingView: View {
             }
             if storageMode == "remote" {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Server API base URL").font(.caption)
-                    TextField("http://host:9170/api", text: $apiBase).textFieldStyle(.roundedBorder)
+                    Text("Storage server URL").font(.caption)
+                    TextField("http://host:9170", text: $apiBase).textFieldStyle(.roundedBorder)
                     Text("API token").font(.caption)
                     SecureField("token (optional)", text: $token).textFieldStyle(.roundedBorder)
                 }
@@ -259,7 +262,9 @@ struct OnboardingView: View {
     private var footer: some View {
         HStack {
             if step == .storage || step == .llm {
-                Button("Quit") { dismiss() }.buttonStyle(.borderless)
+                Button("Skip setup") { store.markOnboarded() }
+                    .buttonStyle(.borderless)
+                    .help("Use the defaults for now; change them any time in Settings (⌘,)")
             }
             Spacer()
             if step != .storage { Button("Back") { back() }.buttonStyle(.borderless) }

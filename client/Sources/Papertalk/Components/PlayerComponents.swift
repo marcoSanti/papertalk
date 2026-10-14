@@ -146,11 +146,35 @@ Group {
                           onSeek: { player.seek(toTime: $0) },
                           activeTurn: player.activeTurn,
                           paper: paper)
+            } else if !paper.isActive && (paper.hasScript || paper.hasAudio) {
+                // Playable but not loaded yet: offer play instead of "no audio".
+                HStack(spacing: 12) {
+                    Button {
+                        store.togglePlayback(paper.id)
+                    } label: {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .glassEffect(.regular.tint(Color.appAccent).interactive(), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(paper.progress > 1 ? "Resume" : "Play")
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(paper.displayTitle)
+                            .font(.callout.weight(.semibold))
+                            .lineLimit(1)
+                        Text(readyLabel(paper))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
             } else {
                 HStack(spacing: 10) {
                     Image(systemName: "waveform.slash")
                         .foregroundStyle(.secondary)
-                    Text(paper.isActive ? "Episode is being produced…" : "No audio for this paper yet")
+                    Text(paper.isActive ? "Episode is being produced…" : "No episode for this paper yet")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -158,6 +182,13 @@ Group {
                 .frame(height: 28)
             }
         }
+    }
+
+    private func readyLabel(_ p: Paper) -> String {
+        if p.progress > 1, p.duration > 0 {
+            return "Resume at \(formatT(p.progress)) of \(formatT(p.duration))"
+        }
+        return p.duration > 0 ? "\(formatT(p.duration)) episode" : "Ready to play"
     }
 
     private func importPane(_ run: Paper) -> some View {

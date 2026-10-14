@@ -86,6 +86,7 @@ struct PaperCard: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 7).padding(.vertical, 3)
                 .glassEffect(.regular.tint(Color.appAccent), in: Capsule())
+                .help("Not listened yet")
         }
     }
 
@@ -155,10 +156,8 @@ struct PaperArtwork: View {
 struct ContextMenuItems: View {
     @EnvironmentObject private var store: AppStore
     let paper: Paper
-    @State private var confirmDelete = false
 
     var body: some View {
-        Group {
         Button {
             store.selectedId = paper.id
         } label: {
@@ -174,7 +173,7 @@ struct ContextMenuItems: View {
         Button {
             store.toggleRead(paper.id)
         } label: {
-            Label(paper.read ? "Mark as unread" : "Mark as read", systemImage: "checkmark.circle")
+            Label(paper.read ? "Mark as unlistened" : "Mark as listened", systemImage: "checkmark.circle")
         }
         Divider()
         Button {
@@ -183,10 +182,15 @@ struct ContextMenuItems: View {
             Label("Edit metadata…", systemImage: "pencil")
         }
         Button {
-            store.rerun(paper.id)
+            if paper.hasScript || paper.hasAudio {
+                store.pendingConfirmation = .rerun(paper)
+            } else {
+                store.rerun(paper.id)
+            }
         } label: {
             Label("Rerun episode", systemImage: "arrow.counterclockwise")
         }
+        .disabled(paper.isActive)
         Button {
             store.refreshMeta(paper.id)
         } label: {
@@ -201,16 +205,9 @@ struct ContextMenuItems: View {
         }
         Divider()
         Button(role: .destructive) {
-            confirmDelete = true
+            store.pendingConfirmation = .delete(paper)
         } label: {
             Label("Delete", systemImage: "trash")
-        }
-        }
-        .confirmationDialog("Delete “\(paper.displayTitle)”?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete paper", role: .destructive) { store.delete(paper.id) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The PDF, transcript and generated audio are removed from the library. This can’t be undone.")
         }
     }
 }

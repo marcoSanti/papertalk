@@ -2,8 +2,8 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var showUpload = false
-    @State private var showInspector = true
+    @AppStorage("papertalk.showInspector") private var showInspector = true
+    @AppStorage("papertalk.inspectorWidth") private var inspectorWidth: Double = 340
 
     var body: some View {
         NavigationSplitView {
@@ -11,22 +11,22 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
         } detail: {
             HStack(spacing: 0) {
-                LibraryView(onImport: { showUpload = true })
+                LibraryView(onImport: { store.beginImport() })
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         BottomBar(player: store.player)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if showInspector {
-                    Divider()
+                    InspectorResizeHandle(width: $inspectorWidth, range: 300...520)
                     inspectorContent
-                        .frame(width: 340)
+                        .frame(width: inspectorWidth)
                 }
             }
         }
-        .searchable(text: $store.search, placement: .toolbar, prompt: "Search papers (#tag to search tags)")
+        .searchable(text: $store.search, placement: .toolbar, prompt: "Search titles, authors, DOI (#tag for tags)")
         .toolbar { toolbarContent }
-        .sheet(isPresented: $showUpload) {
+        .sheet(isPresented: $store.showUpload) {
             UploadSheet()
         }
         .sheet(item: $store.editingPaper) { paper in
@@ -37,6 +37,24 @@ struct ContentView: View {
         }
         .sheet(isPresented: $store.showOnboarding) {
             OnboardingView()
+                .interactiveDismissDisabled()
+        }
+        .confirmationDialog(confirmationTitle, isPresented: confirmationShown,
+                            titleVisibility: .visible, presenting: store.pendingConfirmation) { pending in
+            switch pending {
+            case .delete(let p):
+                Button("Delete paper", role: .destructive) { store.delete(p.id) }
+            case .rerun(let p):
+                Button("Rerun episode", role: .destructive) { store.rerun(p.id) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { pending in
+            switch pending {
+            case .delete:
+                Text("The PDF, transcript and generated audio are removed from the library. This can’t be undone.")
+            case .rerun:
+                Text("The current script and audio are replaced with a newly written episode.")
+            }
         }
         .overlay(alignment: .bottom) {
             if let t = store.toast {
@@ -52,11 +70,18 @@ struct ContentView: View {
         .onAppear {
             store.trackPlayback()
         }
-        .onChange(of: store.selectedId) { _, _ in
-            // reveal the inspector automatically when a paper is selected
-            if store.selectedPaper() != nil {
-                withAnimation(.snappy) { showInspector = true }
-            }
+    }
+
+    private var confirmationShown: Binding<Bool> {
+        Binding(get: { store.pendingConfirmation != nil },
+                set: { if !$0 { store.pendingConfirmation = nil } })
+    }
+
+    private var confirmationTitle: String {
+        switch store.pendingConfirmation {
+        case .delete(let p): return "Delete “\(p.displayTitle)”?"
+        case .rerun(let p): return "Rerun “\(p.displayTitle)”?"
+        case nil: return ""
         }
     }
 
@@ -71,12 +96,11 @@ struct ContentView: View {
     @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             Picker("Layout", selection: $store.libraryLayout) {
-                Image(systemName: "square.grid.2x2").tag(LibraryLayout.grid)
-                    .help("Grid")
-                Image(systemName: "list.bullet").tag(LibraryLayout.list)
-                    .help("List")
+                Label("Grid", systemImage: "square.grid.2x2").tag(LibraryLayout.grid)
+                Label("List", systemImage: "list.bullet").tag(LibraryLayout.list)
             }
             .pickerStyle(.segmented)
+            .labelStyle(.iconOnly)
             .help("Change library layout")
 
             Menu {
@@ -94,13 +118,12 @@ struct ContentView: View {
 
         ToolbarItem(placement: .primaryAction) {
             Button {
-                showUpload = true
+                store.beginImport()
             } label: {
                 Label("Import", systemImage: "plus")
             }
             .buttonStyle(.glassProminent)
-            .help("Import a PDF paper (⌘N)")
-            .keyboardShortcut("n", modifiers: .command)
+            .help("Import a PDF paper (⌘O)")
         }
 
         ToolbarSpacer(.fixed, placement: .primaryAction)
@@ -135,5 +158,35 @@ struct EmptyDetailPlaceholder: View {
             Text("Pick a paper from the library to see its details, tags and episode.")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Divider between library and inspector that can be dragged to resize the inspector.
+private struct InspectorResizeHandle: View {
+    @Binding var width: Double
+    let range: ClosedRange<Double>
+    @State private var startWidth: Double?
+
+    var body: some View {
+        Divider()
+            .overlay {
+                Color.clear
+                    .frame(width: 8)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                            .onChanged { g in
+                                let start = startWidth ?? width
+                                startWidth = start
+                                // Dragging left widens the trailing inspector.
+                                width = min(range.upperBound, max(range.lowerBound, start - g.translation.width))
+                            }
+                            .onEnded { _ in startWidth = nil }
+                    )
+            }
+            .help("Drag to resize")
     }
 }

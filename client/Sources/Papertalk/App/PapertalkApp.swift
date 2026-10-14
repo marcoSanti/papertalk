@@ -22,7 +22,10 @@ struct PapertalkApp: App {
                 Divider()
                 Button("Clear All Data…") { store.settingsPage = .clear; store.showSettings = true }
             }
-            CommandGroup(replacing: .newItem) { }
+            CommandGroup(replacing: .newItem) {
+                Button("Import PDF…") { store.beginImport() }
+                    .keyboardShortcut("o", modifiers: .command)
+            }
         }
     }
 }

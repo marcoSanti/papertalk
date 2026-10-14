@@ -35,6 +35,26 @@ final class AppStore: ObservableObject {
     @Published var activeRunIndex = 0
     /// Paper currently open in the metadata edit sheet.
     @Published var editingPaper: Paper?
+    /// Whether the import sheet is open, and a file to pre-load into it
+    /// (set when a PDF is dropped on the library).
+    @Published var showUpload = false
+    @Published var pendingUploadURL: URL?
+    func beginImport(_ url: URL? = nil) {
+        pendingUploadURL = url
+        showUpload = true
+    }
+    /// Destructive action awaiting confirmation. Lives on the store so the
+    /// dialog survives the context menu that asked for it being torn down.
+    @Published var pendingConfirmation: PendingConfirmation?
+    enum PendingConfirmation: Identifiable {
+        case delete(Paper), rerun(Paper)
+        var id: String {
+            switch self {
+            case .delete(let p): return "delete-\(p.id)"
+            case .rerun(let p): return "rerun-\(p.id)"
+            }
+        }
+    }
 
     // filtering
     @Published var view: ViewMode = .all
@@ -58,14 +78,19 @@ final class AppStore: ObservableObject {
     @Published var showOnboarding = false
     /// In-memory cache of rendered first-page PDF thumbnails.
     private var thumbCache: [String: NSImage] = [:]
-    /// Raw activity log shown in the bottom pane; newest last.
-    @Published var logLines: [String] = []
+    /// Activity log, newest last. Each line remembers which paper it's about
+    /// so the inspector can show just that paper's activity.
+    struct LogEntry { let paperId: String?; let text: String }
+    @Published private(set) var logEntries: [LogEntry] = []
     private static let logFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f
     }()
-    func appendLog(_ line: String) {
-        logLines.append("[\(Self.logFmt.string(from: Date()))] \(line)")
-        if logLines.count > 2000 { logLines.removeFirst(logLines.count - 2000) }
+    func appendLog(_ line: String, paper id: String? = nil) {
+        logEntries.append(LogEntry(paperId: id, text: "[\(Self.logFmt.string(from: Date()))] \(line)"))
+        if logEntries.count > 2000 { logEntries.removeFirst(logEntries.count - 2000) }
+    }
+    func logLines(for id: String) -> [String] {
+        logEntries.filter { $0.paperId == id }.map(\.text)
     }
 
     enum SettingsPage: Int, Identifiable {
@@ -156,7 +181,7 @@ final class AppStore: ObservableObject {
         case .tag: if let t = activeTag { out = out.filter { $0.tags.contains(t) } }
         case .all: break
         }
-        if statusFilter != "all" { out = out.filter { $0.state == statusFilter } }
+        if statusFilter != "all" { out = out.filter { Self.matches($0, status: statusFilter) } }
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
         if !q.isEmpty {
             if q.hasPrefix("#") {
@@ -165,7 +190,8 @@ final class AppStore: ObservableObject {
                 out = out.filter { !tag.isEmpty && $0.tags.contains { $0.lowercased().contains(tag) } }
             } else {
                 out = out.filter {
-                    [$0.title ?? "", $0.filename ?? "", $0.tags.joined(separator: " ")]
+                    [$0.title ?? "", $0.filename ?? "", $0.tags.joined(separator: " "),
+                     $0.authors.joined(separator: " "), $0.doi]
                         .joined(separator: " ").lowercased().contains(q)
                 }
             }
@@ -183,6 +209,11 @@ final class AppStore: ObservableObject {
         case .newest: out.sort { ($0.createdIso ?? "") > ($1.createdIso ?? "") }
         }
         return out
+    }
+
+    /// Status-filter match; "running" also covers queued papers.
+    static func matches(_ p: Paper, status: String) -> Bool {
+        status == "running" ? p.isActive : p.state == status
     }
 
     func selectedPaper() -> Paper? { selectedId.flatMap { papers[$0] } }
@@ -313,10 +344,27 @@ final class AppStore: ObservableObject {
     }
 
     // MARK: Actions
-    func rerun(_ id: String) {
-        let p = papers[id]
-        let depth = p.flatMap { Depth(rawValue: $0.depth ?? "") } ?? .inDepth
-        Task { await runPipeline(papers[id], depth: depth) }
+    /// Convert a paper again. `fresh` discards the stored script and audio so
+    /// a new episode is written; otherwise the run resumes from whatever
+    /// already landed on disk (used by "Try again" after a failure).
+    func rerun(_ id: String, fresh: Bool = true) {
+        guard let p = papers[id], !p.isActive else { return }
+        let depth = Depth(rawValue: p.depth ?? "") ?? .inDepth
+        Task {
+            if fresh {
+                await discardEpisode(id)
+                optimistic(id, { $0.hasScript = false; $0.hasAudio = false; $0.duration = 0 })
+            }
+            await runPipeline(papers[id], depth: depth)
+        }
+    }
+
+    /// Drop a paper's script and baked audio, unloading it from the player first.
+    private func discardEpisode(_ id: String) async {
+        if playingPaperId == id { player.stopAll(); playingPaperId = nil }
+        try? await storage.delete(K.script(id))
+        try? await storage.delete(K.transcript(id))
+        await deleteBakedAudio(id)
     }
     func resetError(_ id: String) {
         guard let p = papers[id] else { return }
@@ -361,7 +409,7 @@ final class AppStore: ObservableObject {
             papers.removeAll()
             thumbCache.removeAll()
             selectedId = nil
-            logLines = []
+            logEntries = []
             // 2. All settings + old (pre-rename) keys.
             let d = UserDefaults.standard
             for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.prompts.json", "papertalk.customDepths.json", "papertalk.settingsPage", "papertalk.onboarded",
@@ -376,14 +424,21 @@ final class AppStore: ObservableObject {
             // 4. Back to a clean reactive state.
             config = ServerConfig.load()   // save() re-persists env defaults
             llm = LLMSettings.load()
+            prompts = PromptSettings.defaults
+            customPresets = CustomDepthPresets(entries: [])
+            if playingPaperId != nil { player.stopAll(); playingPaperId = nil }
             show("Cleared data, settings and cache")
+            // Fresh start: close settings and run first-time setup again.
+            showSettings = false
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            showOnboarding = true
         }
     }
     func refreshMeta(_ id: String) {
         Task {
-            appendLog("Extracting metadata with LLM…")
+            appendLog("Extracting metadata with LLM…", paper: id)
             guard let pdfData = try? await storage.read(K.pdf(id)) else {
-                appendLog("ERROR: no PDF on disk to extract metadata from"); show("No PDF to read"); return
+                appendLog("ERROR: no PDF on disk to extract metadata from", paper: id); show("No PDF to read"); return
             }
             let text = LocalPipeline.extractText(pdfData)
             guard !text.isEmpty else { show("Could not read PDF text"); return }
@@ -401,7 +456,7 @@ final class AppStore: ObservableObject {
                 let p = LocalPipeline(baseUrl: base, apiKey: llm.resolvedKey(), model: llm.model.isEmpty ? "llama3.1:70b" : llm.model)
                 var pipeline = p
                 pipeline.prompts = prompts
-                pipeline.log = { [weak self] line in Task { @MainActor in self?.appendLog(line) } }
+                pipeline.log = { [weak self] line in Task { @MainActor in self?.appendLog(line, paper: id) } }
                 let meta = try await pipeline.extractMeta(text: text, fallbackTitle: fallback)
                 optimistic(id, {
                     if ($0.title ?? "").isEmpty { $0.title = meta.title }
@@ -410,7 +465,7 @@ final class AppStore: ObservableObject {
                     if $0.doi.isEmpty { $0.doi = meta.doi }
                     if $0.tags.isEmpty { $0.tags = meta.tags }
                 })
-                appendLog("Metadata: \(meta.authors.joined(separator: ", ")) · \(meta.tags.joined(separator: ", "))")
+                appendLog("Metadata: \(meta.authors.joined(separator: ", ")) · \(meta.tags.joined(separator: ", "))", paper: id)
                 // Resolve the paper's DOI into a BibTeX citation from doi2bib. Use
                 // the currently-stored DOI (authoritative, survives LLM variance)
                 // and skip if one is already resolved.
@@ -418,13 +473,13 @@ final class AppStore: ObservableObject {
                 if !doi.isEmpty, papers[id]?.bibtex == nil {
                     if let bib = await fetchBibliography(doi: doi) {
                         optimistic(id, { $0.bibtex = bib })
-                        appendLog("Fetched LaTeX citation from doi2bib")
+                        appendLog("Fetched LaTeX citation from doi2bib", paper: id)
                     } else {
-                        appendLog("WARN: could not resolve a citation for \(doi)")
+                        appendLog("WARN: could not resolve a citation for \(doi)", paper: id)
                     }
                 }
             } catch {
-                appendLog("WARN: metadata extraction failed: \(error.localizedDescription)")
+                appendLog("WARN: metadata extraction failed: \(error.localizedDescription)", paper: id)
             }
         }
     }
@@ -490,7 +545,7 @@ final class AppStore: ObservableObject {
             await storage.save(AudioManifest(durations: durations), K.audioManifest(id))
             return true
         } catch {
-            appendLog("Audio synthesis failed: \(error.localizedDescription)")
+            appendLog("Audio synthesis failed: \(error.localizedDescription)", paper: id)
             return false
         }
     }
@@ -516,6 +571,28 @@ final class AppStore: ObservableObject {
         } else {
             player.prepare(transcript: t)
         }
+    }
+
+    /// Play/pause a paper from any control: loads it into the global player
+    /// first if needed, and resumes where the listener left off.
+    func togglePlayback(_ id: String) {
+        if playingPaperId == id, player.turnCount > 0 {
+            resumeIfNeeded(id)
+            player.playPause()
+        } else {
+            Task {
+                await prepareAudio(for: id)
+                resumeIfNeeded(id)
+                player.playPause()
+            }
+        }
+    }
+
+    /// Pick up where the listener left off the first time play is pressed.
+    private func resumeIfNeeded(_ id: String) {
+        guard let p = papers[id], !player.isPlaying, player.currentTime < 0.5,
+              p.progress > 1, p.progress < player.duration - 1 else { return }
+        player.seek(toTime: p.progress)
     }
 
     /// Wire playback-position persistence once at startup. Uses the global
@@ -548,19 +625,23 @@ final class AppStore: ObservableObject {
     /// Uses the same progress bar as import, then reloads the global player.
     func regenerateAudio(_ id: String) {
         guard let p = papers[id], p.hasScript else { show("No transcript to speak"); return }
+        guard !p.isActive else { return }
         Task {
             guard let t = await transcript(for: id) else { show("No transcript on disk"); return }
-            appendLog("Regenerating audio for \(p.displayTitle)…")
+            // Drop the old per-turn WAVs so every turn is re-voiced.
+            if playingPaperId == id { player.stopAll(); playingPaperId = nil }
+            await deleteBakedAudio(id)
+            appendLog("Regenerating audio for \(p.displayTitle)…", paper: id)
             updateRec(id) { $0.state = "running"; $0.stage = "audio"; $0.progress = 0.02; $0.message = "Preparing Kokoro…" }
             let baked = await bakeAudio(id, t, from: 0.0, to: 1.0)
             if baked {
                 updateRec(id) { $0.state = "done"; $0.stage = "done"; $0.progress = 1; $0.message = "Done"; $0.hasAudio = true }
-                appendLog("Audio regenerated.")
+                appendLog("Audio regenerated.", paper: id)
                 show("Audio regenerated")
                 await prepareAudio(for: id)
             } else {
                 updateRec(id) { $0.state = "error"; $0.stage = "audio"; $0.statusError = "Audio synthesis failed" }
-                appendLog("ERROR: audio regeneration failed")
+                appendLog("ERROR: audio regeneration failed", paper: id)
             }
         }
     }
@@ -578,7 +659,7 @@ final class AppStore: ObservableObject {
         papers[id] = rec
         selectedId = id
         await storage.save(rec, K.paper(id))
-        appendLog("Queued: \(name)")
+        appendLog("Queued: \(name)", paper: id)
 
         let base = llm.baseUrl
         let key = llm.resolvedKey()
@@ -590,29 +671,29 @@ final class AppStore: ObservableObject {
         } else if let stored = try? await storage.read(K.pdf(id)) {
             pdfData = stored
         } else {
-            updateRec(id) { $0.state = "error"; $0.statusError = "No PDF" }; appendLog("ERROR: No PDF to convert"); return
+            updateRec(id) { $0.state = "error"; $0.statusError = "No PDF" }; appendLog("ERROR: No PDF to convert", paper: id); return
         }
         var pipeline = LocalPipeline(baseUrl: base, apiKey: key, model: model)
         pipeline.prompts = prompts
-        pipeline.log = { [weak self] line in Task { @MainActor in self?.appendLog(line) } }
+        pipeline.log = { [weak self] line in Task { @MainActor in self?.appendLog(line, paper: id) } }
         // Transcript writing spans 0.10 → 0.75 of the unified pipeline bar.
         pipeline.onProgress = { [weak self] frac, label in
             Task { @MainActor in self?.updateRec(id) { $0.progress = 0.10 + 0.65 * frac; $0.message = label } }
         }
 
         updateRec(id) { $0.state = "running"; $0.stage = "extract"; $0.progress = 0.02; $0.message = "Extracting text…" }
-        appendLog("Extracting PDF text…")
+        appendLog("Extracting PDF text…", paper: id)
         let text = LocalPipeline.extractText(pdfData)
         guard !text.isEmpty else {
-            updateRec(id) { $0.state = "error"; $0.statusError = "Could not read PDF text" }; appendLog("ERROR: Could not read PDF text"); return
+            updateRec(id) { $0.state = "error"; $0.statusError = "Could not read PDF text" }; appendLog("ERROR: Could not read PDF text", paper: id); return
         }
-        appendLog("Extracted \(text.count) characters")
+        appendLog("Extracted \(text.count) characters", paper: id)
         try? await storage.write(K.pdf(id), pdfData)
 
         // Direct read: skip the LLM entirely. Chunk the extracted text into
         // turns and read it out loud verbatim (no rewriting, just TTS).
         if depth == .direct {
-            appendLog("Direct read mode — no LLM processing")
+            appendLog("Direct read mode — no LLM processing", paper: id)
             let turns = LocalPipeline.readThroughTurns(text)
             let direct = Transcript(paperTitle: name,
                                     speakers: [Transcript.Speaker(name: "Reader", persona: "")],
@@ -632,7 +713,7 @@ final class AppStore: ObservableObject {
 
         guard !base.isEmpty else {
             // no LLM configured: fall back to a read-through transcript
-            appendLog("No LLM URL configured — using read-through transcript")
+            appendLog("No LLM URL configured — using read-through transcript", paper: id)
             let fallback = Transcript(paperTitle: name, speakers: [Transcript.Speaker(name: "Reader", persona: "")],
                                       segments: [Transcript.Segment(title: "Paper", turns: text.prefix(8000).split(separator: "\n")
                                           .map { String($0) }.filter { !$0.isEmpty }.map { Transcript.Turn(speaker: "Reader", text: $0) })] )
@@ -641,20 +722,20 @@ final class AppStore: ObservableObject {
         }
 
         updateRec(id) { $0.state = "running"; $0.stage = "segments"; $0.progress = 0.08; $0.message = "Planning episode…" }
-        appendLog("Calling \(model) @ \(base)…")
+        appendLog("Calling \(model) @ \(base)…", paper: id)
         do {
             // Resume: if a transcript already landed on disk before a quit, skip
             // the LLM call and pick up directly at audio synthesis.
             let script: Transcript
             if let persisted = await transcript(for: id), !persisted.segments.isEmpty {
                 script = persisted
-                appendLog("Resuming with previously generated transcript…")
+                appendLog("Resuming with previously generated transcript…", paper: id)
             } else {
                 let result = try await pipeline.generateTranscript(text: text, depth: depth, depthNote: depthNote)
                 script = result.transcript
                 // Persist now so an interrupted run can resume past segments later.
                 try? await storage.save(script, K.transcript(id))
-                appendLog("Got transcript (\(script.segments.count) segments)")
+                appendLog("Got transcript (\(script.segments.count) segments)", paper: id)
             }
             updateRec(id) { $0.stage = "audio"; $0.progress = 0.78; $0.message = "Synthesizing audio…" }
             let baked = await bakeAudio(id, script, from: 0.80, to: 1.0)
@@ -662,7 +743,7 @@ final class AppStore: ObservableObject {
                          authors: papers[id]?.authors ?? [], pdfData: pdfData, depth: depth, hasAudio: baked)
         } catch {
             updateRec(id) { $0.state = "error"; $0.statusError = error.localizedDescription }
-            appendLog("ERROR: \(error.localizedDescription)")
+            appendLog("ERROR: \(error.localizedDescription)", paper: id)
             show("Conversion failed: \(error.localizedDescription)")
         }
     }
@@ -670,7 +751,7 @@ final class AppStore: ObservableObject {
     private func resumePipeline(_ id: String) async {
         guard let existing = papers[id] else { return }
         let depth = Depth(rawValue: existing.depth ?? "") ?? .inDepth
-        appendLog("Resuming import of \(existing.displayTitle)…")
+        appendLog("Resuming import of \(existing.displayTitle)…", paper: id)
         await runPipeline(existing, depth: depth)
     }
 
@@ -685,7 +766,7 @@ final class AppStore: ObservableObject {
             $0.depth = depth.rawValue
         }
         if let done = papers[id] { await storage.save(done, K.paper(id)) }
-        appendLog("Done: \(title)")
+        appendLog("Done: \(title)", paper: id)
         show("Converted")
     }
 

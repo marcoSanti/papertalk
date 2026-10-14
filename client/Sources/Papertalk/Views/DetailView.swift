@@ -19,7 +19,6 @@ struct DetailView: View {
     @State private var shownID: String?
     @State private var titleDraft = ""
     @FocusState private var titleFocused: Bool
-    @State private var confirmDelete = false
     @State private var showAllAuthors = false
     @State private var showLog = false
     @State private var showCitation = false
@@ -41,7 +40,7 @@ struct DetailView: View {
                 detailsCard
                 tagsCard
                 manageCard
-                LogPane(lines: store.logLines, isOpen: $showLog)
+                LogPane(lines: store.logLines(for: paper.id), isOpen: $showLog)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 20)
@@ -58,12 +57,6 @@ struct DetailView: View {
         }
         .sheet(isPresented: $showCitation) {
             CitationView(bibtex: paper.bibtex ?? "")
-        }
-        .confirmationDialog("Delete “\(paper.displayTitle)”?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete paper", role: .destructive) { store.delete(paper.id) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The PDF, transcript and generated audio are removed from the library. This can’t be undone.")
         }
         .onAppear { load(paper) }
         .onChange(of: paper.id) { _, _ in load(paper) }
@@ -236,7 +229,7 @@ struct DetailView: View {
                 detailRow("Assets") {
                     HStack(spacing: 10) {
                         asset("PDF", "doc.fill", paper.hasPdf)
-                        asset("Script", "text.quote", paper.hasScript)
+                        asset("Transcript", "text.quote", paper.hasScript)
                         asset("Audio", "waveform", paper.hasAudio)
                     }
                 }
@@ -325,7 +318,11 @@ struct DetailView: View {
                 .disabled(!paper.hasScript || store.activeRun != nil)
                 ManageRow(title: "Rerun episode", subtitle: "Write a new script from the PDF",
                           icon: "arrow.counterclockwise", tint: .indigo) {
-                    store.rerun(paper.id)
+                    if paper.hasScript || paper.hasAudio {
+                        store.pendingConfirmation = .rerun(paper)
+                    } else {
+                        store.rerun(paper.id)
+                    }
                 }
                 .disabled(paper.isActive)
                 ManageRow(title: "Refresh metadata", subtitle: "Re-extract title, authors and DOI",
@@ -342,7 +339,7 @@ struct DetailView: View {
                     }
                 }
                 ManageRow(title: "Delete paper", subtitle: nil, icon: "trash", tint: .red, destructive: true) {
-                    confirmDelete = true
+                    store.pendingConfirmation = .delete(paper)
                 }
             }
         }
@@ -422,7 +419,7 @@ private struct QuickActionBar: View {
                        prominent: true, busy: isPreparing, enabled: paper.hasScript || paper.hasAudio,
                        perform: togglePlay)
                 action("PDF", icon: "doc.text", enabled: paper.hasPdf, perform: onPDF)
-                action("Script", icon: "text.quote", enabled: paper.hasScript, perform: onTranscript)
+                action("Transcript", icon: "text.quote", enabled: paper.hasScript, perform: onTranscript)
                 action(paper.favorite ? "Favorited" : "Favorite",
                        icon: paper.favorite ? "star.fill" : "star",
                        iconColor: paper.favorite ? Color.yellow : nil) {
@@ -434,25 +431,7 @@ private struct QuickActionBar: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func togglePlay() {
-        if isCurrent {
-            resumeIfNeeded()
-            player.playPause()
-        } else {
-            Task {
-                await store.prepareAudio(for: paper.id)
-                resumeIfNeeded()
-                player.playPause()
-            }
-        }
-    }
-
-    /// Pick up where the listener left off the first time play is pressed.
-    private func resumeIfNeeded() {
-        guard !player.isPlaying, player.currentTime < 0.5,
-              paper.progress > 1, paper.progress < player.duration - 1 else { return }
-        player.seek(toTime: paper.progress)
-    }
+    private func togglePlay() { store.togglePlayback(paper.id) }
 
     private func action(_ title: String, icon: String, prominent: Bool = false, busy: Bool = false,
                         enabled: Bool = true, iconColor: Color? = nil,
@@ -563,7 +542,7 @@ private struct ConversionStatusCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Button {
-                    store.rerun(paper.id)
+                    store.rerun(paper.id, fresh: false)
                 } label: {
                     Label("Try again", systemImage: "arrow.counterclockwise")
                 }

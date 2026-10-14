@@ -5,6 +5,9 @@ struct LibraryView: View {
     var onImport: () -> Void = {}
 
     @Namespace private var filterNS
+    @FocusState private var libraryFocused: Bool
+    @State private var gridWidth: CGFloat = 0
+    @State private var dropTargeted = false
 
     var body: some View {
         let papers = store.filteredPapers()
@@ -18,6 +21,43 @@ struct LibraryView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .focusable()
+        .focusEffectDisabled()
+        .focused($libraryFocused)
+        .onKeyPress(.space) { playSelected() }
+        .onKeyPress(.return) { playSelected() }
+        .onKeyPress(keys: [.delete, .deleteForward]) { _ in
+            guard let p = store.selectedPaper() else { return .ignored }
+            store.pendingConfirmation = .delete(p)
+            return .handled
+        }
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
+            // The native List handles its own arrows; this drives the grid.
+            guard store.libraryLayout == .grid else { return .ignored }
+            return moveSelection(press.key, in: papers)
+        }
+        .onChange(of: store.selectedId) { _, id in
+            if id != nil { libraryFocused = true }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first(where: { $0.pathExtension.lowercased() == "pdf" }) else { return false }
+            store.beginImport(url)
+            return true
+        } isTargeted: { dropTargeted = $0 }
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.appAccent, style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
+                    .background(Color.appAccent.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay {
+                        Label("Drop a PDF to import it", systemImage: "arrow.down.doc")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(Color.appAccent)
+                    }
+                    .padding(10)
+                    .allowsHitTesting(false)
+            }
+        }
         .safeAreaInset(edge: .top, spacing: 0) { filterBar }
         .background(AmbientBackground())
         .navigationTitle(title)
@@ -106,7 +146,33 @@ struct LibraryView: View {
             case .tag: return store.activeTag.map { p.tags.contains($0) } ?? true
             }
         }
-        return value == "all" ? scoped.count : scoped.filter { $0.state == value }.count
+        return value == "all" ? scoped.count : scoped.filter { AppStore.matches($0, status: value) }.count
+    }
+
+    // MARK: keyboard
+
+    private func playSelected() -> KeyPress.Result {
+        guard let p = store.selectedPaper(), p.hasScript || p.hasAudio else { return .ignored }
+        store.togglePlayback(p.id)
+        return .handled
+    }
+
+    /// Arrow-key navigation over the grid; up/down jump a full row.
+    private func moveSelection(_ key: KeyEquivalent, in papers: [Paper]) -> KeyPress.Result {
+        guard !papers.isEmpty else { return .ignored }
+        // Mirrors the adaptive grid: min 150 pt tiles, 22 pt spacing, 22 pt side padding.
+        let columns = max(1, Int((gridWidth - 44 + 22) / (150 + 22)))
+        let step: Int
+        switch key {
+        case .leftArrow: step = -1
+        case .rightArrow: step = 1
+        case .upArrow: step = -columns
+        default: step = columns
+        }
+        let current = papers.firstIndex { $0.id == store.selectedId }
+        let next = current.map { min(papers.count - 1, max(0, $0 + step)) } ?? 0
+        store.selectedId = papers[next].id
+        return .handled
     }
 
     // MARK: layouts
@@ -123,6 +189,7 @@ struct LibraryView: View {
             .padding(.top, 6)
             .padding(.bottom, 24)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
     }
 
     private func list(_ papers: [Paper]) -> some View {

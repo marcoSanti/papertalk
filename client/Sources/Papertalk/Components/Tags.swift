@@ -37,11 +37,13 @@ struct TagChip: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            Text("#\(tag)")
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-                .onTapGesture { onSelect?() }
-                .help(onSelect == nil ? "" : "Show all papers tagged #\(tag)")
+            Button { onSelect?() } label: {
+                Text("#\(tag)")
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+            }
+            .buttonStyle(.plain)
+            .help(onSelect == nil ? "" : "Show all papers tagged #\(tag)")
             Button(action: onRemove) {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
@@ -50,6 +52,7 @@ struct TagChip: View {
             .foregroundStyle(.secondary)
             .opacity(hovering ? 1 : 0.35)
             .help("Remove tag")
+            .accessibilityLabel("Remove tag \(tag)")
         }
         .foregroundStyle(Color.appAccent)
         .padding(.leading, 9)

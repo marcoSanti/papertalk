@@ -61,7 +61,10 @@ struct SidebarView: View {
                 case .tag(let t):
                     store.view = .tag; store.activeTag = t
                 }
-                store.selectedId = nil
+                // Keep the inspector on the current paper if it's still in scope.
+                if let id = store.selectedId, !store.filteredPapers().contains(where: { $0.id == id }) {
+                    store.selectedId = nil
+                }
             }
         )
     }

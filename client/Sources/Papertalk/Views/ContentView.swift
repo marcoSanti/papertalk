@@ -48,7 +48,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: castShown) {
             if let p = store.pendingCast {
-                CastSheet(paperTitle: p.paperTitle, proposals: p.proposals, authors: p.authors)
+                CastSheet(paperTitle: p.paperTitle, proposals: p.proposals, authors: p.authors, authorGenders: p.authorGenders)
             }
         }
         .confirmationDialog(confirmationTitle, isPresented: confirmationShown,

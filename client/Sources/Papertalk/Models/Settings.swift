@@ -156,7 +156,7 @@ struct PromptSettings: Codable, Equatable {
         OUTLINE & SEGMENTATION RULES:
         - Target total length ≈ {minutes} minutes.
         - Use no less than {minSeg} and no more than {maxSeg} segments.
-        - The technical heart of the paper (Method / Model / Approach / Algorithm sections) MUST be its own segment(s) with "monologue": true — these are delivered as a long, faithful, full-length spoken walkthrough.
+        - In an IN-DEPTH episode, the technical heart of the paper (Method / Model / Approach / Algorithm sections) MUST be its own segment(s) with "monologue": true — these are delivered as a long, faithful, full-length spoken walkthrough. For any other depth (e.g. SUMMARY) set "monologue": false on every segment.
         - Every section in the section index must be covered by at least one segment (map each segment to the 1-based indices of the sections it covers via "sections").
         - Give each segment: a clear spoken goal (e.g. "explain the key idea of attention"), the key_points that must be hit, and a "weight" (0–1, sums used to split the ~{plannedWords} planned words so longer/more technical parts get more airtime).
         - {depthGuide}

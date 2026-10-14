@@ -68,12 +68,16 @@ final class AppStore: ObservableObject {
     /// and genders). The import pipeline waits on its continuation; resuming
     /// with nil means "cancel the whole import".
     struct CastPrompt {
+        let paperId: String
         let paperTitle: String
         let proposals: [ProposedSpeaker]
         let authors: [String]
+        let authorGenders: [String: String]
         let cont: CheckedContinuation<[SpeakerConfig]?, Never>
     }
     @Published var pendingCast: CastPrompt?
+    /// System notifications while the app is in the background.
+    let notifier = Notifier()
 
     // filtering
     @Published var view: ViewMode = .all
@@ -98,6 +102,13 @@ final class AppStore: ObservableObject {
     @Published var showOnboarding = false
     /// In-memory cache of rendered first-page PDF thumbnails.
     private var thumbCache: [String: NSImage] = [:]
+    /// Bumped whenever a paper's PDF is (re)written, so covers that were
+    /// asked for before the file existed load again.
+    @Published private(set) var artworkRevision: [String: Int] = [:]
+    private func pdfStored(_ id: String) {
+        thumbCache[id] = nil
+        artworkRevision[id, default: 0] += 1
+    }
     /// Activity log, newest last. Each line remembers which paper it's about
     /// so the inspector can show just that paper's activity.
     struct LogEntry { let paperId: String?; let text: String }
@@ -129,6 +140,7 @@ final class AppStore: ObservableObject {
 
     init() {
         player = PlayerController()
+        notifier.onOpen = { [weak self] id in self?.reveal(id) }
         Self.migrateDefaults()
         refresh()
         showOnboarding = !Self.didOnboard()
@@ -418,12 +430,15 @@ final class AppStore: ObservableObject {
         Task { await storage.save(next, K.paper(id)) }
     }
     func delete(_ id: String) {
+        // A running conversion would recreate the folder as it writes.
+        guard papers[id]?.isActive != true else {
+            show("Wait for the conversion to finish before deleting"); return
+        }
         Task {
             do {
-                for key in [K.paper(id), K.script(id), K.transcript(id), K.captions(id), K.pdf(id), K.audio(id)] {
-                    try await storage.delete(key)
-                }
-                await deleteBakedAudio(id)
+                if playingPaperId == id { player.stopAll(); playingPaperId = nil }
+                try await storage.deleteFolder(K.folder(id))
+                thumbCache[id] = nil
                 if selectedId == id { selectedId = nil }
                 papers.removeValue(forKey: id)
             } catch { show("Delete failed: \(error.localizedDescription)") }
@@ -449,6 +464,7 @@ final class AppStore: ObservableObject {
     private func askDuplicate(_ incoming: Paper, duplicateOf dup: Paper) async -> Bool {
         // One prompt at a time: wait for any other import's question to be answered.
         while pendingDuplicate != nil { try? await Task.sleep(nanoseconds: 200_000_000) }
+        notifier.post(.needsInput("Already in your library?"), paperId: incoming.id, title: incoming.displayTitle)
         return await withCheckedContinuation { c in
             pendingDuplicate = DuplicatePrompt(incoming: incoming, duplicateOf: dup, cont: c)
         }
@@ -458,16 +474,19 @@ final class AppStore: ObservableObject {
     /// duplicate import.
     func resolveDuplicate(_ allow: Bool) {
         guard let q = pendingDuplicate else { return }
+        notifier.clearInputRequest(paperId: q.incoming.id)
         pendingDuplicate = nil
         q.cont.resume(returning: allow)
     }
 
     /// Pause the import pipeline to confirm the episode cast the model proposed.
     /// Resolves with nil if the user cancels the import, else the final cast.
-    private func askCast(_ proposals: [ProposedSpeaker], authors: [String], paperTitle: String) async -> [SpeakerConfig]? {
+    private func askCast(_ id: String, _ proposal: CastProposal, authors: [String], paperTitle: String) async -> [SpeakerConfig]? {
         while pendingCast != nil { try? await Task.sleep(nanoseconds: 200_000_000) }
+        notifier.post(.needsInput("Choose the voices for your episode"), paperId: id, title: paperTitle)
         return await withCheckedContinuation { c in
-            pendingCast = CastPrompt(paperTitle: paperTitle, proposals: proposals, authors: authors, cont: c)
+            pendingCast = CastPrompt(paperId: id, paperTitle: paperTitle, proposals: proposal.speakers, authors: authors,
+                                     authorGenders: proposal.authorGenders, cont: c)
         }
     }
 
@@ -476,6 +495,7 @@ final class AppStore: ObservableObject {
     func resolveCast(_ speakers: [SpeakerConfig]) {
         guard let q = pendingCast else { return }
         player.stopPreview()
+        notifier.clearInputRequest(paperId: q.paperId)
         pendingCast = nil
         q.cont.resume(returning: speakers)
     }
@@ -484,6 +504,7 @@ final class AppStore: ObservableObject {
     func cancelCast() {
         guard let q = pendingCast else { return }
         player.stopPreview()
+        notifier.clearInputRequest(paperId: q.paperId)
         pendingCast = nil
         q.cont.resume(returning: nil)
     }
@@ -491,9 +512,7 @@ final class AppStore: ObservableObject {
     /// Abort an in-flight import and drop its files (used when the user
     /// declines a duplicate).
     private func discardImport(_ id: String) async {
-        for key in [K.paper(id), K.pdf(id), K.script(id), K.transcript(id), K.captions(id), K.audio(id)] {
-            try? await storage.delete(key)
-        }
+        try? await storage.deleteFolder(K.folder(id))
         if selectedId == id { selectedId = nil }
         papers.removeValue(forKey: id)
     }
@@ -506,6 +525,15 @@ final class AppStore: ObservableObject {
             }
         }
         try? await storage.delete(K.audioManifest(id))
+        // Clips are written before the manifest that lists them, so a run that
+        // was stopped mid-synthesis leaves unlisted WAVs: sweep the folder.
+        if isStandalone, let paperJSON = await storage.url(for: K.paper(id)) {
+            let dir = paperJSON.deletingLastPathComponent()
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent("turns", isDirectory: true))
+            if (try? FileManager.default.contentsOfDirectory(atPath: dir.path))?.isEmpty == true {
+                try? FileManager.default.removeItem(at: dir)
+            }
+        }
     }
 
     /// Wipe everything: library data, all app settings, and caches (Kokoro
@@ -513,19 +541,16 @@ final class AppStore: ObservableObject {
     func clearAll() {
         Task {
             // 1. Library data (deleted best-effort, one paper at a time).
-            for id in papers.keys {
-                for key in [K.paper(id), K.script(id), K.transcript(id), K.captions(id), K.pdf(id), K.audio(id)] {
-                    try? await storage.delete(key)
-                }
-                await deleteBakedAudio(id)
-            }
+            // The whole papers/ folder, so leftovers of interrupted runs go too.
+            if playingPaperId != nil { player.stopAll(); playingPaperId = nil }
+            try? await storage.deleteFolder(K.papersRoot)
             papers.removeAll()
             thumbCache.removeAll()
             selectedId = nil
             logEntries = []
             // 2. All settings + old (pre-rename) keys.
             let d = UserDefaults.standard
-            for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.prompts.json", "papertalk.customDepths.json", "papertalk.settingsPage", "papertalk.onboarded",
+            for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.prompts.json", "papertalk.customDepths.json", "papertalk.settingsPage", "papertalk.voiceSpeed", "papertalk.onboarded",
                         "paper2pod.server.json", "paper2pod.llm.json", "paper2pod.onboarded"] {
                 d.removeObject(forKey: key)
             }
@@ -539,6 +564,7 @@ final class AppStore: ObservableObject {
             config = ServerConfig.load()   // save() re-persists env defaults
             llm = LLMSettings.load()
             prompts = PromptSettings.defaults
+            player.voiceSpeed = PlayerController.defaultSpeed
             customPresets = CustomDepthPresets(entries: [])
             if playingPaperId != nil { player.stopAll(); playingPaperId = nil }
             show("Cleared data, settings and cache")
@@ -647,16 +673,17 @@ final class AppStore: ObservableObject {
 
     /// Render a transcript to per-turn WAVs with Kokoro and store them under
     /// the paper's `turns/` keys. Reports download + per-turn progress across
-    /// the given [start, end] band of the unified pipeline bar. Returns true on
-    /// success (hasAudio = true).
-    private func bakeAudio(_ id: String, _ transcript: Transcript, from start: Double, to end: Double) async -> Bool {
+    /// the given [start, end] band of the unified pipeline bar. Returns nil on
+    /// success (hasAudio = true), otherwise a message for the user. Turns already
+    /// on disk are reused, so running it again continues where it stopped.
+    private func bakeAudio(_ id: String, _ transcript: Transcript, from start: Double, to end: Double) async -> String? {
         let flat = transcript.segments.flatMap { $0.turns }
-        guard !flat.isEmpty else { return false }
+        guard !flat.isEmpty else { return "The script has nothing to read." }
         let total = flat.count
         func map(_ f: Double) -> Double { start + (end - start) * f }
         updateRec(id) { $0.stage = "audio"; $0.progress = map(0.0); $0.message = "Preparing Kokoro…" }
 
-        let manager = KokoroAneManager(variant: .english)
+        var current = 0
         do {
             // Warm the model cache with download progress (single bar). No-op
             // when models already cached, but still reports journal progress.
@@ -677,19 +704,20 @@ final class AppStore: ObservableObject {
                     }
                 }
             }
-            try await manager.initialize()
+            try await KokoroEngine.shared.prepare()
 
             var durations: [Double] = []
             let voiceMap = castVoices(for: id, speakers: flat.map { $0.speaker })
             for (i, turn) in flat.enumerated() {
-                if Task.isCancelled { return false }
+                current = i
+                if Task.isCancelled { return "Stopped." }
                 // Resume from the last successfully synthesized chunk: reuse any
                 // turn already baked on disk instead of re-synthesizing it.
                 let wav: Data
                 if let existing = try? await storage.read(K.turn(id, i)) {
                     wav = existing
                 } else {
-                    wav = try await manager.synthesize(text: turn.text, voice: voiceMap[turn.speaker] ?? KokoroSpeech.defaultVoice, speed: 0.95)
+                    wav = try await KokoroEngine.shared.synthesize(text: turn.text, voice: voiceMap[turn.speaker] ?? KokoroSpeech.defaultVoice, speed: Float(player.voiceSpeed))
                     try await storage.write(K.turn(id, i), wav)
                 }
                 durations.append(KokoroSpeech.wavDuration(wav))
@@ -697,19 +725,36 @@ final class AppStore: ObservableObject {
                 updateRec(id) { $0.stage = "audio"; $0.progress = map(frac); $0.message = "Synthesizing section \(i + 1)/\(total)…" }
             }
             await storage.save(AudioManifest(durations: durations), K.audioManifest(id))
-            return true
+            return nil
         } catch {
-            appendLog("Audio synthesis failed: \(error.localizedDescription)", paper: id)
-            return false
+            appendLog("Audio synthesis failed at section \(current + 1)/\(total): \(error.localizedDescription)", paper: id)
+            return "Voicing stopped at section \(current + 1) of \(total) (\(error.localizedDescription)). "
+                + "Try again to continue from there."
         }
     }
 
-    /// Preferred voice per speaker for a paper: the paper's configured cast wins,
-    /// every other speaker falls back to the default gender-based distinct voices.
+    /// The script is fine but voicing failed: keep the script (it can still be
+    /// read and played live) and show a resumable error instead of "done".
+    private func failAudio(_ id: String, _ message: String) async {
+        updateRec(id) {
+            $0.state = "error"; $0.stage = "audio"; $0.statusError = message
+            $0.hasScript = true; $0.hasAudio = false
+        }
+        if let p = papers[id] { await storage.save(p, K.paper(id)) }
+    }
+
+    /// Preferred voice per speaker for a paper: the paper's configured cast wins
+    /// for every speaker it names; anyone else falls back to distinct voices.
     func castVoices(for id: String, speakers: [String]) -> [String: String] {
-        var map = KokoroSpeech.voices(for: speakers)
-        if let p = papers[id] {
-            for c in p.speakers where map[c.name] != nil { map[c.name] = c.voice }
+        let distinct = speakers.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+        var map: [String: String] = [:]
+        var used = Set<String>()
+        let configured = papers[id]?.speakers ?? []
+        for s in distinct {
+            let voice = configured.first { $0.name == s }?.voice
+                ?? KokoroSpeech.defaultVoice(forGender: nil, avoiding: used)
+            map[s] = voice
+            used.insert(voice)
         }
         return map
     }
@@ -791,22 +836,23 @@ final class AppStore: ObservableObject {
     func regenerateAudio(_ id: String) {
         guard let p = papers[id], p.hasScript else { show("No transcript to speak"); return }
         guard !p.isActive else { return }
+        notifier.requestPermissionIfNeeded()
         Task {
             guard let t = await transcript(for: id) else { show("No transcript on disk"); return }
-            // Drop the old per-turn WAVs so every turn is re-voiced.
             if playingPaperId == id { player.stopAll(); playingPaperId = nil }
-            await deleteBakedAudio(id)
+            // A complete episode is re-voiced from scratch; an incomplete one
+            // (voicing failed part-way) continues from where it stopped.
+            if p.hasAudio { await deleteBakedAudio(id) }
             appendLog("Regenerating audio for \(p.displayTitle)…", paper: id)
             updateRec(id) { $0.state = "running"; $0.stage = "audio"; $0.progress = 0.02; $0.message = "Preparing Kokoro…" }
-            let baked = await bakeAudio(id, t, from: 0.0, to: 1.0)
-            if baked {
+            if let failure = await bakeAudio(id, t, from: 0.0, to: 1.0) {
+                await failAudio(id, failure)
+            } else {
                 updateRec(id) { $0.state = "done"; $0.stage = "done"; $0.progress = 1; $0.message = "Done"; $0.hasAudio = true }
+                if let done = papers[id] { await storage.save(done, K.paper(id)) }
                 appendLog("Audio regenerated.", paper: id)
                 show("Audio regenerated")
                 await prepareAudio(for: id)
-            } else {
-                updateRec(id) { $0.state = "error"; $0.stage = "audio"; $0.statusError = "Audio synthesis failed" }
-                appendLog("ERROR: audio regeneration failed", paper: id)
             }
         }
     }
@@ -814,6 +860,8 @@ final class AppStore: ObservableObject {
     // MARK: Pipeline (always local)
     private func runPipeline(_ existing: Paper?, pdf: Data? = nil, filename: String = "", depth: Depth = .inDepth, depthNote: String = "") async {
         let id = existing?.id ?? UUID().uuidString
+        // First conversion is when notifications start to matter: ask then.
+        notifier.requestPermissionIfNeeded()
         let name = filename.isEmpty ? (existing?.filename ?? "Paper") : filename
 
         var rec = existing ?? Paper(id: id, title: "", filename: name, hasPdf: true, hasScript: false, hasAudio: false,
@@ -824,6 +872,12 @@ final class AppStore: ObservableObject {
         papers[id] = rec
         selectedId = id
         await storage.save(rec, K.paper(id))
+        // Store the PDF right away: the record already says hasPdf, and the
+        // library shows its cover as soon as the file exists.
+        if let pdf {
+            try? await storage.write(K.pdf(id), pdf)
+            pdfStored(id)
+        }
         appendLog("Queued: \(name)", paper: id)
 
         let base = llm.baseUrl
@@ -865,8 +919,12 @@ final class AppStore: ObservableObject {
                                     segments: [Transcript.Segment(title: "Paper", turns: turns)])
             try? await storage.save(direct, K.transcript(id))
             updateRec(id) { $0.stage = "audio"; $0.progress = 0.78; $0.message = "Synthesizing audio…" }
-            let baked = await bakeAudio(id, direct, from: 0.80, to: 1.0)
-            await finish(id, direct, name, authors: [], pdfData: pdfData, depth: depth, hasAudio: baked)
+            if let failure = await bakeAudio(id, direct, from: 0.80, to: 1.0) {
+                await storage.save(direct, K.transcript(id))
+                await failAudio(id, failure)
+                return
+            }
+            await finish(id, direct, name, authors: [], pdfData: pdfData, depth: depth, hasAudio: true)
             return
         }
 
@@ -888,10 +946,10 @@ final class AppStore: ObservableObject {
             // Resuming with a script already on disk: the names are baked in, so
             // there's nothing to cast.
             let hasScript = await transcript(for: id) != nil
-            let proposals = hasScript ? [] : await pipeline.proposeCast(title: papers[id]?.displayTitle ?? rec.displayTitle,
+            let proposal = hasScript ? CastProposal(speakers: [], authorGenders: [:]) : await pipeline.proposeCast(title: papers[id]?.displayTitle ?? rec.displayTitle,
                                                                authors: papers[id]?.authors ?? rec.authors,
                                                                cleaned: text, depthNote: depthNote)
-            let cast = hasScript ? [] : await askCast(proposals, authors: papers[id]?.authors ?? rec.authors,
+            let cast = hasScript ? [] : await askCast(id, proposal, authors: papers[id]?.authors ?? rec.authors,
                                                       paperTitle: papers[id]?.displayTitle ?? rec.displayTitle)
             guard let cast else {
                 await discardImport(id)
@@ -936,9 +994,12 @@ final class AppStore: ObservableObject {
                 appendLog("Got transcript (\(script.segments.count) segments)", paper: id)
             }
             updateRec(id) { $0.stage = "audio"; $0.progress = 0.78; $0.message = "Synthesizing audio…" }
-            let baked = await bakeAudio(id, script, from: 0.80, to: 1.0)
+            if let failure = await bakeAudio(id, script, from: 0.80, to: 1.0) {
+                await failAudio(id, failure)
+                return
+            }
             await finish(id, script, papers[id]?.displayTitle ?? name,
-                         authors: papers[id]?.authors ?? [], pdfData: pdfData, depth: depth, hasAudio: baked)
+                         authors: papers[id]?.authors ?? [], pdfData: pdfData, depth: depth, hasAudio: true)
         } catch {
             updateRec(id) { $0.state = "error"; $0.statusError = error.localizedDescription }
             appendLog("ERROR: \(error.localizedDescription)", paper: id)
@@ -955,7 +1016,7 @@ final class AppStore: ObservableObject {
 
     private func finish(_ id: String, _ t: Transcript, _ title: String, authors: [String], pdfData: Data?, depth: Depth = .inDepth, hasAudio: Bool) async {
         await storage.save(t, K.transcript(id))
-        try? await storage.write(K.pdf(id), pdfData ?? Data())
+        if let pdfData, !pdfData.isEmpty { try? await storage.write(K.pdf(id), pdfData) }
         updateRec(id) {
             $0.state = "done"; $0.stage = "done"; $0.progress = 1; $0.message = "Done"
             $0.hasScript = true; $0.hasAudio = hasAudio
@@ -970,8 +1031,25 @@ final class AppStore: ObservableObject {
 
     private func updateRec(_ id: String, _ mutate: (inout Paper) -> Void) {
         guard var p = papers[id] else { return }
+        let wasActive = p.isActive
         mutate(&p)
         papers[id] = p
+        // A run just ended: tell the user if they're in another app.
+        if wasActive && p.isDone {
+            notifier.post(.ready, paperId: id, title: p.displayTitle)
+        } else if wasActive && p.isError {
+            notifier.post(.failed(p.statusError ?? "Something went wrong"), paperId: id, title: p.displayTitle)
+        }
+    }
+
+    /// Bring a paper into view and select it (e.g. from a notification).
+    func reveal(_ id: String) {
+        guard papers[id] != nil else { return }
+        if !filteredPapers().contains(where: { $0.id == id }) {
+            view = .all; activeTag = nil; activeAuthor = nil
+            statusFilter = "all"; search = ""
+        }
+        selectedId = id
     }
 
     /// Ask doi2bib to turn a DOI into a BibTeX citation. Returns nil on any

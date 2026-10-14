@@ -18,9 +18,16 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     @Published private(set) var activeTurn: Int = -1
     @Published private(set) var turnCount = 0
     @Published var didEnd = false
-    /// True while the transcript's turns are being rendered to audio.
+    /// True until the first turn of a live render is ready to play. Later turns
+    /// keep rendering in the background while the episode plays.
     @Published private(set) var isRendering = false
+    /// Playback reached a turn that hasn't been rendered yet and is waiting for it.
+    @Published private(set) var isBuffering = false
+    /// Turns rendered so far in a live render (equals `turnCount` when complete).
+    @Published private(set) var renderedCount = 0
     @Published private(set) var renderError: String?
+    /// Turn playback is waiting on (see `isBuffering`).
+    private var waitingForTurn: Int?
     /// Voice-sample preview, independent of the episode being listened to.
     enum PreviewPhase: Equatable {
         case generating(String)          // synthesizing the sample for this voice
@@ -35,6 +42,20 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     @Published private(set) var previewProgress: Double = 0
     /// False until the Kokoro model has been loaded once; the first sample is slow.
     @Published private(set) var modelLoaded = false
+    /// Speaking pace for synthesis (< 1 slower, > 1 faster), shared by voice
+    /// samples, live rendering and import-time baking. `@Published` + defaults
+    /// rather than `@AppStorage`, which doesn't notify views from an
+    /// ObservableObject (the slider wouldn't redraw).
+    static let speedKey = "papertalk.voiceSpeed"
+    static let defaultSpeed = 0.95
+    static let speedRange = 0.5...2.0
+    @Published var voiceSpeed: Double = PlayerController.storedSpeed() {
+        didSet { UserDefaults.standard.set(voiceSpeed, forKey: Self.speedKey) }
+    }
+    private static func storedSpeed() -> Double {
+        let v = UserDefaults.standard.double(forKey: speedKey)
+        return speedRange.contains(v) ? v : defaultSpeed
+    }
     private var previewPlayer: AVAudioPlayer?
     private var previewGeneration = 0
     private var previewTimer: Timer?
@@ -44,7 +65,6 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         let duration: Double
     }
 
-    private let manager = KokoroAneManager(variant: .english)
     private var turns: [String] = []           // speaker text per turn
     private var voices: [String] = []          // kokoro voice per turn
     private var rendered: [RenderedTurn?] = []
@@ -76,6 +96,9 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         didEnd = false
         renderError = nil
         isRendering = false
+        isBuffering = false
+        renderedCount = 0
+        waitingForTurn = nil
     }
 
     /// Synthesize and play a short spoken sample of `voice` so the user can hear
@@ -89,9 +112,9 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         preview = .generating(voice)
         Task {
             do {
-                try await manager.initialize()
+                try await KokoroEngine.shared.prepare()
                 modelLoaded = true
-                let data = try await manager.synthesize(text: KokoroSpeech.samplePrompt(for: voice), voice: voice, speed: 0.95)
+                let data = try await KokoroEngine.shared.synthesize(text: KokoroSpeech.samplePrompt(for: voice), voice: voice, speed: Float(voiceSpeed))
                 guard gen == previewGeneration else { return }
                 let p = try AVAudioPlayer(data: data)
                 p.delegate = self
@@ -122,7 +145,9 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         preview = nil
     }
 
-    /// Renders every turn to audio (async). Not ready until `isRendering` clears.
+    /// Renders the transcript turn by turn. Playable as soon as the first turn
+    /// is ready (`isRendering` clears); the rest render in the background and
+    /// playback waits (`isBuffering`) if it catches up with the renderer.
     func prepare(transcript: Transcript, voiceMap: [String: String]) {
         let flat = transcript.segments.flatMap { $0.turns.map { (speaker: $0.speaker, text: $0.text) } }
         stopAll()
@@ -132,33 +157,38 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         turns = flat.map { $0.text }
         voices = flat.map { voiceMap[$0.speaker] ?? KokoroSpeech.defaultVoice }
         rendered = Array(repeating: nil, count: flat.count)
-        totalBefore = [] // filled after each render
+        totalBefore = []
 
         let gen = generation
         isRendering = true
         renderError = nil
         Task {
-            do {
-                try await manager.initialize()
-                var spans: [Double] = []
-                var running = 0.0
-                for (i, text) in turns.enumerated() {
-                    if generation != gen { return }
-                    let wav = try await manager.synthesize(text: text, voice: voices[i], speed: 0.95)
+            var running = 0.0
+            for (i, text) in turns.enumerated() {
+                if generation != gen { return }
+                do {
+                    let wav = try await KokoroEngine.shared.synthesize(text: text, voice: voices[i], speed: Float(voiceSpeed))
                     if generation != gen { return }
                     let d = KokoroSpeech.wavDuration(wav)
                     rendered[i] = RenderedTurn(wav: wav, duration: d)
-                    spans.append(running)
+                    totalBefore.append(running)
                     running += d + 0.35
+                    duration = max(0, running - 0.35)   // grows as turns arrive
+                    renderedCount = i + 1
+                    isRendering = false
+                    if waitingForTurn == i {
+                        waitingForTurn = nil
+                        isBuffering = false
+                        startTurn(i)
+                        player?.play()
+                    }
+                } catch {
+                    if generation != gen { return }
+                    renderError = "Couldn't voice section \(i + 1) of \(turns.count): \(error.localizedDescription)"
+                    isRendering = false
+                    if isBuffering { isBuffering = false; isPlaying = false; stopTimer() }
+                    return
                 }
-                if generation != gen { return }
-                totalBefore = spans
-                duration = max(0, running - 0.35)
-                isRendering = false
-            } catch {
-                if generation != gen { return }
-                renderError = error.localizedDescription
-                isRendering = false
             }
         }
     }
@@ -172,6 +202,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         voices = []
         turns = []
         rendered = baked.map { RenderedTurn(wav: $0.wav, duration: $0.duration) }
+        renderedCount = baked.count
         var spans: [Double] = []
         var running = 0.0
         for r in rendered {
@@ -195,14 +226,24 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     /// Plays now, or once the in-flight live render finishes (baked audio is
     /// already ready, so this returns immediately). Awaits without blocking.
     func playWhenReady() async {
-        while isRendering { try? await Task.sleep(nanoseconds: 30_000_000) }
+        while isRendering && renderError == nil { try? await Task.sleep(nanoseconds: 30_000_000) }
         guard renderError == nil else { return }
         play()
     }
 
     private func play() {
         guard !isRendering else { return }
-        if player == nil { startTurn(activeTurn >= 0 ? activeTurn : 0) }
+        let turn = activeTurn >= 0 ? activeTurn : 0
+        if player == nil {
+            if turn < rendered.count, rendered[turn] == nil, renderError == nil {
+                // Resumed on a turn the live renderer hasn't reached yet.
+                activeTurn = turn
+                waitingForTurn = turn
+                isBuffering = true
+            } else {
+                startTurn(turn)
+            }
+        }
         player?.play()
         isPlaying = true
         startTimer()
@@ -211,6 +252,8 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     private func pause() {
         player?.pause()
         isPlaying = false
+        isBuffering = false
+        waitingForTurn = nil
         stopTimer()
     }
 
@@ -231,7 +274,8 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     func skip(by delta: Int) {
         guard turnCount > 0, !isRendering else { return }
         let current = activeTurn >= 0 ? activeTurn : 0
-        let target = min(max(current + delta, 0), turnCount - 1)
+        // Only turns that have been rendered can be jumped to.
+        let target = min(max(current + delta, 0), max(0, renderedCount - 1))
         player?.stop(); player = nil
         startTurn(target)
         currentTime = target < totalBefore.count ? totalBefore[target] : 0
@@ -258,8 +302,20 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         guard player === audioPlayer else { return }
         let next = activeTurn + 1
         if next < turnCount {
-            startTurn(next)
-            player?.play()
+            if next < rendered.count, rendered[next] != nil {
+                startTurn(next)
+                player?.play()
+            } else if renderError == nil {
+                // Caught up with the live renderer: wait for the next turn.
+                player = nil
+                activeTurn = next
+                waitingForTurn = next
+                isBuffering = true
+            } else {
+                player = nil
+                isPlaying = false
+                stopTimer()
+            }
         } else {
             player = nil
             isPlaying = false

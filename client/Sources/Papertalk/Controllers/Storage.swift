@@ -14,6 +14,8 @@ protocol Storage: AnyObject {
     func read(_ key: String) async throws -> Data
     func write(_ key: String, _ data: Data) async throws
     func delete(_ key: String) async throws
+    /// Remove every key under `prefix` (a folder such as "papers/<id>/").
+    func deleteFolder(_ prefix: String) async throws
     func list() async throws -> [String]
     /// A playable/addressable URL for a stored key (file:// for local, http:// for remote).
     func url(for key: String) async -> URL?
@@ -24,6 +26,9 @@ protocol Storage: AnyObject {
 
 // Keys / artifact layout.
 enum K {
+    /// Everything belonging to one paper lives under this prefix.
+    static func folder(_ id: String) -> String { "papers/\(id)/" }
+    static let papersRoot = "papers/"
     static func paper(_ id: String) -> String { "papers/\(id)/paper.json" }
     static func script(_ id: String) -> String { "papers/\(id)/script.json" }
     static func transcript(_ id: String) -> String { "papers/\(id)/transcript.json" }
@@ -77,6 +82,9 @@ final class LocalStorage: Storage {
         if FileManager.default.fileExists(atPath: p.path) {
             try FileManager.default.removeItem(at: p)
         }
+    }
+    func deleteFolder(_ prefix: String) async throws {
+        try await delete(prefix)   // a directory on disk: removed with its contents
     }
     private func existsFile(_ path: URL) -> Bool {
         (try? path.checkResourceIsReachable()) ?? false
@@ -137,6 +145,15 @@ final class HttpStorage: Storage {
     func delete(_ key: String) async throws {
         let (_, resp) = try await URLSession.shared.data(for: request(key, method: "DELETE"))
         try check(resp)
+    }
+    func deleteFolder(_ prefix: String) async throws {
+        // The server is a flat key store: delete every key under the prefix.
+        let (data, resp) = try await URLSession.shared.data(for: request("", method: "GET"))
+        try check(resp)
+        let keys = (try? JSONDecoder().decode([String].self, from: data)) ?? []
+        for key in keys where key.hasPrefix(prefix) {
+            try await delete(key)
+        }
     }
     func list() async throws -> [String] {
         let (data, resp) = try await URLSession.shared.data(for: request("", method: "GET"))

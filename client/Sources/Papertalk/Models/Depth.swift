@@ -10,8 +10,8 @@ enum Depth: String, CaseIterable, Identifiable {
         case .direct: "Direct read"
     } }
     var blurb: String { switch self {
-        case .inDepth: "Full technical detail; method sections are read through faithfully."
-        case .summary: "High-level overview; nothing read verbatim, easier to follow."
+        case .inDepth: "Full technical detail; method sections are read through faithfully. As long as the paper needs."
+        case .summary: "High-level overview; nothing read verbatim, easier to follow. Up to about 35 minutes."
         case .custom: "Describe the depth you want."
         case .direct: "Read the extracted text out loud as-is. No LLM rewriting — only text-extraction fixes."
     } }

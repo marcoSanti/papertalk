@@ -846,6 +846,8 @@ struct CastSheet: View {
     let paperTitle: String
     let proposals: [ProposedSpeaker]
     let authors: [String]
+    /// Author full name -> gender, from the LLM.
+    let authorGenders: [String: String]
     @EnvironmentObject private var store: AppStore
 
     struct Row: Identifiable, Equatable {
@@ -853,31 +855,34 @@ struct CastSheet: View {
         var role: String
         var name: String
         var voice: String
-        /// Once the user picks a voice by hand, renaming no longer re-guesses it.
-        var voiceTouched = false
+        /// "male" / "female", or nil when neither the LLM nor the name tells.
+        var gender: String?
     }
     @State private var rows: [Row]
 
-    init(paperTitle: String, proposals: [ProposedSpeaker], authors: [String]) {
+    init(paperTitle: String, proposals: [ProposedSpeaker], authors: [String], authorGenders: [String: String]) {
         self.paperTitle = paperTitle
         self.proposals = proposals
         self.authors = authors
+        self.authorGenders = authorGenders
         _rows = State(initialValue: Self.initialRows(proposals))
     }
 
-    /// Default voices: each scientist gets the canonical voice for their
-    /// (guessed) gender first; the interviewer then takes a voice nobody else
-    /// has, so the two are never cast identically by default.
+    /// Default voices: the interviewer keeps the show's signature voice, each
+    /// guest gets a different voice of their own gender.
     private static func initialRows(_ proposals: [ProposedSpeaker]) -> [Row] {
-        var rows = proposals.map { Row(role: $0.role, name: $0.name, voice: $0.voice) }
+        var rows = proposals.map { Row(role: $0.role, name: $0.name, voice: $0.voice, gender: $0.gender) }
         var used = Set<String>()
-        for i in rows.indices where !isHost(rows[i].role) {
-            let gender = KokoroSpeech.gender(for: rows[i].name) ?? proposals[i].gender
-            rows[i].voice = KokoroSpeech.defaultVoice(forGender: gender, avoiding: used)
-            used.insert(rows[i].voice)
-        }
+        // The interviewer is the show's constant: they keep the signature voice
+        // of their gender (Heart / Michael) in every episode.
         for i in rows.indices where isHost(rows[i].role) {
             rows[i].voice = KokoroSpeech.defaultVoice(forGender: proposals[i].gender, avoiding: used)
+            used.insert(rows[i].voice)
+        }
+        // Each guest gets a voice of their gender the host doesn't use, varied
+        // per author instead of always the same one.
+        for i in rows.indices where !isHost(rows[i].role) {
+            rows[i].voice = KokoroSpeech.guestVoice(forGender: proposals[i].gender, name: rows[i].name, avoiding: used)
             used.insert(rows[i].voice)
         }
         return rows
@@ -907,6 +912,8 @@ struct CastSheet: View {
                 ForEach($rows) { $row in speakerCard($row) }
             }
             .animation(.snappy, value: rows)
+
+            speedControl
 
             validation
 
@@ -959,7 +966,10 @@ struct CastSheet: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .tracking(0.5)
-                nameField(row)
+                HStack(spacing: 8) {
+                    nameField(row)
+                    genderPicker(row)
+                }
                 HStack(spacing: 8) {
                     voicePicker(row)
                     Spacer(minLength: 0)
@@ -1002,7 +1012,6 @@ struct CastSheet: View {
             get: { row.wrappedValue.voice },
             set: { v in
                 row.wrappedValue.voice = v
-                row.wrappedValue.voiceTouched = true
                 store.player.previewVoice(v)   // hear the choice straight away
             }
         )) {
@@ -1017,28 +1026,49 @@ struct CastSheet: View {
         .help("\(KokoroSpeech.accent(row.wrappedValue.voice)) · \(KokoroSpeech.voiceGender(row.wrappedValue.voice) ?? "voice")")
     }
 
-    /// Rename a speaker; until the user picks a voice by hand, follow the
-    /// new name's likely gender so a swapped author keeps a fitting voice.
+    /// Rename a speaker. The voice is left untouched: gender comes from the LLM's
+    /// cast, not a name heuristic, so changing a name doesn't silently change voice.
+    /// Rename a speaker. Picking a different author also takes that author's
+    /// gender (from the LLM, else their first name), which re-voices them.
     private func rename(_ row: Binding<Row>, to name: String) {
         row.wrappedValue.name = name
-        let id = row.wrappedValue.id
-        guard !row.wrappedValue.voiceTouched, let g = KokoroSpeech.gender(for: name),
-              KokoroSpeech.voiceGender(row.wrappedValue.voice) != g else { return }
-        if Self.isHost(row.wrappedValue.role) {
-            // The interviewer adapts around everyone else.
-            let others = Set(rows.filter { $0.id != id }.map(\.voice))
-            row.wrappedValue.voice = KokoroSpeech.defaultVoice(forGender: g, avoiding: others)
-        } else {
-            // The scientist gets the canonical voice for their gender; an
-            // interviewer still on an automatic voice moves aside if they clash.
-            row.wrappedValue.voice = KokoroSpeech.defaultVoice(forGender: g)
-            for i in rows.indices where rows[i].id != id && !rows[i].voiceTouched
-                && rows[i].voice == row.wrappedValue.voice {
-                let taken = Set(rows.enumerated().filter { $0.offset != i }.map(\.element.voice))
-                rows[i].voice = KokoroSpeech.defaultVoice(forGender: KokoroSpeech.voiceGender(rows[i].voice),
-                                                          avoiding: taken)
-            }
+        guard !Self.isHost(row.wrappedValue.role), authors.contains(name) else { return }
+        if let g = authorGenders[name] ?? KokoroSpeech.guessGender(fromName: name) {
+            setGender(row, g)
         }
+    }
+
+    /// Change a speaker's gender; if their voice doesn't match it any more, give
+    /// them the default voice for it (host: signature voice; guest: per-author).
+    private func setGender(_ row: Binding<Row>, _ gender: String) {
+        row.wrappedValue.gender = gender
+        let r = row.wrappedValue
+        guard KokoroSpeech.voiceGender(r.voice) != gender else { return }
+        let others = Set(rows.filter { $0.id != r.id }.map(\.voice))
+        row.wrappedValue.voice = Self.isHost(r.role)
+            ? KokoroSpeech.defaultVoice(forGender: gender, avoiding: others)
+            : KokoroSpeech.guestVoice(forGender: gender, name: r.name, avoiding: others)
+    }
+
+    private func genderPicker(_ row: Binding<Row>) -> some View {
+        Picker("Gender", selection: Binding(
+            get: { row.wrappedValue.gender ?? "" },
+            set: { if !$0.isEmpty { setGender(row, $0) } }
+        )) {
+            Text("Female").tag("female")
+            Text("Male").tag("male")
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .help(row.wrappedValue.gender == nil
+              ? "Gender unknown — pick one so the voice fits"
+              : "Switching gender picks a matching voice")
+    }
+
+    private var speedControl: some View {
+        SpeakingPaceControl(player: store.player,
+                            sampleVoice: { store.player.preview?.voice ?? rows.last?.voice })
     }
 
     @ViewBuilder private var validation: some View {
@@ -1047,6 +1077,11 @@ struct CastSheet: View {
                   systemImage: "exclamationmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(.red)
+        } else if let unknown = rows.first(where: { $0.gender == nil }) {
+            Label("Couldn't tell \(unknown.name.isEmpty ? unknown.role : unknown.name)'s gender — choose Female or Male so the voice fits.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
         } else if sharesVoice {
             Label("Speakers share a voice, so they'll be hard to tell apart.",
                   systemImage: "exclamationmark.triangle.fill")
@@ -1056,6 +1091,73 @@ struct CastSheet: View {
             Text("Each person's voice is used whenever they speak. Choosing a voice plays a short sample.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+}
+
+/// Speaking-pace slider for synthesis. Plays a sample at the new pace when
+/// the slider is released (not on every tick: each sample is a synthesis).
+private struct SpeakingPaceControl: View {
+    @ObservedObject var player: PlayerController
+    /// Voice to demo the pace with.
+    let sampleVoice: () -> String?
+
+    private var isDefault: Bool { abs(player.voiceSpeed - PlayerController.defaultSpeed) < 0.001 }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Speaking pace").font(.callout.weight(.medium))
+                Spacer()
+                if !isDefault {
+                    Button("Reset") {
+                        player.voiceSpeed = PlayerController.defaultSpeed
+                        playSample()
+                    }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                }
+                Text(String(format: "%.2f×", player.voiceSpeed))
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, alignment: .trailing)
+            }
+            HStack(spacing: 10) {
+                Image(systemName: "tortoise.fill").foregroundStyle(.secondary)
+                    .help("Slower")
+                Slider(value: $player.voiceSpeed, in: PlayerController.speedRange, step: 0.05) {
+                    Text("Speaking pace")
+                } onEditingChanged: { editing in
+                    if !editing { playSample() }
+                }
+                .labelsHidden()
+                Image(systemName: "hare.fill").foregroundStyle(.secondary)
+                    .help("Faster")
+            }
+            Text("Used for this episode's voices and remembered for the next import. Release the slider to hear it.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if player.voiceSpeed > 1.5 {
+                Label {
+                    Text("Kokoro is trained on natural-pace speech, so words may slur above 1.5× — listen to a sample first. "
+                         + "Episodes also get shorter: a 30-minute summary plays in about \(Int((30 * PlayerController.defaultSpeed / player.voiceSpeed).rounded())) minutes at this pace.")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                }
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+                .transition(.opacity)
+            }
+        }
+        .padding(12)
+        .background(shape.fill(Color.primary.opacity(0.04)))
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+        .animation(.snappy, value: player.voiceSpeed > 1.5)
+    }
+
+    private func playSample() {
+        if let v = sampleVoice() { player.previewVoice(v) }
     }
 }
 

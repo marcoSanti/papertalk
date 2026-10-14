@@ -172,16 +172,38 @@ struct LocalPipeline {
         let expert = expert?.nonEmpty ?? authors.first.flatMap(firstGivenName) ?? "Sam"
         let host = host?.nonEmpty ?? "Jordan"
 
-        // Target episode length. Generous planned words because the model
-        // generally under-writes the requested budget.
-        let minutes = 30
+        // Episode length per depth, in spoken words. Kokoro reads about 145
+        // words a minute at the default pace (measured on real episodes).
+        let wordsPerMinute = 145.0
+        let plannedWords: Int
+        /// Hard ceiling on the whole script, enforced while writing (summary only).
+        var wordCap: Int? = nil
+        switch depth {
+        case .summary:
+            // Up to 35 minutes: aim a little under, since the model tends to overshoot.
+            plannedWords = Int(30 * wordsPerMinute)
+            wordCap = Int(35 * wordsPerMinute)
+        case .inDepth, .custom, .direct:
+            // As long as the paper needs: scale with the source, never under ~30 min.
+            let sourceWords = cleaned.split(whereSeparator: \.isWhitespace).count
+            plannedWords = max(Int(30 * wordsPerMinute), Int(Double(sourceWords) * 0.7))
+        }
+        let minutes = max(1, Int((Double(plannedWords) / wordsPerMinute).rounded()))
         let minSeg = max(3, min(6, minutes / 5))
         let maxSeg = max(8, min(18, minutes / 2))
-        let plannedWords = minutes * 220
 
         var plan = try await planScript(cleaned: cleaned, title: title, host: host, expert: expert,
                                         depth: depth, depthNote: depthNote, minutes: minutes,
                                         minSeg: minSeg, maxSeg: maxSeg, plannedWords: plannedWords)
+
+        // Full-length method monologues are the in-depth format. The outline
+        // prompt asks for them regardless of depth, so enforce it here: any
+        // other depth gets a budgeted dialogue instead of a verbatim read-through.
+        if depth != .inDepth {
+            let forced = plan.segments.filter(\.monologue).count
+            for i in plan.segments.indices { plan.segments[i].monologue = false }
+            if forced > 0 { log("Depth \(depth.label): \(forced) monologue segment(s) turned into dialogue") }
+        }
 
         // Distribute the word budget across segments by weight, with a floor so
         // short segments still get a plausible length.
@@ -199,10 +221,21 @@ struct LocalPipeline {
         for (k, seg) in plan.segments.enumerated() {
             onProgress(Double(k) / Double(max(total, 1)),
                        "Segment \(k + 1)/\(total): \(seg.title)")
+            // Summary: re-split what's left of the ceiling over the remaining
+            // segments, so an over-long early segment can't push the episode
+            // past 35 minutes (and the ending still gets its share).
+            if let cap = wordCap {
+                let written = history.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
+                let remainingWeight = plan.segments[k...].map(\.weight).reduce(0, +)
+                let share = remainingWeight > 0 ? seg.weight / remainingWeight : 1
+                let budget = Int(Double(max(0, cap - written)) * share)
+                targets[k] = max(120, min(targets[k], budget))
+            }
             log("— Segment \(k + 1)/\(plan.segments.count): \"\(seg.title)\" (\(seg.monologue ? "monologue" : "dialogue"), ~\(targets[k]) words)")
             let turns: [Transcript.Turn]
             if seg.monologue {
-                turns = try await writeMonologue(seg, index: k, plan: plan, cleaned: cleaned, expert: expert,
+                turns = try await writeMonologue(seg, index: k, plan: plan, cleaned: cleaned, host: host,
+                                                 expert: expert, history: history,
                                                  targetWords: targets[k])
             } else {
                 turns = try await writeDialogue(seg, index: k, plan: plan, cleaned: cleaned, host: host, expert: expert,
@@ -395,11 +428,19 @@ struct LocalPipeline {
 
     // --------------------------------------------- methodology monologue segment
     private func writeMonologue(_ seg: PlanSegment, index k: Int, plan: Plan, cleaned: String,
-                                expert: String, targetWords: Int) async throws -> [Transcript.Turn] {
+                                host hostName: String, expert: String, history: [Transcript.Turn],
+                                targetWords: Int) async throws -> [Transcript.Turn] {
         // Grab the raw text of the sections this segment covers (only used as the
         // faithful source the LLM restates — the outline itself is LLM-driven).
         let methodText = sourceForSections(plan, seg, cleaned)
-        let source = methodText.isEmpty ? cleaned : methodText
+        // If the outline's section titles can't be matched to the paper, don't
+        // fall back to restating the whole paper (that produced 5,000-word turns).
+        guard !methodText.isEmpty else {
+            log("    method sections not found in the text — writing this segment as dialogue")
+            return try await writeDialogue(seg, index: k, plan: plan, cleaned: cleaned, host: hostName, expert: expert,
+                                            history: history, targetWords: targetWords, depthGuide: plan.depthGuide)
+        }
+        let source = methodText
         let blocks = blockText(source, max: 40_000)
         log("    method source: \(source.count) chars → \(blocks.count) blocks")
 
@@ -651,30 +692,78 @@ struct LocalPipeline {
     /// ponytail: the reported "how many voices" is capped at the interviewer +
     /// scientist pair the dialogue generator supports; a future N-speaker rewrite
     /// of planScript/writeDialogue would lift that ceiling.
-    func proposeCast(title: String, authors: [String], cleaned: String, depthNote: String) async -> [ProposedSpeaker] {
+    func proposeCast(title: String, authors: [String], cleaned: String, depthNote: String) async -> CastProposal {
         let scientistName = authors.first.flatMap(firstGivenName) ?? "Sam"
-        let fallback = [
-            ProposedSpeaker(role: "Interviewer", gender: "female", name: "Jordan"),
-            ProposedSpeaker(role: "Scientist", gender: KokoroSpeech.gender(for: scientistName), name: scientistName),
-        ]
-        let system = "You are casting a short research-podcast interview. Decide who speaks and how they sound. Return ONLY a JSON array, no markdown or prose: [{\"role\": string, \"gender\": \"male\"|\"female\", \"name\": string}]. Use exactly two speakers: the interviewer (female by default) and the interviewed scientist, who is one of the paper's real authors — use their given first name. Propose a realistic first name for the interviewer."
+        let fallback = CastProposal(
+            speakers: [
+                ProposedSpeaker(role: "Interviewer", gender: "female", name: "Jordan"),
+                ProposedSpeaker(role: "Scientist", gender: nil, name: scientistName),
+            ],
+            authorGenders: [:])
+        // An object, not a bare array: `extractJSON` cuts from the first "{" to
+        // the last "}", which mangles a top-level array.
+        let system = """
+        You are casting a short research-podcast interview. Return ONLY a JSON object, no markdown or prose:
+        {"speakers": [{"role": string, "gender": "male"|"female", "name": string}],
+         "authors": [{"name": string, "gender": "male"|"female"}]}
+        "speakers": exactly two — the interviewer (female by default, propose a realistic first name) and the \
+        interviewed scientist, who is one of the paper's real authors; use their given first name and their real gender.
+        "authors": every author exactly as listed, each with their most likely gender based on their name.
+        """
         let user = "Title: \(title)\nAuthors: \(authors.joined(separator: ", "))\nMode: \(depthNote.isEmpty ? "In-depth discussion" : depthNote)\n\nPaper excerpt:\n\(cleaned.prefix(2500))"
-        guard let raw = try? await chat(system: system, user: user, maxTokens: 400),
-              let parsed = Self.parseSpeakers(raw), !parsed.isEmpty else { return fallback }
-        return parsed
+        var cast = fallback
+        if let raw = try? await chat(system: system, user: user, maxTokens: 700),
+           let parsed = Self.parseCast(raw), !parsed.speakers.isEmpty {
+            cast = parsed
+        } else {
+            log("Cast: model reply unusable, using the default cast")
+        }
+        // Fill any gender the model left out: from its author list, then from the name.
+        for i in cast.speakers.indices where cast.speakers[i].gender == nil {
+            let name = cast.speakers[i].name.lowercased()
+            let fromAuthors = cast.authorGenders.first { full, _ in
+                full.lowercased() == name || full.lowercased().split(separator: " ").first.map(String.init) == name
+            }?.value
+            if let g = fromAuthors ?? KokoroSpeech.guessGender(fromName: cast.speakers[i].name) {
+                cast.speakers[i] = ProposedSpeaker(role: cast.speakers[i].role, gender: g, name: cast.speakers[i].name)
+            }
+        }
+        return cast
     }
 
-    private static func parseSpeakers(_ raw: String) -> [ProposedSpeaker]? {
-        guard let json = extractJSON(raw), let data = json.data(using: .utf8),
-              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return nil }
-        var out: [ProposedSpeaker] = []
-        for d in arr {
+    private static func normalizeGender(_ any: Any?) -> String? {
+        let g = (any as? String)?.lowercased().trimmingCharacters(in: .whitespaces) ?? ""
+        return ["male", "m", "man"].contains(g) ? "male" : ["female", "f", "woman"].contains(g) ? "female" : nil
+    }
+
+    /// Accepts the requested object, or a bare speakers array as older prompts produced.
+    private static func parseCast(_ raw: String) -> CastProposal? {
+        var speakerDicts: [[String: Any]] = []
+        var authorDicts: [[String: Any]] = []
+        if let json = extractJSON(raw), let data = json.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            speakerDicts = obj["speakers"] as? [[String: Any]] ?? []
+            authorDicts = obj["authors"] as? [[String: Any]] ?? []
+        }
+        if speakerDicts.isEmpty, let start = raw.firstIndex(of: "["), let end = raw.lastIndex(of: "]"),
+           let data = String(raw[start...end]).data(using: .utf8),
+           let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            speakerDicts = arr
+        }
+        var speakers: [ProposedSpeaker] = []
+        for d in speakerDicts {
             let role = (d["role"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
             let name = (d["name"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
             guard !role.isEmpty, !name.isEmpty else { continue }
-            let g = (d["gender"] as? String)?.lowercased() ?? ""
-            out.append(ProposedSpeaker(role: role, gender: (g == "male" || g == "female") ? g : nil, name: name))
+            speakers.append(ProposedSpeaker(role: role, gender: normalizeGender(d["gender"]), name: name))
         }
-        return out.isEmpty ? nil : out
+        var genders: [String: String] = [:]
+        for d in authorDicts {
+            if let name = (d["name"] as? String)?.trimmingCharacters(in: .whitespaces), !name.isEmpty,
+               let g = normalizeGender(d["gender"]) {
+                genders[name] = g
+            }
+        }
+        return speakers.isEmpty ? nil : CastProposal(speakers: speakers, authorGenders: genders)
     }
 }

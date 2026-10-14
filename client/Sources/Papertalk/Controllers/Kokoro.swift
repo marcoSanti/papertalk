@@ -14,10 +14,21 @@ enum KokoroSpeech {
         gender == "male" ? maleVoice : femaleVoice
     }
 
-    /// Same-gender voices in order of preference, so two speakers of the same
-    /// gender still get distinct voices.
-    static let femalePool = [femaleVoice, "af_bella", "af_nicole", "bf_emma", "af_sarah", "bf_isabella"]
-    static let malePool = [maleVoice, "am_adam", "bm_george", "am_eric", "bm_lewis", "am_liam"]
+    /// Same-gender voices, best-sounding first (per Kokoro's own voice grades),
+    /// so two speakers of the same gender still get distinct, good voices.
+    static let femalePool = [femaleVoice, "af_bella", "af_nicole", "bf_emma", "af_aoede", "af_kore", "af_sarah"]
+    static let malePool = [maleVoice, "am_fenrir", "am_puck", "bm_george", "bm_fable", "bm_lewis"]
+
+    /// A guest's voice: one of the best few voices of their gender that nobody
+    /// in `used` has, chosen by a stable hash of their name, so different
+    /// guests sound different and the same author always sounds the same.
+    static func guestVoice(forGender gender: String?, name: String, avoiding used: Set<String>) -> String {
+        let pool = (gender == "male" ? malePool : femalePool).filter { !used.contains($0) }.prefix(4)
+        guard !pool.isEmpty else { return defaultVoice(forGender: gender, avoiding: used) }
+        // djb2: Swift's hashValue is randomized per launch, this is not.
+        let h = name.lowercased().unicodeScalars.reduce(UInt64(5381)) { ($0 &* 33) &+ UInt64($1.value) }
+        return pool[pool.startIndex + Int(h % UInt64(pool.count))]
+    }
 
     /// First voice for `gender` that no one in `used` already has.
     static func defaultVoice(forGender gender: String?, avoiding used: Set<String>) -> String {
@@ -25,8 +36,27 @@ enum KokoroSpeech {
         return pool.first { !used.contains($0) } ?? pool[0]
     }
 
-    /// Best-effort gender guess for a name ("male"/"female"/nil).
-    static func gender(for name: String) -> String? { guessGender(name) }
+    /// Last-resort gender guess from a first name, used only when the LLM didn't
+    /// say. The cast sheet shows the result and lets the user flip it.
+    static func guessGender(fromName name: String) -> String? {
+        let first = name.split(whereSeparator: { !$0.isLetter }).first?.lowercased() ?? ""
+        let males: Set<String> = ["alex", "sam", "marco", "luca", "matteo", "alessandro", "giuseppe", "antonio",
+            "giovanni", "francesco", "carlo", "paolo", "davide", "giacomo", "riccardo", "edoardo", "tommaso",
+            "gabriele", "massimo", "fabio", "salvatore", "michael", "john", "james", "robert", "william", "bill",
+            "richard", "joseph", "charles", "david", "daniel", "mark", "paul", "peter", "george", "leo", "mario",
+            "luigi", "nicola", "andrea", "vincenzo", "samuel", "thomas", "chris", "christopher", "kyle", "ryan",
+            "eric", "nathan", "andrew", "joshua", "alan", "adam", "oscar", "matthew", "steven", "brian", "kevin",
+            "jason", "jeff", "jeffrey", "scott", "frank", "henry", "jack", "harry", "wei", "jun", "hiroshi", "takeshi"]
+        let females: Set<String> = ["maria", "giulia", "sofia", "elena", "anna", "lucia", "chiara", "sara",
+            "francesca", "valentina", "ilaria", "silvia", "alessia", "martina", "giorgia", "marta", "beatrice",
+            "emma", "olivia", "isabella", "mia", "charlotte", "amelia", "hannah", "zoe", "lina", "maya", "sandra",
+            "melissa", "jennifer", "jessica", "rebecca", "laura", "fatima", "susan", "karen", "mary", "patricia",
+            "linda", "elizabeth", "barbara", "sarah", "nancy", "lisa", "emily", "ashley", "michelle", "amy",
+            "tongshuang", "tasnuva", "yuki", "mei", "priya", "ananya"]
+        if males.contains(first) { return "male" }
+        if females.contains(first) { return "female" }
+        return nil
+    }
 
     /// Short spoken sample demonstrating a voice, e.g. for a preview: the label
     /// (minus its gender suffix) is inserted as the voice's name.
@@ -97,47 +127,10 @@ enum KokoroSpeech {
         return gender.isEmpty ? pretty : "\(pretty) · \(gender)"
     }
 
-    static func voice(for speaker: String) -> String {
-        guessGender(speaker) == "male" ? maleVoice : defaultVoice
-    }
-
-    /// Assign a voice to every distinct speaker in a transcript, guaranteeing
-    /// two different speakers always get two different voices (so the back-and-
-    /// forth is audible even when gender guessing is ambiguous or misses).
-    static func voices(for speakers: [String]) -> [String: String] {
-        let distinct = speakers.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
-        var map: [String: String] = [:]
-        var used = Set<String>()
-        for s in distinct {
-            // Keep each speaker's gender; a clash moves to another voice of the same gender.
-            let chosen = defaultVoice(forGender: guessGender(s), avoiding: used)
-            map[s] = chosen
-            used.insert(chosen)
-        }
-        return map
-    }
-
     /// 24 kHz mono 16-bit PCM WAV duration in seconds.
     static func wavDuration(_ data: Data) -> Double {
         let bytes = data.count
         guard bytes > 44 else { return 0 }
         return Double(bytes - 44) / Double(24000 * 2)
-    }
-
-    private static func guessGender(_ name: String) -> String? {
-        let males: Set<String> = ["alex","sam","marco","luca","matteo","alessandro","giuseppe","antonio","giovanni",
-            "francesco","carlo","paolo","davide","giacomo","riccardo","edoardo","tommaso","michael","john","james",
-            "robert","william","david","daniel","mark","paul","peter","george","leo","mario","luigi","nicola",
-            "vincenzo","samuel","thomas","chris","kyle","ryan","eric","nathan","andrew","joshua","alan","adam","oscar"]
-        let females: Set<String> = ["maria","giulia","sofia","elena","anna","lucia","chiara","sara","francesca",
-            "valentina","ilaria","silvia","alessia","martina","giorgia","marta","beatrice","emma","olivia","isabella",
-            "mia","charlotte","amelia","hannah","zoe","lina","maya","sandra","melissa","jennifer","jessica","rebecca",
-            "laura","fatima","susan","karen"]
-        let first = name.split(whereSeparator: { !$0.isLetter }).first?.lowercased() ?? ""
-        if males.contains(first) { return "male" }
-        if females.contains(first) { return "female" }
-        if first.hasSuffix("a") { return "female" }
-        if first.hasSuffix("o") || first.hasSuffix("io") { return "male" }
-        return nil
     }
 }

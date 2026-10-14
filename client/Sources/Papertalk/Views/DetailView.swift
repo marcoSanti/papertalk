@@ -15,7 +15,14 @@ struct DetailView: View {
     var onEdit: () -> Void
 
     @State private var transcript: Transcript?
-    @State private var showTranscript = false
+    /// The sheet is driven by the loaded transcript itself, so it can never
+    /// render before the data arrives (an `isPresented` flag + separate state
+    /// could show the empty branch).
+    private struct TranscriptSheet: Identifiable {
+        let id = UUID()
+        let transcript: Transcript?
+    }
+    @State private var transcriptSheet: TranscriptSheet?
     @State private var shownID: String?
     @State private var titleDraft = ""
     @FocusState private var titleFocused: Bool
@@ -47,8 +54,8 @@ struct DetailView: View {
             .animation(.snappy, value: paper.state)
         }
         .background(alignment: .top) { PaperBackdrop(paper: paper) }
-        .sheet(isPresented: $showTranscript) {
-            if let t = transcript {
+        .sheet(item: $transcriptSheet) { item in
+            if let t = item.transcript, !t.segments.isEmpty {
                 TranscriptView(transcript: t, title: paper.displayTitle)
             } else {
                 ContentUnavailableView("No transcript yet", systemImage: "text.quote", description: Text("The transcript for this paper isn’t available."))
@@ -356,8 +363,10 @@ struct DetailView: View {
 
     private func openTranscript() {
         Task {
-            if transcript == nil { transcript = await store.transcript(for: paper.id) }
-            showTranscript = true
+            // Always read the current file: a rerun may have replaced it.
+            let fresh = await store.transcript(for: paper.id) ?? transcript
+            transcript = fresh
+            transcriptSheet = TranscriptSheet(transcript: fresh)
         }
     }
 }
@@ -601,7 +610,12 @@ private struct EpisodeCard: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             if isCurrent, player.isRendering {
-                Label("Preparing voices…", systemImage: "waveform")
+                Label("Preparing the first section…", systemImage: "waveform")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .symbolEffect(.variableColor.iterative)
+            } else if isCurrent, player.isBuffering {
+                Label("Preparing the next section…", systemImage: "waveform")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .symbolEffect(.variableColor.iterative)

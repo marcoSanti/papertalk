@@ -34,9 +34,16 @@ struct PlayerBar: View {
                 if player.isRendering {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
-                        Text("Preparing voices…").font(.caption).foregroundStyle(.secondary)
+                        Text("Preparing the first section…").font(.caption).foregroundStyle(.secondary)
                     }
                     .frame(height: 14)
+                } else if let err = player.renderError, player.renderedCount == 0 {
+                    Label(err, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(1)
+                        .help(err)
+                        .frame(height: 14)
                 } else {
                     Slider(
                         value: Binding(
@@ -61,7 +68,13 @@ struct PlayerBar: View {
 
     private var turnLabel: String {
         guard player.turnCount > 0 else { return "" }
-        return "· \(max(activeTurn + 1, 1)) of \(player.turnCount)"
+        if player.isBuffering { return "· preparing the next section…" }
+        let base = "· \(max(activeTurn + 1, 1)) of \(player.turnCount)"
+        // Live render still running: show how far the voices have got.
+        if player.renderedCount < player.turnCount, player.renderError == nil {
+            return base + " · voiced \(player.renderedCount)"
+        }
+        return base
     }
 
     private var transport: some View {

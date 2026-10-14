@@ -61,7 +61,9 @@ The first episode takes a little longer, because it downloads the voice models (
 
 Import a paper with **File → Import PDF…** (⌘O), the **+** button, or by dropping a PDF onto the
 library. Conversion runs in the background and shows its progress at the bottom of the window;
-you can keep listening to something else in the meantime.
+you can keep listening to something else in the meantime. If you switch to another app,
+Papertalk sends a notification when an episode is ready, when one fails, or when it needs you to
+answer a question (like choosing the voices).
 
 Select a paper to see its details on the right. From there you can play the episode, read the
 transcript, open the PDF, favourite it, tag it, or fix its metadata. Space plays and pauses, the

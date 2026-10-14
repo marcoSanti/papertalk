@@ -132,7 +132,7 @@ struct PaperArtwork: View {
                 }
             }
             .clipped()
-            .task(id: "\(paper.id)|\(paper.hasPdf)") {
+            .task(id: "\(paper.id)|\(paper.hasPdf)|\(store.artworkRevision[paper.id] ?? 0)") {
                 guard paper.hasPdf else { image = nil; return }
                 let loaded = await store.loadThumbnail(paper.id)
                 withAnimation(.easeOut(duration: 0.2)) { image = loaded }

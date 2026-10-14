@@ -26,6 +26,14 @@ struct ProposedSpeaker: Equatable, Hashable {
     var asConfig: SpeakerConfig { SpeakerConfig(name: name, voice: voice) }
 }
 
+/// The LLM's casting answer: who speaks, plus the gender of every author so
+/// the sheet can re-voice the guest when the user picks a different author.
+struct CastProposal {
+    var speakers: [ProposedSpeaker]
+    /// Author full name (as in `Paper.authors`) -> "male" / "female".
+    var authorGenders: [String: String]
+}
+
 // MARK: - Paper (library record) — mirrors /api/library entries
 struct Paper: Identifiable, Codable, Equatable {
     var id: String
@@ -45,7 +53,9 @@ struct Paper: Identifiable, Codable, Equatable {
     var read: Bool
     var depth: String?
     var bibtex: String?
-    var speakers: [SpeakerConfig] = []
+    /// Persisted under "speakers". Optional so paper.json files written before
+    /// the cast step existed still decode.
+    var storedSpeakers: [SpeakerConfig]? = nil
     var progress: Double
     var duration: Double
     var progressTs: String?
@@ -60,6 +70,13 @@ struct Paper: Identifiable, Codable, Equatable {
         case publishedIso = "published_iso"
         case progressTs = "progress_ts", stage, message
         case statusError = "status_error"
+        case storedSpeakers = "speakers"
+    }
+
+    /// The episode's cast (names + chosen voices); empty when never set.
+    var speakers: [SpeakerConfig] {
+        get { storedSpeakers ?? [] }
+        set { storedSpeakers = newValue.isEmpty ? nil : newValue }
     }
 
     var displayTitle: String { title?.trimmedNotEmpty ?? filename ?? "Untitled" }

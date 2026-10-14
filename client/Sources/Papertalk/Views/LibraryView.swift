@@ -2,125 +2,163 @@ import SwiftUI
 
 struct LibraryView: View {
     @EnvironmentObject private var store: AppStore
+    var onImport: () -> Void = {}
+
+    @Namespace private var filterNS
 
     var body: some View {
-        VStack(spacing: 0) {
-            controls
-            Divider()
-            statusPills
-            Divider()
-            if store.filteredPapers().isEmpty {
-                emptyState.frame(maxWidth: .infinity, maxHeight: .infinity)
+        let papers = store.filteredPapers()
+        Group {
+            if papers.isEmpty {
+                emptyState
             } else if store.libraryLayout == .grid {
-                grid
+                grid(papers)
             } else {
-                list
+                list(papers)
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
-        .navigationTitle("Library")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .top, spacing: 0) { filterBar }
+        .background(AmbientBackground())
+        .navigationTitle(title)
+        .navigationSubtitle(subtitle(papers.count))
     }
 
-    private var controls: some View {
-        HStack(spacing: 12) {
-            searchField
-            Picker("Sort", selection: $store.sort) {
-                ForEach(SortOption.allCases) { Text($0.rawValue).tag($0) }
+    // MARK: titles
+
+    private var title: String {
+        switch store.view {
+        case .all: return "All Papers"
+        case .fav: return "Favorites"
+        case .tag: return store.activeTag.map { "#\($0)" } ?? "Tag"
+        }
+    }
+
+    private func subtitle(_ n: Int) -> String {
+        n == 1 ? "1 paper" : "\(n) papers"
+    }
+
+    // MARK: status filter bar (floating glass)
+
+    private struct StatusFilter: Identifiable {
+        let value: String, title: String, icon: String
+        var id: String { value }
+    }
+
+    private let filters: [StatusFilter] = [
+        .init(value: "all", title: "All", icon: "square.stack"),
+        .init(value: "running", title: "Converting", icon: "hourglass"),
+        .init(value: "done", title: "Ready", icon: "waveform"),
+        .init(value: "error", title: "Failed", icon: "exclamationmark.triangle"),
+    ]
+
+    private var filterBar: some View {
+        HStack {
+            HStack(spacing: 2) {
+                ForEach(filters) { f in filterButton(f) }
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .frame(width: 170)
-            Picker("Layout", selection: $store.libraryLayout) {
-                ForEach(LibraryLayout.allCases) {
-                    Image(systemName: $0 == .grid ? "square.grid.2x2" : "list.bullet").tag($0)
+            .padding(3)
+            .glassEffect(.regular, in: Capsule())
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+    }
+
+    private func filterButton(_ f: StatusFilter) -> some View {
+        let selected = store.statusFilter == f.value
+        let n = count(for: f.value)
+        return Button {
+            withAnimation(.snappy(duration: 0.25)) { store.statusFilter = f.value }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: f.icon).imageScale(.small)
+                Text(f.title)
+                if n > 0 {
+                    Text("\(n)")
+                        .monospacedDigit()
+                        .foregroundStyle(selected ? AnyShapeStyle(Color.white.opacity(0.85)) : AnyShapeStyle(HierarchicalShapeStyle.secondary))
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 72)
-            Spacer()
-        }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-    }
-
-    private var searchField: some View {
-        HStack {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search title, filename, tags…", text: $store.search)
-                .textFieldStyle(.plain)
-            if !store.search.isEmpty {
-                Button {
-                    store.search = ""
-                } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                .buttonStyle(.plain)
+            .font(.callout.weight(selected ? .semibold : .regular))
+            .foregroundStyle(selected ? AnyShapeStyle(Color.white) : AnyShapeStyle(HierarchicalShapeStyle.primary))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background {
+                if selected {
+                    Capsule()
+                        .fill(Color.appAccent.gradient)
+                        .matchedGeometryEffect(id: "selection", in: filterNS)
+                }
             }
-        }
-        .padding(6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor)))
-    }
-
-    private var statusPills: some View {
-        HStack(spacing: 6) {
-            pill("All", "all")
-            pill("Running", "running")
-            pill("Done", "done")
-            pill("Error", "error")
-            Spacer()
-        }
-        .padding(.horizontal, 16).padding(.vertical, 8)
-    }
-
-    private func pill(_ label: String, _ value: String) -> some View {
-        Button {
-            store.statusFilter = value
-        } label: {
-            Text(label)
-                .font(.caption)
-                .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(store.statusFilter == value ? Color.appAccent : Color.clear, in: Capsule())
-                .foregroundStyle(store.statusFilter == value ? .white : .primary)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }
 
-    private var grid: some View {
-        let columns = [GridItem(.adaptive(minimum: 150, maximum: 210), spacing: 14)]
+    /// Papers in the current sidebar scope with the given state (ignores search).
+    private func count(for value: String) -> Int {
+        let scoped = store.papers.values.filter { p in
+            switch store.view {
+            case .all: return true
+            case .fav: return p.favorite
+            case .tag: return store.activeTag.map { p.tags.contains($0) } ?? true
+            }
+        }
+        return value == "all" ? scoped.count : scoped.filter { $0.state == value }.count
+    }
+
+    // MARK: layouts
+
+    private func grid(_ papers: [Paper]) -> some View {
+        let columns = [GridItem(.adaptive(minimum: 150, maximum: 210), spacing: 22, alignment: .top)]
         return ScrollView {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
-                ForEach(store.filteredPapers()) { paper in
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 26) {
+                ForEach(papers) { paper in
                     PaperCard(paper: paper)
                 }
             }
-            .padding(16)
+            .padding(.horizontal, 22)
+            .padding(.top, 6)
+            .padding(.bottom, 24)
         }
     }
 
-    private var list: some View {
-        ScrollView {
-            LazyVStack(spacing: 4) {
-                ForEach(store.filteredPapers()) { paper in
-                    PaperListRow(paper: paper)
-                }
-            }
-            .padding(10)
+    private func list(_ papers: [Paper]) -> some View {
+        List(papers, selection: $store.selectedId) { paper in
+            PaperListRow(paper: paper)
+                .contextMenu { ContextMenuItems(paper: paper) }
         }
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
     }
+
+    // MARK: empty states
 
     @ViewBuilder private var emptyState: some View {
         if store.papers.isEmpty {
-            VStack(spacing: 10) {
-                Image(systemName: "doc.badge.plus").font(.system(size: 40)).foregroundStyle(.secondary)
-                Text("Your library is empty").font(.title3)
-                Text("Upload a PDF to start converting it into a podcast.")
-                    .font(.callout).foregroundStyle(.secondary)
+            ContentUnavailableView {
+                Label("Your library is empty", systemImage: "doc.badge.plus")
+            } description: {
+                Text("Import a PDF and Papertalk will turn it into a podcast episode, right on this Mac.")
+            } actions: {
+                Button("Import a paper…", action: onImport)
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.large)
             }
+        } else if !store.search.trimmingCharacters(in: .whitespaces).isEmpty {
+            ContentUnavailableView.search(text: store.search)
         } else {
-            VStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").font(.system(size: 34)).foregroundStyle(.secondary)
-                Text("No results").font(.title3)
-                Text("Nothing matches your current filters.")
-                    .font(.callout).foregroundStyle(.secondary)
+            ContentUnavailableView {
+                Label("Nothing here", systemImage: "line.3.horizontal.decrease.circle")
+            } description: {
+                Text("No papers match the current filters.")
+            } actions: {
+                Button("Show all papers") {
+                    withAnimation(.snappy) { store.statusFilter = "all" }
+                }
+                .buttonStyle(.glass)
             }
         }
     }

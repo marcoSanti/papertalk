@@ -120,7 +120,7 @@ final class AppStore: ObservableObject {
         return image
     }
 
-    private static func thumbnail(of data: Data, width: CGFloat = 160) -> NSImage? {
+    private static func thumbnail(of data: Data, width: CGFloat = 280) -> NSImage? {
         guard let doc = PDFDocument(data: data), let page = doc.page(at: 0) else { return nil }
         let bounds = page.bounds(for: .mediaBox)
         guard bounds.width > 0, bounds.height > 0 else { return nil }

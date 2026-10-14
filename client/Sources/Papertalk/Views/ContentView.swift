@@ -7,50 +7,21 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(onUpload: { showUpload = true })
-                .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
+            SidebarView()
+                .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
         } detail: {
-            HStack(spacing: 0) {
-                LibraryView()
-                    .navigationSplitViewColumnWidth(min: 320, ideal: 420, max: 700)
-                if showInspector {
-                    Divider()
-                    Group {
-                        if let paper = store.selectedPaper() {
-                            DetailView(paper: paper, onEdit: { store.editingPaper = paper })
-                        } else {
-                            EmptyDetailPlaceholder()
-                        }
-                    }
-                    .frame(minWidth: 280, idealWidth: 360, maxWidth: 520)
+            LibraryView(onImport: { showUpload = true })
+                // Floating Liquid Glass mini-player; the library scrolls underneath it.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    BottomBar(player: store.player)
                 }
-            }
+                .inspector(isPresented: $showInspector) {
+                    inspectorContent
+                        .inspectorColumnWidth(min: 320, ideal: 380, max: 540)
+                }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    showUpload = true
-                } label: {
-                    Label("Import paper", systemImage: "arrow.up.doc")
-                }
-                .buttonStyle(.glassProminent)
-                .glassEffect(.regular, in: .rect(cornerRadius: 8))
-                .help("Import a PDF paper")
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { showInspector.toggle() }
-                } label: {
-                    Image(systemName: "sidebar.trailing")
-                }
-                .help("Show or hide the paper inspector")
-                Button {
-                    store.settingsPage = .llm
-                    store.showSettings = true
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-                .help("Open settings")
-            }
-        }
+        .searchable(text: $store.search, placement: .toolbar, prompt: "Search papers")
+        .toolbar { toolbarContent }
         .sheet(isPresented: $showUpload) {
             UploadSheet()
         }
@@ -66,38 +37,100 @@ struct ContentView: View {
         .overlay(alignment: .bottom) {
             if let t = store.toast {
                 Text(t)
-                    .font(.callout)
-                    .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(.regularMaterial, in: Capsule())
-                    .shadow(radius: 4)
-                    .padding(.bottom, 16)
+                    .font(.callout.weight(.medium))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .glassEffect(.regular, in: Capsule())
+                    .padding(.bottom, 104)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.default, value: store.toast)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            BottomBar(player: store.player)
-        }
+        .animation(.spring(duration: 0.35), value: store.toast)
         .onAppear {
             store.trackPlayback()
             Task { await store.loadAudioForSelected() }
         }
-        .onChange(of: store.selectedId) { _ in
+        .onChange(of: store.selectedId) { _, _ in
             // reveal the inspector automatically when a paper is selected
-            if store.selectedPaper() != nil { showInspector = true }
+            if store.selectedPaper() != nil {
+                withAnimation(.snappy) { showInspector = true }
+            }
             Task { await store.loadAudioForSelected() }
+        }
+    }
+
+    @ViewBuilder private var inspectorContent: some View {
+        if let paper = store.selectedPaper() {
+            DetailView(paper: paper, onEdit: { store.editingPaper = paper })
+        } else {
+            EmptyDetailPlaceholder()
+        }
+    }
+
+    @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Picker("Layout", selection: $store.libraryLayout) {
+                Image(systemName: "square.grid.2x2").tag(LibraryLayout.grid)
+                    .help("Grid")
+                Image(systemName: "list.bullet").tag(LibraryLayout.list)
+                    .help("List")
+            }
+            .pickerStyle(.segmented)
+            .help("Change library layout")
+
+            Menu {
+                Picker("Sort by", selection: $store.sort) {
+                    ForEach(SortOption.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+            .help("Sort papers")
+        }
+
+        ToolbarSpacer(.fixed, placement: .primaryAction)
+
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                showUpload = true
+            } label: {
+                Label("Import", systemImage: "plus")
+            }
+            .buttonStyle(.glassProminent)
+            .help("Import a PDF paper (⌘N)")
+            .keyboardShortcut("n", modifiers: .command)
+        }
+
+        ToolbarSpacer(.fixed, placement: .primaryAction)
+
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                withAnimation(.snappy) { showInspector.toggle() }
+            } label: {
+                Label("Inspector", systemImage: "sidebar.trailing")
+            }
+            .help(showInspector ? "Hide paper details" : "Show paper details")
+        }
+    }
+}
+
+extension SortOption {
+    var label: String {
+        switch self {
+        case .newest: return "Newest first"
+        case .oldest: return "Oldest first"
+        case .title: return "Title"
+        case .recent: return "Recently converted"
         }
     }
 }
 
 struct EmptyDetailPlaceholder: View {
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "waveform")
-                .font(.system(size: 44)).foregroundStyle(.secondary)
-            Text("Select a paper").font(.title2)
-            Text("Pick a paper from the library to see its details and audio.")
-                .font(.subheadline).foregroundStyle(.secondary)
+        ContentUnavailableView {
+            Label("No paper selected", systemImage: "waveform.and.magnifyingglass")
+        } description: {
+            Text("Pick a paper from the library to see its details, tags and episode.")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

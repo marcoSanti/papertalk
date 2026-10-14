@@ -173,6 +173,10 @@ git push origin v0.0.2        # the tag it printed
 ```
 
 Pushing the tag runs `.github/workflows/release.yml`: it checks the tag matches `VERSION`, runs
-the tests, builds the optimized app and publishes a GitHub release with
-`Papertalk-<version>.zip` and its SHA-256 checksum. Versions below 1.0 are marked as
-pre-releases.
+the tests, builds the optimized app and publishes a GitHub release, marked Latest, with
+`Papertalk-<version>.zip` and its SHA-256 checksum.
+
+Every merge to `main` also publishes a **development build** as a pre-release, tagged
+`v<VERSION>-dev.<commit>` (for example `v0.0.1-dev.f961491`), so the newest merged code is always
+downloadable from [Releases](https://github.com/marcoSanti/paper2pod/releases). Only the ten newest
+development builds are kept.

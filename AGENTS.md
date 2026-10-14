@@ -68,9 +68,14 @@ make app             # build dist/Papertalk.app (debug); `make release` → dist
 - Bump with `make -C client bump-patch|bump-minor|bump-major` (or `scripts/version.sh set X.Y.Z`)
   as part of a PR. Patch for fixes, minor for features, major for breaking changes (e.g. a
   library format that older builds can't read).
-- Releases are tag-driven: `make -C client tag` creates `v<VERSION>` (clean tree required);
-  pushing it runs `.github/workflows/release.yml`, which refuses tags that don't match
-  `VERSION`. Never create or push tags, or bump the version, unless the user asks.
+- Stable releases are tag-driven: `make -C client tag` creates `v<VERSION>` (clean tree
+  required); pushing it runs `.github/workflows/release.yml`, which refuses tags that don't match
+  `VERSION` and publishes a full release marked Latest.
+- Dev builds: every push to `main` runs the same workflow and publishes a **pre-release**
+  `v<VERSION>-dev.<short commit>`, built with `make release VERSION=<that>` (the command-line
+  `VERSION` overrides the file for that build only). It keeps the newest 10 dev builds and deletes
+  older ones with their tags. Dev tags are excluded from the tag trigger; never create `-dev.` tags
+  by hand. Never create or push tags, or bump the version, unless the user asks.
 
 ## Tests (`client/Tests/PapertalkTests`)
 

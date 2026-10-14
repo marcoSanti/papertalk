@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Player bar (bottom status bar transport + paper info)
+// MARK: - Player bar (transport + scrubber + now-playing info)
 struct PlayerBar: View {
     @ObservedObject var player: PlayerController
     let onSeek: (Double) -> Void
@@ -10,65 +10,82 @@ struct PlayerBar: View {
     @State private var scrubValue: Double = 0
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(alignment: .center, spacing: 16) {
-                skipButton(-1, systemImage: "backward.end.fill", help: "Previous turn", enabled: (player.activeTurn >= 0 ? player.activeTurn : 0) > 0)
-                playButton
-                skipButton(1, systemImage: "forward.end.fill", help: "Next turn", enabled: player.activeTurn + 1 < player.turnCount)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(player.isPlaying ? "Playing" : "Paused")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text(turnLabel).font(.callout).lineLimit(1)
+        HStack(spacing: 14) {
+            transport
+            PaperArtwork(paper: paper)
+                .frame(width: 34)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(paper.displayTitle)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                    Text(turnLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text("\(formatT(displayTime)) / \(formatT(player.duration))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
                 }
-                Divider().frame(height: 30)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(paper.displayTitle).font(.callout.bold()).lineLimit(1)
-                    Text(authorsList(paper)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                .frame(minWidth: 140, maxWidth: 360, alignment: .leading)
-                Spacer()
-            }
-            HStack(spacing: 8) {
-                Text(formatT(displayTime)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                Slider(
-                    value: Binding(
-                        get: { isScrubbing ? scrubValue : player.currentTime },
-                        set: { scrubValue = $0 }),
-                    in: 0...max(player.duration, 1),
-                    onEditingChanged: { editing in
-                        isScrubbing = editing
-                        if !editing { onSeek(scrubValue) }
+                if player.isRendering {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text("Preparing voices…").font(.caption).foregroundStyle(.secondary)
                     }
-                )
-                .disabled(player.duration <= 0)
-                .frame(minWidth: 200, maxWidth: .infinity)
-                Text(formatT(player.duration)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    .frame(height: 14)
+                } else {
+                    Slider(
+                        value: Binding(
+                            get: { isScrubbing ? scrubValue : player.currentTime },
+                            set: { scrubValue = $0 }),
+                        in: 0...max(player.duration, 1),
+                        onEditingChanged: { editing in
+                            isScrubbing = editing
+                            if editing { scrubValue = player.currentTime }
+                            if !editing { onSeek(scrubValue) }
+                        }
+                    )
+                    .controlSize(.mini)
+                    .disabled(player.duration <= 0)
+                }
             }
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private var displayTime: Double { isScrubbing ? scrubValue : player.currentTime }
 
-    private func authorsList(_ p: Paper) -> String {
-        p.authors.isEmpty ? "Unknown authors" : p.authors.prefix(3).joined(separator: ", ") + (p.authors.count > 3 ? " et al." : "")
-    }
-
     private var turnLabel: String {
-        guard player.turnCount > 0 else { return "No audio yet" }
-        return "Section \(max(activeTurn + 1, 1)) of \(player.turnCount)"
+        guard player.turnCount > 0 else { return "" }
+        return "· \(max(activeTurn + 1, 1)) of \(player.turnCount)"
     }
 
-    private var playButton: some View {
-        Button {
-            player.playPause()
-        } label: {
-            Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(Color.appAccent)
+    private var transport: some View {
+        GlassEffectContainer(spacing: 6) {
+            HStack(spacing: 6) {
+                skipButton(-1, systemImage: "backward.fill", help: "Previous turn",
+                           enabled: (player.activeTurn >= 0 ? player.activeTurn : 0) > 0)
+                Button {
+                    player.playPause()
+                } label: {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 40, height: 40)
+                        .glassEffect(.regular.tint(Color.appAccent).interactive(), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(player.isRendering || player.turnCount == 0)
+                .help(player.isPlaying ? "Pause" : "Play")
+                skipButton(1, systemImage: "forward.fill", help: "Next turn",
+                           enabled: player.activeTurn + 1 < player.turnCount)
+            }
         }
-        .buttonStyle(.plain)
-        .help(player.isPlaying ? "Pause" : "Play")
     }
 
     private func skipButton(_ delta: Int, systemImage: String, help: String, enabled: Bool) -> some View {
@@ -76,74 +93,112 @@ struct PlayerBar: View {
             player.skip(by: delta)
         } label: {
             Image(systemName: systemImage)
-                .font(.system(size: 20))
-                .foregroundStyle(enabled ? Color.appAccent : Color.secondary)
+                .font(.system(size: 11, weight: .bold))
+                .frame(width: 28, height: 28)
+                .glassEffect(.regular.interactive(), in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
         .help(help)
     }
 }
 
-// MARK: - Bottom global status bar (iTunes-style): active import OR selected paper + player
+// MARK: - Floating glass "now playing" / import status capsule
 struct BottomBar: View {
     @EnvironmentObject private var store: AppStore
     @ObservedObject var player: PlayerController
 
+    /// The paper the player currently holds (falls back to the selection).
+    private var paper: Paper? {
+        store.playingPaperId.flatMap { store.papers[$0] } ?? store.selectedPaper()
+    }
+
     var body: some View {
-        HStack(spacing: 24) {
+        Group {
             if let run = store.activeRun {
-                importProgress(run)
-            } else if let paper = store.selectedPaper() {
-                if player.turnCount > 0 {
-                    PlayerBar(player: player,
-                              onSeek: { player.seek(toTime: $0) },
-                              activeTurn: player.activeTurn,
-                              paper: paper)
-                } else {
-                    HStack(spacing: 8) {
-                        Text("No audio yet").font(.callout).foregroundStyle(.secondary)
-                        Spacer()
+                capsule { importProgress(run) }
+            } else if let paper {
+                capsule {
+                    if player.turnCount > 0 || player.isRendering {
+                        PlayerBar(player: player,
+                                  onSeek: { player.seek(toTime: $0) },
+                                  activeTurn: player.activeTurn,
+                                  paper: paper)
+                    } else {
+                        HStack(spacing: 10) {
+                            Image(systemName: "waveform.slash")
+                                .foregroundStyle(.secondary)
+                            Text(paper.isActive ? "Episode is being produced…" : "No audio for this paper yet")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .frame(height: 28)
                     }
-                }
-            } else {
-                HStack(spacing: 8) {
-                    Image(systemName: "waveform").foregroundStyle(.secondary)
-                    Text("Select a paper to listen").font(.callout).foregroundStyle(.secondary)
-                    Spacer()
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.regularMaterial)
-        .overlay(alignment: .top) { Divider() }
+        .animation(.spring(duration: 0.35), value: store.activeRun?.id)
+        .animation(.spring(duration: 0.35), value: paper?.id)
+    }
+
+    private func capsule<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        content()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(maxWidth: 760)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(color: .black.opacity(0.10), radius: 16, y: 6)
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private func importProgress(_ p: Paper) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "waveform.badge.magnifyingglass")
-                    .foregroundStyle(Color.appAccent)
-                Text(stageLabel(p.stage ?? "extract"))
-                    .font(.callout.bold()).lineLimit(1)
-                if let m = p.message {
-                    Text(m).font(.callout).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer()
+        HStack(spacing: 12) {
+            ZStack {
                 if p.isError {
-                    Button("Dismiss") { store.resetError(p.id) }.font(.callout)
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
                 } else {
-                    Text("\(Int((max(0.02, p.progress) * 100).rounded()))%")
-                        .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                    ProgressView().controlSize(.small)
                 }
             }
-            ProgressView(value: min(1, p.progress))
-                .animation(.easeInOut(duration: 0.25), value: p.progress)
-                .frame(maxWidth: .infinity)
+            .frame(width: 36, height: 36)
+            .glassEffect(.regular.tint(p.isError ? Color.red.opacity(0.25) : Color.appAccent.opacity(0.25)), in: Circle())
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Text(stageLabel(p.stage ?? "extract"))
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                    Text("· " + p.displayTitle)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    if p.isError {
+                        Button("Dismiss") { store.resetError(p.id) }
+                            .buttonStyle(.glass)
+                            .controlSize(.small)
+                    } else {
+                        Text("\(Int((max(0.02, p.progress) * 100).rounded()))%")
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                ProgressView(value: min(1, max(0.02, p.progress)))
+                    .progressViewStyle(.linear)
+                    .tint(Color.appAccent)
+                    .controlSize(.small)
+                    .animation(.easeInOut(duration: 0.25), value: p.progress)
+                if let m = p.message, !m.isEmpty {
+                    Text(m).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
         }
-        .frame(maxWidth: .infinity)
     }
 }
 
@@ -153,7 +208,6 @@ struct WordHighlighter: View {
     var body: some View { Text(joined) }
     private var joined: AttributedString {
         // Without live word timing, show plain text (words already space-joined).
-        var a = AttributedString(tokens.joined(separator: " "))
-        return a
+        AttributedString(tokens.joined(separator: " "))
     }
 }

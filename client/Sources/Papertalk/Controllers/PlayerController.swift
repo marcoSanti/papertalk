@@ -79,17 +79,20 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         Task {
             do {
                 try await manager.initialize()
-                var nextDurations: [Double] = []
+                var spans: [Double] = []
+                var running = 0.0
                 for (i, text) in turns.enumerated() {
                     if generation != gen { return }
                     let wav = try await manager.synthesize(text: text, voice: voices[i], speed: 0.95)
                     if generation != gen { return }
-                    nextDurations.append(nextDurations.last.map { $0 + 0.35 } ?? 0.35) // before+tiny gap
-                    rendered[i] = RenderedTurn(wav: wav, duration: KokoroSpeech.wavDuration(wav))
+                    let d = KokoroSpeech.wavDuration(wav)
+                    rendered[i] = RenderedTurn(wav: wav, duration: d)
+                    spans.append(running)
+                    running += d + 0.35
                 }
                 if generation != gen { return }
-                totalBefore = nextDurations
-                duration = totalBefore.last.map { $0 + (rendered.last??.duration ?? 0) } ?? 0
+                totalBefore = spans
+                duration = max(0, running - 0.35)
                 isRendering = false
             } catch {
                 if generation != gen { return }
@@ -108,8 +111,14 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         voices = []
         turns = []
         rendered = baked.map { RenderedTurn(wav: $0.wav, duration: $0.duration) }
-        totalBefore = baked.indices.map { Double($0 + 1) * 0.35 } // cumulative fixed gap, matches live path
-        duration = totalBefore.last.map { $0 + (rendered.last??.duration ?? 0) } ?? 0
+        var spans: [Double] = []
+        var running = 0.0
+        for r in rendered {
+            spans.append(running)
+            running += (r?.duration ?? 0) + 0.35
+        }
+        totalBefore = spans
+        duration = max(0, running - 0.35)
     }
 
     // MARK: - Transport
@@ -136,12 +145,16 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         stopTimer()
     }
 
-    func seek(to fraction: Double) {
+    /// Jump to an absolute time (0...duration) within the whole recording.
+    func seek(toTime t: Double) {
         guard turnCount > 0, !isRendering else { return }
-        let index = min(max(Int(fraction * Double(turnCount)), 0), turnCount - 1)
+        var idx = 0
+        for i in 0..<totalBefore.count where totalBefore[i] <= t { idx = i }
+        let offset = max(0, min(t - totalBefore[idx], rendered[idx]?.duration ?? 0))
         player?.stop(); player = nil
-        startTurn(index)
-        currentTime = index < totalBefore.count ? totalBefore[index] : 0
+        startTurn(idx)
+        player?.currentTime = offset
+        currentTime = totalBefore[idx] + offset
         if isPlaying { player?.play(); startTimer() }
     }
 
@@ -202,9 +215,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     private func tick() {
         guard activeTurn >= 0, activeTurn < totalBefore.count else { return }
         let p = player?.currentTime ?? 0
-        let before = totalBefore[activeTurn]
-        let durBefore = rendered[activeTurn]?.duration ?? 0
-        currentTime = before + min(p, durBefore)
+        currentTime = totalBefore[activeTurn] + min(p, rendered[activeTurn]?.duration ?? 0)
         if !isPlaying { stopTimer() }
     }
 }

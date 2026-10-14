@@ -19,6 +19,6 @@ struct FlowTags: View {
                 .buttonStyle(.plain)
         }
         .padding(.horizontal, 8).padding(.vertical, 3)
-        .background(Color.accentColor.opacity(0.12), in: Capsule())
+        .background(Color.appAccent.opacity(0.12), in: Capsule())
     }
 }

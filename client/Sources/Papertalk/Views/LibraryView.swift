@@ -78,7 +78,7 @@ struct LibraryView: View {
             Text(label)
                 .font(.caption)
                 .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(store.statusFilter == value ? Color.accentColor : Color.clear, in: Capsule())
+                .background(store.statusFilter == value ? Color.appAccent : Color.clear, in: Capsule())
                 .foregroundStyle(store.statusFilter == value ? .white : .primary)
         }
         .buttonStyle(.plain)

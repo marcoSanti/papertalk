@@ -65,7 +65,7 @@ struct PlayerBar: View {
         } label: {
             Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                 .font(.system(size: 36))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Color.appAccent)
         }
         .buttonStyle(.plain)
         .help(player.isPlaying ? "Pause" : "Play")
@@ -77,7 +77,7 @@ struct PlayerBar: View {
         } label: {
             Image(systemName: systemImage)
                 .font(.system(size: 20))
-                .foregroundStyle(enabled ? Color.accentColor : Color.secondary)
+                .foregroundStyle(enabled ? Color.appAccent : Color.secondary)
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -97,7 +97,7 @@ struct BottomBar: View {
             } else if let paper = store.selectedPaper() {
                 if player.turnCount > 0 {
                     PlayerBar(player: player,
-                              onSeek: { player.seek(to: $0) },
+                              onSeek: { player.seek(toTime: $0) },
                               activeTurn: player.activeTurn,
                               paper: paper)
                 } else {
@@ -125,7 +125,7 @@ struct BottomBar: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "waveform.badge.magnifyingglass")
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Color.appAccent)
                 Text(stageLabel(p.stage ?? "extract"))
                     .font(.callout.bold()).lineLimit(1)
                 if let m = p.message {

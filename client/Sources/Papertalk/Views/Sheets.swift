@@ -47,7 +47,7 @@ struct UploadSheet: View {
                 .font(.title3).fontWeight(.semibold)
             if let f = fileURL {
                 HStack(spacing: 8) {
-                    Image(systemName: "doc.fill").foregroundStyle(Color.accentColor)
+                    Image(systemName: "doc.fill").foregroundStyle(Color.appAccent)
                     Text(f.lastPathComponent).font(.callout).lineLimit(1)
                     Spacer()
                     Button("Choose another…") { pick() }.buttonStyle(.link)
@@ -87,6 +87,7 @@ struct UploadSheet: View {
         }
         .padding(24)
         .frame(width: 440)
+        .tint(Color.appAccent)
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.pdf]) { result in
             switch result {
             case .success(let url):
@@ -107,7 +108,7 @@ struct UploadSheet: View {
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: depth == d ? "largecircle.fill.circle" : "circle")
-                    .foregroundStyle(depth == d ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(depth == d ? Color.appAccent : Color.secondary)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(d.label).font(.headline)
                     Text(d.blurb).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
@@ -115,8 +116,8 @@ struct UploadSheet: View {
                 Spacer()
             }
             .padding(10)
-            .background(RoundedRectangle(cornerRadius: 8).fill(depth == d ? Color.accentColor.opacity(0.10) : .clear))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(depth == d ? Color.accentColor : .clear, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 8).fill(depth == d ? Color.appAccent.opacity(0.10) : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(depth == d ? Color.appAccent : .clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -169,6 +170,7 @@ struct EditMetaSheet: View {
         }
         .padding(24)
         .frame(width: 420)
+        .tint(Color.appAccent)
         .onAppear {
             title = paper.title ?? ""
             authors = paper.authors.joined(separator: "\n")
@@ -485,6 +487,7 @@ struct SettingsView: View {
             }
         }
         .frame(width: 720, height: 560)
+        .tint(Color.appAccent)
     }
 
     private func saveCurrent() {

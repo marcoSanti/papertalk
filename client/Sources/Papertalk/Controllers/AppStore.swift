@@ -15,6 +15,16 @@ final class AppStore: ObservableObject {
     }
     var isStandalone: Bool { config.apiBase.isEmpty }
 
+    /// Reveal the paper's folder in Finder (local storage only).
+    func revealInFinder(_ id: String) {
+        guard isStandalone else { return }
+        Task {
+            if let u = await storage.url(for: K.paper(id)) {
+                NSWorkspace.shared.activateFileViewerSelecting([u])
+            }
+        }
+    }
+
     @Published var papers: [String: Paper] = [:]
     @Published var selectedId: String?
     /// Global audio player shown in the bottom status bar (iTunes-style).

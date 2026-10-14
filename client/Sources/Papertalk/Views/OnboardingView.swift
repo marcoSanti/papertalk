@@ -44,6 +44,7 @@ struct OnboardingView: View {
         }
         .padding(24)
         .frame(width: 500, height: 560)
+        .tint(Color.appAccent)
         .onAppear {
             apiBase = store.config.apiBase
             token = store.config.token
@@ -58,7 +59,7 @@ struct OnboardingView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: "gearshape.2")
-                .font(.system(size: 28)).foregroundStyle(Color.accentColor)
+                .font(.system(size: 28)).foregroundStyle(Color.appAccent)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Welcome to Papertalk").font(.title2).fontWeight(.semibold)
                 Text("Set up where your papers live and which LLM writes the episodes.").font(.subheadline).foregroundStyle(.secondary)
@@ -99,7 +100,7 @@ struct OnboardingView: View {
                 HStack {
                     Image(systemName: storageMode == value ? "checkmark.circle.fill" : icon)
                         .font(.system(size: 22))
-                        .foregroundStyle(storageMode == value ? Color.accentColor : Color.secondary)
+                        .foregroundStyle(storageMode == value ? Color.appAccent : Color.secondary)
                     Spacer()
                 }
                 Text(title).font(.callout).fontWeight(.semibold)
@@ -109,8 +110,8 @@ struct OnboardingView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(RoundedRectangle(cornerRadius: 10))
             .background(RoundedRectangle(cornerRadius: 10)
-                .fill(storageMode == value ? Color.accentColor.opacity(0.10) : Color.clear))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(storageMode == value ? Color.accentColor : Color.clear, lineWidth: 1.5))
+                .fill(storageMode == value ? Color.appAccent.opacity(0.10) : Color.clear))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(storageMode == value ? Color.appAccent : Color.clear, lineWidth: 1.5))
         }
         .buttonStyle(.borderless)
         .contentShape(RoundedRectangle(cornerRadius: 10))

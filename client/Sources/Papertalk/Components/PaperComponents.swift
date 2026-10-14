@@ -36,7 +36,7 @@ struct PaperCard: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                .strokeBorder(isSelected ? Color.appAccent : Color.clear, lineWidth: 1.5)
         )
         .contextMenu { ContextMenuItems(paper: paper) }
     }
@@ -56,7 +56,7 @@ struct PaperCard: View {
                     .padding(8).background(.black.opacity(0.5), in: Circle())
             } else if !paper.read && paper.isDone {
                 Text("NEW").font(.caption2).bold().foregroundStyle(.white)
-                    .padding(.horizontal, 6).padding(.vertical, 2).background(Color.accentColor, in: Capsule())
+                    .padding(.horizontal, 6).padding(.vertical, 2).background(Color.appAccent, in: Capsule())
                     .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
             }
             if progressFraction > 0 && !paper.isActive {
@@ -65,7 +65,7 @@ struct PaperCard: View {
                         Spacer()
                         ZStack(alignment: .leading) {
                             Color.black.opacity(0.35)
-                            Color.accentColor.frame(width: geo.size.width * progressFraction)
+                            Color.appAccent.frame(width: geo.size.width * progressFraction)
                         }.frame(height: 4)
                     }
                 }
@@ -118,6 +118,13 @@ struct ContextMenuItems: View {
             store.refreshMeta(paper.id)
         } label: {
             Label("Refresh metadata", systemImage: "arrow.clockwise")
+        }
+        if store.isStandalone {
+            Button {
+                store.revealInFinder(paper.id)
+            } label: {
+                Label("Show in Finder", systemImage: "folder")
+            }
         }
         Divider()
         Button(role: .destructive) {
@@ -195,7 +202,7 @@ struct PaperListRow: View {
                         if paper.isDone {
                             Text("Done").font(.caption2).foregroundStyle(.green)
                         } else if paper.isActive {
-                            Text("Running…").font(.caption2).foregroundStyle(Color.accentColor)
+                            Text("Running…").font(.caption2).foregroundStyle(Color.appAccent)
                         } else if paper.state == "error" {
                             Text("Error").font(.caption2).foregroundStyle(.red)
                         }
@@ -211,7 +218,7 @@ struct PaperListRow: View {
         }
         .buttonStyle(.plain)
         .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.primary.opacity(0.08) : Color.clear))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isSelected ? Color.appAccent : Color.clear, lineWidth: 1.5))
         .contextMenu {
             ContextMenuItems(paper: paper)
         }

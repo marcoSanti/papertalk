@@ -61,7 +61,7 @@ struct DetailView: View {
                     .font(.title2).fontWeight(.semibold)
                 if let d = paper.depthTitle {
                     Text(d).font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.accentColor.opacity(0.15), in: Capsule())
+                        .background(Color.appAccent.opacity(0.15), in: Capsule())
                 }
                 Spacer()
                 starButton

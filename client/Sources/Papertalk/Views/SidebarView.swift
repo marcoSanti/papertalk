@@ -38,7 +38,7 @@ struct SidebarView: View {
                             }
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(store.view == .tag && store.activeTag == tag ? Color.accentColor : .primary)
+                        .foregroundStyle(store.view == .tag && store.activeTag == tag ? Color.appAccent : .primary)
                         .fontWeight(store.view == .tag && store.activeTag == tag ? .semibold : .regular)
                     }
                 }
@@ -79,7 +79,7 @@ struct SidebarView: View {
             }
         }
         .buttonStyle(.plain)
-        .foregroundStyle(store.view == view && store.activeTag == nil ? Color.accentColor : .primary)
+        .foregroundStyle(store.view == view && store.activeTag == nil ? Color.appAccent : .primary)
         .fontWeight(store.view == view && store.activeTag == nil ? .semibold : .regular)
     }
 }

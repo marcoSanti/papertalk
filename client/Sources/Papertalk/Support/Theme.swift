@@ -180,3 +180,20 @@ struct AmbientBackground: View {
         .ignoresSafeArea()
     }
 }
+
+// MARK: - Stable colours
+
+extension Color {
+    /// A deterministic, pleasant colour derived from a string (author avatars,
+    /// per-paper backdrop). Uses FNV-1a so it is stable across launches,
+    /// unlike `String.hashValue`.
+    static func stable(for key: String, saturation: Double = 0.55, brightness: Double = 0.85) -> Color {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in key.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        let hue = Double(hash % 360) / 360.0
+        return Color(hue: hue, saturation: saturation, brightness: brightness)
+    }
+}

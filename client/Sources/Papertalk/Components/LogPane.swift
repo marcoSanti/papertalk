@@ -1,44 +1,49 @@
 import SwiftUI
 
-// MARK: - Collapsible raw activity log pane (bottom of detail view)
+// MARK: - Collapsible activity log card (bottom of the inspector)
 struct LogPane: View {
     let lines: [String]
     @Binding var isOpen: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            Divider()
+        VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) { isOpen.toggle() }
+                withAnimation(.snappy) { isOpen.toggle() }
             } label: {
-                HStack {
-                    Image(systemName: "terminal").font(.caption)
-                    Text("Activity log").font(.caption).fontWeight(.semibold)
-                    Spacer()
-                    Text("\(lines.count) lines").font(.caption2).foregroundStyle(.secondary)
-                    Image(systemName: isOpen ? "chevron.down" : "chevron.up").font(.caption2).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    SectionLabel(title: "Activity", systemImage: "terminal",
+                                 trailing: lines.isEmpty ? nil : "\(lines.count)")
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
                 }
-                .padding(.horizontal, 12).padding(.vertical, 7)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .help(isOpen ? "Hide activity log" : "Show activity log")
+
             if isOpen {
                 ScrollViewReader { proxy in
                     ScrollView {
                         Text(lines.isEmpty ? "No activity yet." : lines.joined(separator: "\n"))
-                            .font(.system(.caption, design: .monospaced))
+                            .font(.system(size: 10.5, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
                             .id("bottom")
                     }
-                    .frame(maxHeight: 150)
-                    .padding(10)
-                    .onChange(of: lines.count) { _ in
+                    .frame(maxHeight: 180)
+                    .background(.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
+                    .onChange(of: lines.count) { _, _ in
                         withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
                 }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .glassCard()
     }
 }

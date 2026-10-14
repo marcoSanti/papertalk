@@ -4,6 +4,7 @@
 ![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)
 ![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF)
 ![Voices: Kokoro](https://img.shields.io/badge/voices-Kokoro%20(on--device)-D07040)
+[![Tests](https://github.com/marcoSanti/paper2pod/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/marcoSanti/paper2pod/actions/workflows/tests.yml)
 
 Papertalk turns a scientific paper into a podcast episode, right on your Mac. You give it a
 PDF; it writes a conversation between an interviewer and one of the paper's authors, then
@@ -47,7 +48,8 @@ make run
 ```
 
 This puts a debug build in `client/dist/Papertalk.app`. Use `make release` for an optimized
-build zipped to `dist/Papertalk.app.zip`. The app is only ad-hoc signed, so if macOS refuses to
+build zipped to `dist/Papertalk-<version>.zip`. Ready-made builds are on the
+[Releases](https://github.com/marcoSanti/paper2pod/releases) page. The app is only ad-hoc signed, so if macOS refuses to
 open a copy you've moved to another Mac, right-click it and choose **Open**.
 
 On first launch a short setup asks where your library should live (on this Mac, or on a
@@ -122,3 +124,55 @@ As the note at the top says, there are rough edges, and help is very welcome. Th
 `client/` (a Swift package), the storage server in `server/`. `client/UI_ISSUES.md` lists known
 UI problems and what's already been fixed. If you report a bug, the **Activity** log in the
 paper's details panel is the most useful thing to include.
+
+### Running the tests
+
+```bash
+cd client
+make test        # or: swift test --disable-swift-testing
+```
+
+The suite runs in about ten seconds and needs nothing external: no LLM server, no network, no
+Keychain, no voice models, and it never touches your real library. LLM replies come from an
+in-process mock, the storage server is faked, and each test uses its own temporary folder. A
+built-in guard fails any test that tries to reach a real server, so a test can't quietly start
+calling one.
+
+The SwiftUI views contain only layout: every rule they display (labels, validation, which
+controls are enabled, how authors are grouped, what the player shows) lives in plain Swift types
+under `client/Sources/Papertalk/Presentation/`, so it can be tested without running the UI.
+
+It covers the presentation layer, the library (filtering, search, sorting, authors, tags, edits
+and how they're saved, deleting), the storage backends, the LLM steps (metadata, casting, outline, dialogue and
+monologue, episode length per depth), voice choice, playback timing, settings and the data
+formats on disk. Speech synthesis itself isn't tested, since it needs the Kokoro model and the
+Neural Engine. When you fix a bug, add a test that fails without the fix.
+
+`make coverage` runs the same suite with code coverage, using only the Xcode toolchain, and
+writes the results to `coverage/` (a per-file table, `report.txt` and `lcov.info` for editors). Coverage is reported two ways: **logic** (models, controllers, helpers), which is what the
+tests are meant to protect, and **all code**, which also counts the SwiftUI views that have no UI
+tests yet.
+
+No coverage service is involved: on GitHub, each test run shows the coverage table on its
+summary page, with the full report attached to the run.
+
+### Pull requests, versions and releases
+
+Work happens on branches and lands on `main` through pull requests. GitHub Actions builds the app
+and runs the tests on every pull request and on every push to `main`
+(`.github/workflows/tests.yml`).
+
+Versions follow [semantic versioning](https://semver.org) and live in the `VERSION` file at the
+root (starting at `0.0.1`); the build stamps it into the app. To cut a release:
+
+```bash
+make -C client bump-patch     # or bump-minor / bump-major; open a PR with the new VERSION
+# after that PR is merged, on an up-to-date main:
+make -C client tag            # creates the tag v<version>
+git push origin v0.0.2        # the tag it printed
+```
+
+Pushing the tag runs `.github/workflows/release.yml`: it checks the tag matches `VERSION`, runs
+the tests, builds the optimized app and publishes a GitHub release with
+`Papertalk-<version>.zip` and its SHA-256 checksum. Versions below 1.0 are marked as
+pre-releases.

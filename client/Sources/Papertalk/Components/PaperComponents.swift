@@ -9,9 +9,6 @@ struct PaperCard: View {
     @State private var hovering = false
 
     private var isSelected: Bool { store.selectedId == paper.id }
-    private var listenFraction: Double {
-        paper.duration > 0 && paper.progress > 0 ? min(1, paper.progress / paper.duration) : 0
-    }
     private var tileShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: Theme.tileRadius, style: .continuous)
     }
@@ -28,7 +25,7 @@ struct PaperCard: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                         .foregroundStyle(isSelected ? Color.appAccent : Color.primary)
-                    Text(subtitle)
+                    Text(PaperPresentation.cardSubtitle(paper))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -43,13 +40,6 @@ struct PaperCard: View {
             withAnimation(.snappy(duration: 0.2)) { hovering = h }
         }
         .contextMenu { ContextMenuItems(paper: paper) }
-    }
-
-    private var subtitle: String {
-        if let first = paper.authors.first {
-            return paper.authors.count > 1 ? "\(first) et al." : first
-        }
-        return paper.depthTitle ?? paper.filename ?? ""
     }
 
     private var cover: some View {
@@ -78,9 +68,9 @@ struct PaperCard: View {
     }
 
     @ViewBuilder private var topLeadingBadge: some View {
-        if paper.isError || paper.isActive {
+        if PaperPresentation.showsStatusBadgeOnCover(paper) {
             StatusBadge(paper: paper, compact: true)
-        } else if !paper.read && paper.isDone {
+        } else if PaperPresentation.isNew(paper) {
             Text("NEW")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.white)
@@ -92,7 +82,7 @@ struct PaperCard: View {
 
     /// Conversion progress while running, otherwise listening progress.
     @ViewBuilder private var progressStrip: some View {
-        let value = paper.isActive ? min(1, max(0.02, paper.progress)) : listenFraction
+        let value = PaperPresentation.progressStrip(paper)
         if value > 0 {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -164,16 +154,16 @@ struct ContextMenuItems: View {
             Label("Open", systemImage: "arrow.up.forward.app")
         }
         Divider()
+        let favorite = PaperPresentation.favoriteToggle(paper)
         Button {
             store.toggleFavorite(paper.id)
         } label: {
-            Label(paper.favorite ? "Remove from favorites" : "Add to favorites",
-                  systemImage: paper.favorite ? "star.fill" : "star")
+            Label(favorite.title, systemImage: favorite.icon)
         }
         Button {
             store.toggleRead(paper.id)
         } label: {
-            Label(paper.read ? "Mark as unlistened" : "Mark as listened", systemImage: "checkmark.circle")
+            Label(PaperPresentation.listenedToggle(paper).title, systemImage: "checkmark.circle")
         }
         Divider()
         Button {
@@ -182,15 +172,11 @@ struct ContextMenuItems: View {
             Label("Edit metadata…", systemImage: "pencil")
         }
         Button {
-            if paper.hasScript || paper.hasAudio {
-                store.pendingConfirmation = .rerun(paper)
-            } else {
-                store.rerun(paper.id)
-            }
+            store.requestRerun(paper)
         } label: {
             Label("Rerun episode", systemImage: "arrow.counterclockwise")
         }
-        .disabled(paper.isActive)
+        .disabled(!PaperPresentation.canRerun(paper))
         Button {
             store.refreshMeta(paper.id)
         } label: {
@@ -232,7 +218,7 @@ struct PaperListRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    if !paper.read && paper.isDone {
+                    if PaperPresentation.isNew(paper) {
                         Circle().fill(Color.appAccent).frame(width: 7, height: 7)
                             .help("Not listened yet")
                     }
@@ -240,7 +226,7 @@ struct PaperListRow: View {
                         .font(.body.weight(.medium))
                         .lineLimit(1)
                 }
-                Text(paper.authors.isEmpty ? (paper.filename ?? "—") : paper.authors.joined(separator: ", "))
+                Text(PaperPresentation.listSubtitle(paper))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -255,8 +241,8 @@ struct PaperListRow: View {
                 Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow)
             }
             StatusBadge(paper: paper, compact: true)
-            if let iso = paper.publishedIso {
-                Text(formatDate(iso))
+            if let date = PaperPresentation.publishedDate(paper) {
+                Text(date)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: 86, alignment: .trailing)

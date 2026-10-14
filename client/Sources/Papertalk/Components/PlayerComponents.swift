@@ -26,25 +26,27 @@ struct PlayerBar: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 6)
-                    Text("\(formatT(displayTime)) / \(formatT(player.duration))")
+                    Text(PlayerBarPresentation.timeLabel(displayTime, of: player.duration))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .fixedSize()
                 }
-                if player.isRendering {
+                switch PlayerBarPresentation.line(isRendering: player.isRendering, error: player.renderError,
+                                                  renderedCount: player.renderedCount) {
+                case .preparing(let note):
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
-                        Text("Preparing the first section…").font(.caption).foregroundStyle(.secondary)
+                        Text(note).font(.caption).foregroundStyle(.secondary)
                     }
                     .frame(height: 14)
-                } else if let err = player.renderError, player.renderedCount == 0 {
+                case .failed(let err):
                     Label(err, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.red)
                         .lineLimit(1)
                         .help(err)
                         .frame(height: 14)
-                } else {
+                case .scrubber:
                     Slider(
                         value: Binding(
                             get: { isScrubbing ? scrubValue : player.currentTime },
@@ -67,25 +69,20 @@ struct PlayerBar: View {
     private var displayTime: Double { isScrubbing ? scrubValue : player.currentTime }
 
     private var turnLabel: String {
-        guard player.turnCount > 0 else { return "" }
-        if player.isBuffering { return "· preparing the next section…" }
-        let base = "· \(max(activeTurn + 1, 1)) of \(player.turnCount)"
-        // Live render still running: show how far the voices have got.
-        if player.renderedCount < player.turnCount, player.renderError == nil {
-            return base + " · voiced \(player.renderedCount)"
-        }
-        return base
+        PlayerBarPresentation.turnLabel(activeTurn: activeTurn, turnCount: player.turnCount,
+                                        renderedCount: player.renderedCount,
+                                        isBuffering: player.isBuffering, hasError: player.renderError != nil)
     }
 
     private var transport: some View {
         GlassEffectContainer(spacing: 6) {
             HStack(spacing: 6) {
                 skipButton(-1, systemImage: "backward.fill", help: "Previous turn",
-                           enabled: (player.activeTurn >= 0 ? player.activeTurn : 0) > 0)
+                           enabled: PlayerBarPresentation.canSkipBack(activeTurn: player.activeTurn))
                 Button {
                     player.playPause()
                 } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    Image(systemName: PlayerBarPresentation.playButton(isPlaying: player.isPlaying).icon)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
                         .contentTransition(.symbolEffect(.replace))
@@ -93,10 +90,11 @@ struct PlayerBar: View {
                         .glassEffect(.regular.tint(Color.appAccent).interactive(), in: Circle())
                 }
                 .buttonStyle(.plain)
-                .disabled(player.isRendering || player.turnCount == 0)
-                .help(player.isPlaying ? "Pause" : "Play")
+                .disabled(!PlayerBarPresentation.canPlay(isRendering: player.isRendering, turnCount: player.turnCount))
+                .help(PlayerBarPresentation.playButton(isPlaying: player.isPlaying).help)
                 skipButton(1, systemImage: "forward.fill", help: "Next turn",
-                           enabled: player.activeTurn + 1 < player.turnCount)
+                           enabled: PlayerBarPresentation.canSkipForward(activeTurn: player.activeTurn,
+                                                                         turnCount: player.turnCount))
             }
         }
     }
@@ -122,18 +120,13 @@ struct BottomBar: View {
     @EnvironmentObject private var store: AppStore
     @ObservedObject var player: PlayerController
 
-    /// The paper the player currently holds (falls back to the selection).
-    private var paper: Paper? {
-        store.playingPaperId.flatMap { store.papers[$0] } ?? store.selectedPaper()
-    }
-
     var body: some View {
-Group {
-            // A loaded/playing paper earns its pane beside the import. Merely
-            // selecting (or resuming) a paper must not squat in the bar.
-            if let run = store.activeRun,
-               let playing = store.playingPaperId.flatMap({ store.papers[$0] }),
-               playing.id != run.id {
+        let content = BottomBarContent(activeImport: store.activeRun,
+                                       playing: store.playingPaperId.flatMap { store.papers[$0] },
+                                       selected: store.selectedPaper())
+        Group {
+            switch content {
+            case .playerAndImport(let playing, let run):
                 capsule(maxWidth: 1100) {
                     HStack(spacing: 16) {
                         playPane(playing)
@@ -141,26 +134,27 @@ Group {
                         importPane(run)
                     }
                 }
-            } else if let run = store.activeRun {
+            case .importOnly(let run):
                 capsule { importProgress(run) }
-            } else if let paper {
+            case .player(let paper):
                 capsule { playPane(paper) }
+            case .hidden:
+                EmptyView()
             }
         }
-        .animation(.spring(duration: 0.35), value: store.activeRun?.id)
-        .animation(.spring(duration: 0.35), value: paper?.id)
+        .animation(.spring(duration: 0.35), value: content)
     }
 
     @ViewBuilder
     private func playPane(_ paper: Paper) -> some View {
         pane {
-            if player.turnCount > 0 || player.isRendering {
+            switch PlayerPane(paper: paper, playerHasAudio: player.turnCount > 0 || player.isRendering) {
+            case .loaded:
                 PlayerBar(player: player,
                           onSeek: { player.seek(toTime: $0) },
                           activeTurn: player.activeTurn,
                           paper: paper)
-            } else if !paper.isActive && (paper.hasScript || paper.hasAudio) {
-                // Playable but not loaded yet: offer play instead of "no audio".
+            case .ready(let playTitle, let detail):
                 HStack(spacing: 12) {
                     Button {
                         store.togglePlayback(paper.id)
@@ -172,22 +166,22 @@ Group {
                             .glassEffect(.regular.tint(Color.appAccent).interactive(), in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .help(paper.progress > 1 ? "Resume" : "Play")
+                    .help(playTitle)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(paper.displayTitle)
                             .font(.callout.weight(.semibold))
                             .lineLimit(1)
-                        Text(readyLabel(paper))
+                        Text(detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                 }
-            } else {
+            case .unavailable(let reason):
                 HStack(spacing: 10) {
                     Image(systemName: "waveform.slash")
                         .foregroundStyle(.secondary)
-                    Text(paper.isActive ? "Episode is being produced…" : "No episode for this paper yet")
+                    Text(reason)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -195,13 +189,6 @@ Group {
                 .frame(height: 28)
             }
         }
-    }
-
-    private func readyLabel(_ p: Paper) -> String {
-        if p.progress > 1, p.duration > 0 {
-            return "Resume at \(formatT(p.progress)) of \(formatT(p.duration))"
-        }
-        return p.duration > 0 ? "\(formatT(p.duration)) episode" : "Ready to play"
     }
 
     private func importPane(_ run: Paper) -> some View {
@@ -232,12 +219,11 @@ Group {
 
     private func importProgress(_ p: Paper) -> some View {
         HStack(spacing: 12) {
-            if store.activeRuns.count > 1 {
+            if let counter = ImportProgressPresentation.counter(index: store.activeRunIndex, count: store.activeRuns.count) {
                 VStack(spacing: 8) {
                     arrowButton("chevron.up", -1)
                     arrowButton("chevron.down", 1)
-                    let n = store.activeRuns.count
-                    Text("\((store.activeRunIndex % n) + 1)/\(n)")
+                    Text(counter)
                         .font(.system(size: 9).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -255,7 +241,7 @@ Group {
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
-                    Text(stageLabel(p.stage ?? "extract"))
+                    Text(ImportProgressPresentation.stage(p))
                         .font(.callout.weight(.semibold))
                         .lineLimit(1)
                     Text("· " + p.displayTitle)
@@ -268,12 +254,12 @@ Group {
                             .buttonStyle(.glass)
                             .controlSize(.small)
                     } else {
-                        Text("\(Int((max(0.02, p.progress) * 100).rounded()))%")
+                        Text(ConversionPresentation.percentLabel(p.progress))
                             .font(.callout.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }
-                ProgressView(value: min(1, max(0.02, p.progress)))
+                ProgressView(value: ConversionPresentation.barValue(p.progress))
                     .progressViewStyle(.linear)
                     .tint(Color.appAccent)
                     .controlSize(.small)
@@ -296,17 +282,6 @@ Group {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(store.activeRuns.count <= 1)
         .help(delta < 0 ? "Previous import" : "Next import")
-    }
-}
-
-// MARK: - Highlight active word within a cue by current time
-struct WordHighlighter: View {
-    let tokens: [String]
-    var body: some View { Text(joined) }
-    private var joined: AttributedString {
-        // Without live word timing, show plain text (words already space-joined).
-        AttributedString(tokens.joined(separator: " "))
     }
 }

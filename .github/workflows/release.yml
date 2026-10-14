@@ -1,0 +1,84 @@
+name: Release
+
+# Pushing a tag v<VERSION> (e.g. `make -C client tag && git push origin v0.0.2`)
+# tests the tagged commit, builds the optimized app and publishes a GitHub
+# release with the zipped Papertalk.app attached.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write   # create the release and upload the zip
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for the generated release notes
+
+      - name: Tag must match VERSION
+        run: ../scripts/version.sh check-tag "${GITHUB_REF_NAME}"
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: |
+            client/.build
+            ~/Library/Caches/org.swift.swiftpm
+          key: spm-release-${{ runner.os }}-${{ hashFiles('client/Package.resolved', 'client/Package.swift') }}
+          restore-keys: spm-release-${{ runner.os }}-
+
+      - name: Test
+        run: make test
+
+      - name: Build release
+        run: make release
+
+      - name: Checksum
+        id: artifact
+        run: |
+          VERSION="$(make -s version)"
+          ZIP="dist/Papertalk-${VERSION}.zip"
+          shasum -a 256 "$ZIP" | tee "${ZIP}.sha256"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "zip=client/${ZIP}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.artifact.outputs.version }}
+          ZIP: ${{ steps.artifact.outputs.zip }}
+        run: |
+          cat > notes.md <<EOF
+          Papertalk ${VERSION} for macOS 26 or later.
+
+          Download \`Papertalk-${VERSION}.zip\`, unzip it and move **Papertalk.app** to Applications.
+          The app is only ad-hoc signed, so the first time macOS may refuse to open it:
+          right-click the app and choose **Open**.
+
+          > This app is vibecoded. I had the need not the time. bugs are expected and help is appreciated
+          EOF
+          PRERELEASE=""
+          case "$VERSION" in 0.*) PRERELEASE="--prerelease" ;; esac
+          gh release create "${GITHUB_REF_NAME}" "$ZIP" "${ZIP}.sha256" \
+            --title "Papertalk ${VERSION}" \
+            --notes-file notes.md \
+            --generate-notes \
+            $PRERELEASE

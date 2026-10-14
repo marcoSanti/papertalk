@@ -14,7 +14,6 @@ struct DetailView: View {
     let paper: Paper
     var onEdit: () -> Void
 
-    @State private var transcript: Transcript?
     /// The sheet is driven by the loaded transcript itself, so it can never
     /// render before the data arrives (an `isPresented` flag + separate state
     /// could show the empty branch).
@@ -36,11 +35,11 @@ struct DetailView: View {
                 hero
                 QuickActionBar(player: store.player, paper: paper,
                                onPDF: openPDF, onTranscript: openTranscript, onEdit: onEdit)
-                if paper.isActive || paper.isError {
+                if PaperPresentation.showsConversionCard(paper) {
                     ConversionStatusCard(paper: paper)
                         .transition(.blurReplace)
                 }
-                if paper.hasScript || paper.hasAudio {
+                if PaperPresentation.showsEpisodeCard(paper) {
                     EpisodeCard(player: store.player, paper: paper)
                 }
                 if !paper.authors.isEmpty { authorsCard }
@@ -78,21 +77,13 @@ struct DetailView: View {
     private func load(_ p: Paper) {
         guard shownID != p.id else { return }
         shownID = p.id
-        transcript = nil
         titleDraft = p.displayTitle
         showAllAuthors = false
         showLog = p.isActive
-        Task {
-            transcript = await store.transcript(for: p.id)
-        }
     }
 
     private func commitTitle() {
-        let clean = titleDraft.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespaces)
-        guard !clean.isEmpty else { titleDraft = paper.displayTitle; return }
-        if clean != paper.displayTitle { store.saveTitle(paper.id, clean) }
-        titleDraft = clean
+        titleDraft = store.commitTitleEdit(paper.id, draft: titleDraft)
     }
 
     // MARK: - Hero
@@ -109,7 +100,7 @@ struct DetailView: View {
                 .shadow(color: .black.opacity(0.28), radius: 18, y: 10)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { openPDF() }
-                .help(paper.hasPdf ? "Double-click to open the PDF" : "")
+                .help(PaperPresentation.coverHelp(paper))
 
             VStack(spacing: 6) {
                 TextField("Untitled", text: $titleDraft, axis: .vertical)
@@ -123,7 +114,7 @@ struct DetailView: View {
                     .help("Click to rename")
 
                 if !paper.authors.isEmpty {
-                    Text(authorLine)
+                    Text(PaperPresentation.authorLine(paper.authors))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -136,19 +127,14 @@ struct DetailView: View {
                 if let d = paper.depthTitle {
                     pill(d, icon: "dial.medium")
                 }
-                if let iso = paper.publishedIso, !formatDate(iso).isEmpty {
-                    pill(formatDate(iso), icon: "calendar")
+                if let date = PaperPresentation.publishedDate(paper) {
+                    pill(date, icon: "calendar")
                 }
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 22)
         .padding(.bottom, 4)
-    }
-
-    private var authorLine: String {
-        let a = paper.authors
-        return a.count > 3 ? a.prefix(3).joined(separator: ", ") + " et al." : a.joined(separator: ", ")
     }
 
     private func pill(_ text: String, icon: String) -> some View {
@@ -163,9 +149,9 @@ struct DetailView: View {
     // MARK: - Authors
 
     private var authorsCard: some View {
-        let visible = showAllAuthors ? paper.authors : Array(paper.authors.prefix(5))
+        let visible = PaperPresentation.visibleAuthors(paper.authors, showAll: showAllAuthors)
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "Authors", systemImage: "person.2", trailing: "\(paper.authors.count)")
+            SectionLabel(title: "Authors", systemImage: "person.2", trailing: LibraryPresentation.badge(paper.authors.count))
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(visible.enumerated()), id: \.offset) { _, name in
                     AuthorRow(name: name, paperCount: store.papersByAuthor[AuthorName.clean(name)]?.count ?? 1) {
@@ -173,8 +159,8 @@ struct DetailView: View {
                     }
                 }
             }
-            if paper.authors.count > 5 {
-                Button(showAllAuthors ? "Show fewer" : "Show all \(paper.authors.count) authors") {
+            if let toggle = PaperPresentation.authorsToggleTitle(count: paper.authors.count, showingAll: showAllAuthors) {
+                Button(toggle) {
                     withAnimation(.snappy) { showAllAuthors.toggle() }
                 }
                 .buttonStyle(.link)
@@ -202,7 +188,7 @@ struct DetailView: View {
                 if !paper.doi.isEmpty {
                     detailRow("DOI") {
                         HStack(spacing: 6) {
-                            if let url = URL(string: "https://doi.org/\(paper.doi)") {
+                            if let url = PaperPresentation.doiURL(paper.doi) {
                                 Link(paper.doi, destination: url).lineLimit(1).truncationMode(.middle)
                             } else {
                                 Text(paper.doi)
@@ -224,8 +210,8 @@ struct DetailView: View {
                 detailRow("File") {
                     Text(paper.filename ?? "—").lineLimit(1).truncationMode(.middle)
                 }
-                if let iso = paper.publishedIso, !formatDate(iso).isEmpty {
-                    detailRow("Published") { Text(formatDate(iso)) }
+                if let date = PaperPresentation.publishedDate(paper) {
+                    detailRow("Published") { Text(date) }
                 }
                 if paper.duration > 0 {
                     detailRow("Length") { Text(formatT(paper.duration)) }
@@ -259,24 +245,22 @@ struct DetailView: View {
             .labelStyle(.titleAndIcon)
             .font(.caption)
             .foregroundStyle(present ? AnyShapeStyle(HierarchicalShapeStyle.primary) : AnyShapeStyle(HierarchicalShapeStyle.tertiary))
-            .help(present ? "\(label) available" : "No \(label.lowercased()) yet")
+            .help(PaperPresentation.assetHelp(label, present: present))
     }
 
     // MARK: - Tags
 
     private var tagsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "Tags", systemImage: "number", trailing: paper.tags.isEmpty ? nil : "\(paper.tags.count)")
+            SectionLabel(title: "Tags", systemImage: "number", trailing: LibraryPresentation.badge(paper.tags.count))
             FlowTags(
                 tags: paper.tags,
-                onSelect: { tag in
-                    store.view = .tag
-                    store.activeTag = tag
-                },
+                onSelect: { store.showTag($0) },
                 onRemove: { store.removeTag(paper.id, $0) }
             ) {
                 TagEntryField { store.addTag(paper.id, $0) }
             }
+            let suggestedTags = PaperPresentation.suggestedTags(for: paper, tagCounts: store.tagCounts)
             if !suggestedTags.isEmpty {
                 HStack(spacing: 6) {
                     Text("Suggested").font(.caption2).foregroundStyle(.tertiary)
@@ -299,15 +283,6 @@ struct DetailView: View {
         .glassCard()
     }
 
-    /// Most-used library tags this paper doesn't have yet.
-    private var suggestedTags: [String] {
-        store.tagCounts
-            .filter { !paper.tags.contains($0.0) }
-            .sorted { $0.1 > $1.1 }
-            .prefix(5)
-            .map { $0.0 }
-    }
-
     // MARK: - Manage
 
     private var manageCard: some View {
@@ -319,22 +294,18 @@ struct DetailView: View {
                           icon: "waveform.badge.magnifyingglass", tint: .appAccent) {
                     store.regenerateAudio(paper.id)
                 }
-                .disabled(!paper.hasScript || store.activeRun != nil)
+                .disabled(!PaperPresentation.canRegenerateAudio(paper, anyConversionRunning: store.activeRun != nil))
                 ManageRow(title: "Rerun episode", subtitle: "Write a new script from the PDF",
                           icon: "arrow.counterclockwise", tint: .indigo) {
-                    if paper.hasScript || paper.hasAudio {
-                        store.pendingConfirmation = .rerun(paper)
-                    } else {
-                        store.rerun(paper.id)
-                    }
+                    store.requestRerun(paper)
                 }
-                .disabled(paper.isActive)
+                .disabled(!PaperPresentation.canRerun(paper))
                 ManageRow(title: "Refresh metadata", subtitle: "Re-extract title, authors and DOI",
                           icon: "arrow.clockwise", tint: .teal) {
                     store.refreshMeta(paper.id)
                 }
-                ManageRow(title: paper.read ? "Mark as unlistened" : "Mark as listened",
-                          subtitle: nil, icon: paper.read ? "circle" : "checkmark.circle", tint: .green) {
+                let listened = PaperPresentation.listenedToggle(paper)
+                ManageRow(title: listened.title, subtitle: nil, icon: listened.icon, tint: .green) {
                     store.toggleRead(paper.id)
                 }
                 if store.isStandalone {
@@ -364,9 +335,7 @@ struct DetailView: View {
     private func openTranscript() {
         Task {
             // Always read the current file: a rerun may have replaced it.
-            let fresh = await store.transcript(for: paper.id) ?? transcript
-            transcript = fresh
-            transcriptSheet = TranscriptSheet(transcript: fresh)
+            transcriptSheet = TranscriptSheet(transcript: await store.transcript(for: paper.id))
         }
     }
 }
@@ -413,21 +382,20 @@ private struct QuickActionBar: View {
     var onTranscript: () -> Void
     var onEdit: () -> Void
 
-    private var isCurrent: Bool { store.playingPaperId == paper.id }
-    private var isPlaying: Bool { isCurrent && player.isPlaying }
-    private var isPreparing: Bool { isCurrent && player.isRendering }
+    private var isLoaded: Bool { store.playingPaperId == paper.id }
 
     var body: some View {
+        let play = PaperPresentation.playButton(paper, isPlaying: isLoaded && player.isPlaying)
+        let favorite = PaperPresentation.favoriteButton(paper)
         GlassEffectContainer(spacing: 14) {
             HStack(alignment: .top, spacing: 0) {
-                action(isPlaying ? "Pause" : (paper.progress > 1 && !isPlaying ? "Resume" : "Play"),
-                       icon: isPlaying ? "pause.fill" : "play.fill",
-                       prominent: true, busy: isPreparing, enabled: paper.hasScript || paper.hasAudio,
+                action(play.title, icon: play.icon,
+                       prominent: true, busy: isLoaded && player.isRendering,
+                       enabled: PaperPresentation.isPlayable(paper),
                        perform: togglePlay)
                 action("PDF", icon: "doc.text", enabled: paper.hasPdf, perform: onPDF)
                 action("Transcript", icon: "text.quote", enabled: paper.hasScript, perform: onTranscript)
-                action(paper.favorite ? "Favorited" : "Favorite",
-                       icon: paper.favorite ? "star.fill" : "star",
+                action(favorite.title, icon: favorite.icon,
                        iconColor: paper.favorite ? Color.yellow : nil) {
                     withAnimation(.snappy) { store.toggleFavorite(paper.id) }
                 }
@@ -481,18 +449,7 @@ private struct ConversionStatusCard: View {
     @EnvironmentObject private var store: AppStore
     let paper: Paper
 
-    private static let stages: [(key: String, label: String)] = [
-        ("extract", "Extract text"),
-        ("notes", "Summarize"),
-        ("outline", "Plan episode"),
-        ("segments", "Write dialogue"),
-        ("audio", "Synthesize voices"),
-        ("finalize", "Finalize"),
-    ]
-
-    private var currentIndex: Int {
-        Self.stages.firstIndex { $0.key == (paper.stage ?? "") } ?? 0
-    }
+    private var currentIndex: Int { ConversionPresentation.currentStage(paper.stage) }
 
     var body: some View {
         if paper.isError { errorBody } else { runningBody }
@@ -501,27 +458,26 @@ private struct ConversionStatusCard: View {
     private var runningBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionLabel(title: "Converting", systemImage: "gearshape.2",
-                         trailing: "\(Int((max(0.02, paper.progress) * 100).rounded()))%")
-            ProgressView(value: min(1, max(0.02, paper.progress)))
+                         trailing: ConversionPresentation.percentLabel(paper.progress))
+            ProgressView(value: ConversionPresentation.barValue(paper.progress))
                 .tint(.appAccent)
                 .animation(.easeInOut(duration: 0.25), value: paper.progress)
             VStack(alignment: .leading, spacing: 7) {
-                ForEach(Array(Self.stages.enumerated()), id: \.offset) { i, s in
+                ForEach(Array(ConversionPresentation.stages.enumerated()), id: \.offset) { i, s in
+                    let state = ConversionPresentation.state(ofStage: i, current: currentIndex)
                     HStack(spacing: 8) {
                         Group {
-                            if i < currentIndex {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                            } else if i == currentIndex {
-                                ProgressView().controlSize(.mini)
-                            } else {
-                                Image(systemName: "circle").foregroundStyle(.tertiary)
+                            switch state {
+                            case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            case .current: ProgressView().controlSize(.mini)
+                            case .pending: Image(systemName: "circle").foregroundStyle(.tertiary)
                             }
                         }
                         .frame(width: 16)
                         Text(s.label)
-                            .font(.callout.weight(i == currentIndex ? .semibold : .regular))
-                            .foregroundStyle(i > currentIndex ? AnyShapeStyle(HierarchicalShapeStyle.tertiary)
-                                                              : AnyShapeStyle(HierarchicalShapeStyle.primary))
+                            .font(.callout.weight(state == .current ? .semibold : .regular))
+                            .foregroundStyle(state == .pending ? AnyShapeStyle(HierarchicalShapeStyle.tertiary)
+                                                               : AnyShapeStyle(HierarchicalShapeStyle.primary))
                         Spacer()
                     }
                 }
@@ -541,7 +497,7 @@ private struct ConversionStatusCard: View {
             Label("Conversion failed", systemImage: "exclamationmark.triangle.fill")
                 .font(.headline)
                 .foregroundStyle(.red)
-            Text(paper.statusError ?? paper.message ?? "Something went wrong while converting this paper.")
+            Text(PaperPresentation.failureMessage(paper))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
@@ -569,25 +525,22 @@ private struct EpisodeCard: View {
     @ObservedObject var player: PlayerController
     let paper: Paper
 
-    private var isCurrent: Bool { store.playingPaperId == paper.id }
-    private var position: Double {
-        isCurrent && (player.currentTime > 0 || player.isPlaying) ? player.currentTime : paper.progress
-    }
-    private var length: Double {
-        isCurrent && player.duration > 0 ? player.duration : paper.duration
-    }
-    private var fraction: Double { length > 0 ? min(1, max(0, position / length)) : 0 }
+    private var isLoaded: Bool { store.playingPaperId == paper.id }
 
     var body: some View {
+        let progress = EpisodeProgress(paper: paper, isLoaded: isLoaded, playerTime: player.currentTime,
+                                       playerDuration: player.duration, playerIsPlaying: player.isPlaying)
+        let fraction = progress.fraction
+        let status = PlaybackStatus.forPaper(isLoaded: isLoaded, isRendering: player.isRendering,
+                                             isBuffering: player.isBuffering, error: player.renderError)
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "Episode", systemImage: "headphones",
-                         trailing: length > 0 ? "\(Int((fraction * 100).rounded()))%" : nil)
+            SectionLabel(title: "Episode", systemImage: "headphones", trailing: progress.percentLabel)
             HStack(alignment: .firstTextBaseline) {
-                Text(headline)
+                Text(progress.headline)
                     .font(.title3.weight(.semibold))
                 Spacer()
-                if isCurrent && player.turnCount > 0 && player.activeTurn >= 0 {
-                    Text("Turn \(player.activeTurn + 1) of \(player.turnCount)")
+                if isLoaded, let turn = EpisodeProgress.turnLabel(activeTurn: player.activeTurn, turnCount: player.turnCount) {
+                    Text(turn)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -603,23 +556,21 @@ private struct EpisodeCard: View {
             .frame(height: 6)
             .animation(.linear(duration: 0.2), value: fraction)
             HStack {
-                Text(formatT(position)).monospacedDigit()
+                Text(progress.elapsedLabel).monospacedDigit()
                 Spacer()
-                Text(length > 0 ? "−" + formatT(max(0, length - position)) : "–:––").monospacedDigit()
+                Text(progress.remainingLabel).monospacedDigit()
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-            if isCurrent, player.isRendering {
-                Label("Preparing the first section…", systemImage: "waveform")
+            switch status {
+            case .idle:
+                EmptyView()
+            case .preparingFirstSection, .preparingNextSection:
+                Label(status.message ?? "", systemImage: "waveform")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .symbolEffect(.variableColor.iterative)
-            } else if isCurrent, player.isBuffering {
-                Label("Preparing the next section…", systemImage: "waveform")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .symbolEffect(.variableColor.iterative)
-            } else if isCurrent, let err = player.renderError {
+            case .failed(let err):
                 Label(err, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -629,13 +580,6 @@ private struct EpisodeCard: View {
         .glassCard()
     }
 
-    private var headline: String {
-        if length <= 0 { return paper.hasAudio ? "Ready to play" : "Script ready" }
-        if paper.read && position <= 0.5 { return "Listened" }
-        if position <= 0.5 { return "\(Int((length / 60).rounded())) min episode" }
-        let left = max(0, length - position)
-        return left < 60 ? "Almost done" : "\(Int((left / 60).rounded())) min left"
-    }
 }
 
 // MARK: - Small pieces
@@ -646,8 +590,7 @@ private struct CopyButton: View {
 
     var body: some View {
         Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(value, forType: .string)
+            Clipboard.copy(value)
             withAnimation(.snappy) { copied = true }
             Task {
                 try? await Task.sleep(nanoseconds: 1_400_000_000)
@@ -687,8 +630,7 @@ private struct CitationView: View {
             HStack {
                 Spacer()
                 Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(bibtex, forType: .string)
+                    Clipboard.copy(bibtex)
                     copied = true
                     Task {
                         try? await Task.sleep(nanoseconds: 1_400_000_000)
@@ -789,8 +731,7 @@ private struct TagEntryField: View {
     }
 
     private func submit() {
-        let t = text.trimmingCharacters(in: .whitespaces)
-        if !t.isEmpty { onAdd(t) }
+        onAdd(text)   // the store tidies the tag and ignores blanks
         text = ""
     }
 }
@@ -808,8 +749,8 @@ private struct AuthorRow: View {
                 AuthorAvatar(name: name)
                 Text(name).font(.callout).lineLimit(1)
                 Spacer(minLength: 0)
-                if paperCount > 1 {
-                    Text("\(paperCount) papers")
+                if let others = PaperPresentation.otherPapersLabel(paperCount) {
+                    Text(others)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -826,8 +767,7 @@ private struct AuthorRow: View {
         .help("Show all papers by \(name)")
         .contextMenu {
             Button("Copy name") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(name, forType: .string)
+                Clipboard.copy(name)
             }
         }
     }

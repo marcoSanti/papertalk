@@ -3,7 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
     @AppStorage("papertalk.showInspector") private var showInspector = true
-    @AppStorage("papertalk.inspectorWidth") private var inspectorWidth: Double = 340
+    @AppStorage("papertalk.inspectorWidth") private var inspectorWidth: Double = InspectorLayout.defaultWidth
 
     var body: some View {
         NavigationSplitView {
@@ -25,7 +25,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if showInspector {
-                    InspectorResizeHandle(width: $inspectorWidth, range: 300...520)
+                    InspectorResizeHandle(width: $inspectorWidth)
                     inspectorContent
                         .frame(width: inspectorWidth)
                 }
@@ -51,31 +51,20 @@ struct ContentView: View {
                 CastSheet(paperTitle: p.paperTitle, proposals: p.proposals, authors: p.authors, authorGenders: p.authorGenders)
             }
         }
-        .confirmationDialog(confirmationTitle, isPresented: confirmationShown,
+        .confirmationDialog(store.pendingConfirmation.map { ConfirmationText($0).title } ?? "",
+                            isPresented: confirmationShown,
                             titleVisibility: .visible, presenting: store.pendingConfirmation) { pending in
-            switch pending {
-            case .delete(let p):
-                Button("Delete paper", role: .destructive) { store.delete(p.id) }
-            case .rerun(let p):
-                Button("Rerun episode", role: .destructive) { store.rerun(p.id) }
-            }
+            Button(ConfirmationText(pending).confirmLabel, role: .destructive) { store.confirmPending(pending) }
             Button("Cancel", role: .cancel) {}
         } message: { pending in
-            switch pending {
-            case .delete:
-                Text("The PDF, transcript and generated audio are removed from the library. This can’t be undone.")
-            case .rerun:
-                Text("The current script and audio are replaced with a newly written episode.")
-            }
+            Text(ConfirmationText(pending).message)
         }
-        .confirmationDialog(duplicateTitle, isPresented: duplicateShown,
+        .confirmationDialog(duplicateText?.title ?? "", isPresented: duplicateShown,
                             titleVisibility: .visible) {
-            Button("Import anyway") { store.resolveDuplicate(true) }
+            Button(duplicateText?.confirmLabel ?? "") { store.resolveDuplicate(true) }
             Button("Cancel", role: .cancel) { store.resolveDuplicate(false) }
         } message: {
-            if let d = store.pendingDuplicate {
-                Text("“\(d.duplicateOf.displayTitle)” already exists with the same title or DOI. Import it anyway?")
-            }
+            if let message = duplicateText?.message { Text(message) }
         }
         .overlay(alignment: .bottom) {
             if let t = store.toast {
@@ -98,15 +87,9 @@ struct ContentView: View {
                 set: { if !$0 { store.pendingConfirmation = nil } })
     }
 
-    private var confirmationTitle: String {
-        switch store.pendingConfirmation {
-        case .delete(let p): return "Delete “\(p.displayTitle)”?"
-        case .rerun(let p): return "Rerun “\(p.displayTitle)”?"
-        case nil: return ""
-        }
+    private var duplicateText: ConfirmationText? {
+        store.pendingDuplicate.map { ConfirmationText.duplicate(of: $0.duplicateOf) }
     }
-
-    private var duplicateTitle: String { store.pendingDuplicate != nil ? "Already in library" : "" }
     private var duplicateShown: Binding<Bool> {
         Binding(get: { store.pendingDuplicate != nil },
                 set: { if !$0 { store.resolveDuplicate(false) } })
@@ -170,17 +153,6 @@ struct ContentView: View {
     }
 }
 
-extension SortOption {
-    var label: String {
-        switch self {
-        case .newest: return "Newest first"
-        case .oldest: return "Oldest first"
-        case .title: return "Title"
-        case .recent: return "Recently converted"
-        }
-    }
-}
-
 struct EmptyDetailPlaceholder: View {
     var body: some View {
         ContentUnavailableView {
@@ -195,7 +167,6 @@ struct EmptyDetailPlaceholder: View {
 /// Divider between library and inspector that can be dragged to resize the inspector.
 private struct InspectorResizeHandle: View {
     @Binding var width: Double
-    let range: ClosedRange<Double>
     @State private var startWidth: Double?
 
     var body: some View {
@@ -212,8 +183,7 @@ private struct InspectorResizeHandle: View {
                             .onChanged { g in
                                 let start = startWidth ?? width
                                 startWidth = start
-                                // Dragging left widens the trailing inspector.
-                                width = min(range.upperBound, max(range.lowerBound, start - g.translation.width))
+                                width = InspectorLayout.width(startingAt: start, dragged: g.translation.width)
                             }
                             .onEnded { _ in startWidth = nil }
                     )

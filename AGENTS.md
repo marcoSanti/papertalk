@@ -16,28 +16,87 @@ file covers how to work on it and the traps that have already bitten.
   - `Controllers/PlayerController.swift`: episode playback and voice-sample previews.
   - `Controllers/Storage.swift`: `LocalStorage` (Application Support) and `HttpStorage`
     (`server/storage_server.py`), plus the `K` key layout.
-  - `Views/`, `Components/`: SwiftUI. `Support/Theme.swift` has shared styling (`glassCard`,
-    `StatusBadge`, `FlowLayout`, `Color.stable(for:)`).
+  - `Presentation/`: everything the views show or decide, as pure Swift with no SwiftUI:
+    wording and labels, form state and validation (`ImportForm`, `MetadataForm`,
+    `LLMSettingsForm`, `ServerSettingsForm`, `CastForm`), grouping/sorting (`AuthorsPresentation`),
+    and display decisions (`EpisodeProgress`, `BottomBarContent`, `PlayerPane`, `PlaybackStatus`).
+  - `Views/`, `Components/`: SwiftUI layout only (see "Views hold no logic" below).
+    `Support/Theme.swift` has shared styling (`glassCard`, `StatusBadge`, `FlowLayout`,
+    `Color.stable(for:)`); `Support/Clipboard.swift` copies text.
 - `server/storage_server.py`: optional stdlib-only HTTP key/value file store. No compute.
+- `VERSION`, `scripts/version.sh`: the app version and the tool that bumps/checks it.
+- `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`make coverage`).
+- `.github/workflows/`: `tests.yml` (PRs and `main`) and `release.yml` (version tags).
 - `shared/`: app icon.
+- `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
 - `client/UI_ISSUES.md`: running list of UI/UX issues and fix notes. Update it when you fix or
   find one.
 
-## Build and check
+## Build and test
 
 ```bash
 cd client
-swift build          # compile; this is the main check (there is no test target)
-make app             # build dist/Papertalk.app (debug); `make release` for an optimized zip
+swift build          # compile
+make test            # the whole suite, ~10 s, no network or real data
+make coverage        # the suite with coverage → ../coverage/ (summary.md, report.txt, lcov.info)
+make app             # build dist/Papertalk.app (debug); `make release` → dist/Papertalk-<version>.zip
 ```
 
-- Requires macOS 26 and Swift 6.2 tools; the target compiles in Swift 5 language mode.
-- Always run `swift build` after a change and report the result. There are no automated tests.
-  For logic that can be isolated (parsers, decoders), a throwaway `swiftc` script in a scratch
-  directory is a quick way to check it.
+- Requires macOS 26 and Swift 6.2 tools; app and tests compile in Swift 5 language mode.
+- After every change, run `swift build` **and** `make test`, and report the results. Read the
+  build output for **warnings**, not just errors: the app should compile warning-free (ignore
+  warnings from `.build/checkouts/`, i.e. dependencies). Several warnings here become errors in
+  Swift 6 mode (e.g. main-actor calls from timer closures). Run the
+  suite a few times when touching anything async; it has caught real races.
 - `open dist/Papertalk.app` and `screencapture` may be blocked in a sandboxed agent shell. Don't
   launch a second copy of the app if the user already has it open, and never `pkill` it. If you
   can't see the UI, say so plainly instead of claiming a visual check.
+
+## CI, pull requests and versions
+
+- Work goes through pull requests into `main`. `.github/workflows/tests.yml` runs `make test` and
+  `make app` on every PR and every push to `main` (GitHub's `macos-26` runner). Keep it green:
+  a change that needs new tooling must update the workflow too.
+- The version lives only in `VERSION` (semver, `MAJOR.MINOR.PATCH`). The Makefile stamps it into
+  the built app's `Info.plist`, with the short commit hash as the build number (shown as
+  "Version 0.0.1 (a1b2c3d)" in About Papertalk). Don't hard-code
+  versions elsewhere; read them with `make -C client version` or `scripts/version.sh`.
+- Coverage needs no external service: `tests.yml` runs `make coverage` and appends
+  `coverage/summary.md` to the job summary (and uploads `coverage/` as a run artifact). Nothing is
+  published elsewhere. `scripts/coverage.sh` and `scripts/coverage_summary.py` produce the files;
+  the "logic" figure excludes `Views/`, `Components/`, `App/` and `Support/Theme.swift`.
+- Bump with `make -C client bump-patch|bump-minor|bump-major` (or `scripts/version.sh set X.Y.Z`)
+  as part of a PR. Patch for fixes, minor for features, major for breaking changes (e.g. a
+  library format that older builds can't read).
+- Releases are tag-driven: `make -C client tag` creates `v<VERSION>` (clean tree required);
+  pushing it runs `.github/workflows/release.yml`, which refuses tags that don't match
+  `VERSION`. Never create or push tags, or bump the version, unless the user asks.
+
+## Tests (`client/Tests/PapertalkTests`)
+
+- The suite is **XCTest only**. `make test` runs `swift test --disable-swift-testing`, so the
+  empty Swift Testing pass doesn't print a confusing "0 tests" line. If you ever add
+  `import Testing` / `@Test` tests, drop that flag or they will silently not run.
+- Every test class subclasses **`PapertalkTestCase`** (`TestSupport.swift`), never
+  `XCTestCase` directly. It installs `NetworkGuard`, which blocks and fails any request that
+  isn't answered by a mock. Tests must never reach a real LLM, doi2bib or storage server.
+- **LLM calls**: use `MockLLM.install { request in ... }` and match on
+  `MockLLM.allText(in:)` (e.g. outline prompts contain `"segments": [{"title"`, dialogue prompts
+  `TARGET LENGTH: about N words`, monologue prompts `METHOD TEXT`). Reply with
+  `MockLLM.chatReply(_:)`. The storage server is faked the same way (`HttpStorageServerTests`).
+- **`AppStore`**: always `AppStore(storage: LocalStorage(root: Fixtures.tempDir()))`. Never build
+  a store on the default storage: that's the user's real library. Seed finished papers on disk
+  and let the store's startup scan load them (it drops in-memory-only papers). Keep converting
+  papers (`running`/`queued`) **in memory only**: on disk the scan would resume them and call the
+  LLM. Edits save asynchronously; assert on disk with `waitUntil { ... }`.
+- Don't start conversions, regeneration or playback (`upload`, a real `rerun`,
+  `togglePlayback`, `previewVoice`) in tests: they need the LLM or Kokoro. Kokoro synthesis and
+  the Keychain are deliberately untested.
+- Helpers: `Fixtures.paper(...)`, `Fixtures.transcript(...)`, `Fixtures.silentWAV(seconds:)`,
+  `Fixtures.tempDir()`, `waitUntil`. `@MainActor` test classes need fixtures marked
+  `nonisolated(unsafe)` and `async` test methods.
+- When fixing a bug, add a regression test and check it fails without the fix (temporarily
+  revert the line, run, restore).
 
 ## Data and storage
 
@@ -81,8 +140,28 @@ make app             # build dist/Papertalk.app (debug); `make release` for an o
   one at a time. Only *new* imports (`existing == nil`) may be discarded by the duplicate
   prompt, because declining deletes the paper.
 
+## Views hold no logic
+
+- A view lays out what it's given and forwards user actions. Anything that decides, computes,
+  formats, validates, filters, sorts or picks wording goes in `Presentation/` (pure functions or
+  value types, unit-tested) or, if it changes app state, in a method on `AppStore`.
+- Allowed in views: layout and styling, `@State` for purely visual state (hover, focus, which
+  sheet or disclosure is open, a drag in progress), bindings to a form value type, and calls like
+  `store.requestRerun(paper)` or `form.rename(id, to:)`.
+- Not allowed in views: `?:` or `if` on app data to choose text, counts or enablement (use e.g.
+  `PaperPresentation.playButton`, `LibraryPresentation.badge`), string building and pluralising,
+  trimming or parsing input, filtering/sorting collections, file or network access (use
+  `PDFFile`, store methods), or duplicating a rule that exists elsewhere.
+- Shared forms keep Settings and the setup wizard identical: both use `LLMSettingsForm`,
+  `ServerSettingsForm` and `KeySourceFields`.
+- Every new presentation type or store method gets tests (`PresentationTests.swift`,
+  `AppStoreTests.swift`). Coverage of `Presentation/` should stay near 100%.
+
 ## SwiftUI conventions and known traps
 
+- Paper records are saved through `AppStore.persist(id)`, a serial queue that writes the
+  *latest* state. Never save a record from a fire-and-forget `Task` with a captured snapshot:
+  quick edits then land out of order. `delete` awaits the queue before removing the folder.
 - Toasts: always `store.show(_:)`. `toast` is `private(set)` because direct assignment never
   auto-dismissed.
 - Destructive confirmations go through `store.pendingConfirmation`, presented once from

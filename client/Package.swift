@@ -14,6 +14,12 @@ let package = Package(
             path: "Sources/Papertalk",
             exclude: ["Info.plist"],
             swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "PapertalkTests",
+            dependencies: ["Papertalk"],
+            path: "Tests/PapertalkTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
 )

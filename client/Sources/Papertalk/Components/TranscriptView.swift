@@ -8,13 +8,6 @@ struct TranscriptView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
 
-    private var speakerNames: [String] {
-        var seen: [String] = []
-        for s in transcript.speakers.map(\.name) + transcript.segments.flatMap({ $0.turns.map(\.speaker) })
-        where !seen.contains(s) { seen.append(s) }
-        return seen
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -45,9 +38,9 @@ struct TranscriptView: View {
                     .font(.title3.weight(.semibold))
                     .lineLimit(2)
                 HStack(spacing: 6) {
-                    Text("\(transcript.segments.count) segments")
+                    Text(TranscriptPresentation.segmentCount(transcript))
                         .font(.caption).foregroundStyle(.secondary)
-                    ForEach(speakerNames.prefix(4), id: \.self) { name in
+                    ForEach(TranscriptPresentation.speakerNames(transcript).prefix(4), id: \.self) { name in
                         HStack(spacing: 4) {
                             Circle().fill(Color.stable(for: name)).frame(width: 7, height: 7)
                             Text(name).font(.caption.weight(.medium))
@@ -87,7 +80,7 @@ struct TranscriptView: View {
     private func segment(_ index: Int, _ seg: Transcript.Segment) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(String(format: "%02d", index + 1))
+                Text(TranscriptPresentation.segmentNumber(index))
                     .font(.system(.caption, design: .monospaced).weight(.bold))
                     .foregroundStyle(Color.appAccent)
                 Text(seg.title)
@@ -95,7 +88,7 @@ struct TranscriptView: View {
             }
             ForEach(Array(seg.turns.enumerated()), id: \.offset) { _, turn in
                 HStack(alignment: .top, spacing: 12) {
-                    Text(String(turn.speaker.prefix(1)).uppercased())
+                    Text(TranscriptPresentation.speakerInitial(turn.speaker))
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(width: 26, height: 26)
@@ -116,11 +109,7 @@ struct TranscriptView: View {
     }
 
     private func copyAll() {
-        let text = transcript.segments.enumerated().map { i, seg in
-            "\(i + 1). \(seg.title)\n\n" + seg.turns.map { "\($0.speaker): \($0.text)" }.joined(separator: "\n\n")
-        }.joined(separator: "\n\n\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        Clipboard.copy(TranscriptPresentation.plainText(transcript))
         withAnimation(.snappy) { copied = true }
         Task {
             try? await Task.sleep(nanoseconds: 1_400_000_000)

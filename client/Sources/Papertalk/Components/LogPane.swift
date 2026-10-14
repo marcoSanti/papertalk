@@ -12,7 +12,7 @@ struct LogPane: View {
             } label: {
                 HStack(spacing: 6) {
                     SectionLabel(title: "Activity", systemImage: "terminal",
-                                 trailing: lines.isEmpty ? nil : "\(lines.count)")
+                                 trailing: LibraryPresentation.badge(lines.count))
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -26,7 +26,7 @@ struct LogPane: View {
             if isOpen {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        Text(lines.isEmpty ? "No activity yet." : lines.joined(separator: "\n"))
+                        Text(TranscriptPresentation.logText(lines))
                             .font(.system(size: 10.5, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)

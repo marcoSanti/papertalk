@@ -75,34 +75,16 @@ struct StatusBadge: View {
             if paper.isActive {
                 ProgressView().controlSize(.mini)
             } else {
-                Image(systemName: icon)
+                Image(systemName: PaperPresentation.statusIcon(paper))
             }
-            if !compact { Text(text) }
+            if !compact { Text(PaperPresentation.statusText(paper)) }
         }
         .font(.caption2.weight(.semibold))
         .foregroundStyle(color)
         .padding(.horizontal, compact ? 6 : 9)
         .padding(.vertical, 4)
         .glassEffect(.regular.tint(color.opacity(0.22)), in: Capsule())
-        .help(text)
-    }
-
-    private var text: String {
-        switch paper.statusKind {
-        case .running: return paper.state == "queued" ? "Queued" : "Converting"
-        case .done: return paper.read ? "Listened" : "Ready"
-        case .error: return "Failed"
-        case .unknown: return paper.state.isEmpty || paper.state == "draft" ? "Not converted" : paper.state.capitalized
-        }
-    }
-
-    private var icon: String {
-        switch paper.statusKind {
-        case .running: return "hourglass"
-        case .done: return paper.read ? "checkmark.circle.fill" : "waveform"
-        case .error: return "exclamationmark.triangle.fill"
-        case .unknown: return "doc"
-        }
+        .help(PaperPresentation.statusText(paper))
     }
 
     private var color: Color {

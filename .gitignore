@@ -24,3 +24,5 @@ DerivedData/
 
 # storage server runtime data
 ~/.paper2pod/
+# test coverage output (scripts/coverage.sh)
+coverage/

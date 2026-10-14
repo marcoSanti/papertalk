@@ -32,7 +32,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func post(_ event: Event, paperId: String, title: String) {
-        guard !NSApp.isActive else { return }
+        // No app bundle (tests, `swift run`) or frontmost: nothing to post.
+        guard let center, !(NSApp?.isActive ?? true) else { return }
         let content = UNMutableNotificationContent()
         content.userInfo = ["paperId": paperId]
         content.sound = .default
@@ -52,9 +53,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             content.interruptionLevel = .timeSensitive
             identifier = "input-\(paperId)"
             // Also bounce the Dock icon until the app is brought forward.
-            NSApp.requestUserAttention(.criticalRequest)
+            NSApp?.requestUserAttention(.criticalRequest)
         }
-        center?.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+        center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
     }
 
     /// Withdraw a "your input is needed" notification once it's been answered.

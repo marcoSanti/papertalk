@@ -11,9 +11,14 @@ final class AppStore: ObservableObject {
     @Published var config = ServerConfig.load() { didSet { config.save() } }
 
     private var storage: Storage {
-        StorageFactory.make(config: config)
+        storageOverride ?? StorageFactory.make(config: config)
     }
-    var isStandalone: Bool { config.apiBase.isEmpty }
+    /// Fixed backend for tests, so they never touch the real library.
+    private let storageOverride: Storage?
+    var isStandalone: Bool {
+        if let storageOverride { return storageOverride is LocalStorage }
+        return config.apiBase.isEmpty
+    }
 
     /// Reveal the paper's folder in Finder (local storage only).
     func revealInFinder(_ id: String) {
@@ -46,6 +51,79 @@ final class AppStore: ObservableObject {
     /// Destructive action awaiting confirmation. Lives on the store so the
     /// dialog survives the context menu that asked for it being torn down.
     @Published var pendingConfirmation: PendingConfirmation?
+    // MARK: Settings
+
+    /// Save the storage server settings (only when they changed).
+    func saveServerSettings(_ next: ServerConfig) {
+        if next != config { config = next }
+    }
+
+    /// Save the LLM settings (only when they changed); an env-sourced key is
+    /// copied to the Keychain for apps launched from Finder.
+    func saveLLMSettings(_ next: LLMSettings) {
+        guard next != llm else { return }
+        llm = next
+        llm.saveResolvedKey()
+    }
+
+    /// Save the edited LLM prompts (only when they changed).
+    func savePrompts(_ next: PromptSettings) {
+        if next != prompts { prompts = next }
+    }
+
+    /// Save the custom-depth presets (already cleaned by `PresetsForm`).
+    func savePresets(_ entries: [CustomDepthPresets.Entry]) {
+        customPresets = CustomDepthPresets(entries: entries)
+        customPresets.save()
+    }
+
+    /// Setup wizard: check that the storage server (if any) and the LLM answer.
+    func checkConnections(server: ServerConfig, llmBaseURL: String, apiKey: String, model: String) async -> (ok: Bool, message: String) {
+        var failures: [String] = []
+        if !server.apiBase.isEmpty, (try? await StorageFactory.make(config: server).list()) == nil {
+            failures.append("storage")
+        }
+        if !llmBaseURL.isEmpty,
+           (try? await LocalPipeline(baseUrl: llmBaseURL, apiKey: apiKey, model: model).listModels()) == nil {
+            failures.append("LLM")
+        }
+        return failures.isEmpty
+            ? (true, "Both connections look good.")
+            : (false, "Could not reach: \(failures.joined(separator: ", ")).")
+    }
+
+    /// Setup wizard: save everything and close it.
+    func finishSetup(server: ServerConfig, llm next: LLMSettings) {
+        config = server
+        llm = next
+        llm.saveResolvedKey()
+        show("Setup complete")
+        markOnboarded()
+    }
+
+    /// Rerun from a menu or button: confirm first when it would replace an episode.
+    func requestRerun(_ p: Paper) {
+        if PaperPresentation.rerunNeedsConfirmation(p) { pendingConfirmation = .rerun(p) } else { rerun(p.id) }
+    }
+
+    /// Rename from the inline title field. Returns the text the field should
+    /// show: the tidied title, or the current one if the edit was empty.
+    @discardableResult
+    func commitTitleEdit(_ id: String, draft: String) -> String {
+        let current = papers[id]?.displayTitle ?? ""
+        guard let edit = PaperPresentation.titleEdit(draft, current: current) else { return current }
+        if edit.changed { saveTitle(id, edit.clean) }
+        return edit.clean
+    }
+
+    /// Carry out a confirmed destructive action.
+    func confirmPending(_ pending: PendingConfirmation) {
+        pendingConfirmation = nil
+        switch pending {
+        case .delete(let p): delete(p.id)
+        case .rerun(let p): rerun(p.id)
+        }
+    }
     enum PendingConfirmation: Identifiable {
         case delete(Paper), rerun(Paper)
         var id: String {
@@ -138,7 +216,10 @@ final class AppStore: ObservableObject {
 
     enum ViewMode { case all, fav, authors, tag, author }
 
-    init() {
+    /// `storage` pins the backend (tests pass a temp-folder `LocalStorage`);
+    /// the app passes nothing and follows the configured server.
+    init(storage: Storage? = nil) {
+        storageOverride = storage
         player = PlayerController()
         notifier.onOpen = { [weak self] id in self?.reveal(id) }
         Self.migrateDefaults()
@@ -206,14 +287,28 @@ final class AppStore: ObservableObject {
     // MARK: Sorting / filtering helpers
     var allPapers: [Paper] { Array(papers.values) }
 
-    func filteredPapers() -> [Paper] {
-        var out = Array(papers.values)
+    /// Whether a paper belongs to the current sidebar scope (all, favorites,
+    /// a tag, an author), before the status filter and search apply.
+    private func inScope(_ p: Paper) -> Bool {
         switch view {
-        case .fav: out = out.filter { $0.favorite }
-        case .tag: if let t = activeTag { out = out.filter { $0.tags.contains(t) } }
-        case .author: if let a = activeAuthor { out = out.filter { $0.authors.map(AuthorName.clean).contains(a) } }
-        case .all, .authors: break
+        case .all, .authors: return true
+        case .fav: return p.favorite
+        case .tag: return activeTag.map { p.tags.contains($0) } ?? true
+        case .author: return activeAuthor.map { p.authors.map(AuthorName.clean).contains($0) } ?? true
         }
+    }
+
+    /// Papers in the current scope with the given status (ignores search):
+    /// the numbers on the status filter capsules.
+    func count(status: String) -> Int {
+        let scoped = papers.values.filter(inScope)
+        return status == "all" ? scoped.count : scoped.filter { Self.matches($0, status: status) }.count
+    }
+
+    var favoritesCount: Int { papers.values.filter(\.favorite).count }
+
+    func filteredPapers() -> [Paper] {
+        var out = papers.values.filter(inScope)
         if statusFilter != "all" { out = out.filter { Self.matches($0, status: statusFilter) } }
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
         if !q.isEmpty {
@@ -250,6 +345,67 @@ final class AppStore: ObservableObject {
     }
 
     func selectedPaper() -> Paper? { selectedId.flatMap { papers[$0] } }
+
+    // MARK: Sidebar
+
+    /// The sidebar row matching the current scope (a single author keeps
+    /// "Authors" highlighted).
+    var sidebarSelection: SidebarItem {
+        switch view {
+        case .all: return .all
+        case .fav: return .favorites
+        case .authors, .author: return .authors
+        case .tag: return activeTag.map { .tag($0) } ?? .all
+        }
+    }
+
+    /// Point the library at a sidebar row, keeping the inspector on the
+    /// selected paper when it's still in scope.
+    func selectSidebar(_ item: SidebarItem) {
+        guard item != sidebarSelection else { return }
+        activeTag = nil; activeAuthor = nil
+        switch item {
+        case .all: view = .all
+        case .favorites: view = .fav
+        case .authors: view = .authors
+        case .tag(let t): view = .tag; activeTag = t
+        }
+        if let id = selectedId, !filteredPapers().contains(where: { $0.id == id }) {
+            selectedId = nil
+        }
+    }
+
+    /// Open a tag's papers (e.g. from a tag chip).
+    func showTag(_ tag: String) { selectSidebar(.tag(tag)) }
+
+    // MARK: Library keyboard actions
+
+    /// Space / Return: play or pause the selected paper. False if there's
+    /// nothing playable selected, so the key falls through.
+    @discardableResult
+    func playSelected() -> Bool {
+        guard let p = selectedPaper(), p.hasScript || p.hasAudio else { return false }
+        togglePlayback(p.id)
+        return true
+    }
+
+    /// Delete key: ask to delete the selected paper.
+    @discardableResult
+    func requestDeleteSelected() -> Bool {
+        guard let p = selectedPaper() else { return false }
+        pendingConfirmation = .delete(p)
+        return true
+    }
+
+    /// Arrow keys in the grid: move the selection through `visible` papers.
+    @discardableResult
+    func moveSelection(_ move: LibraryPresentation.Move, in visible: [Paper], columns: Int) -> Bool {
+        let current = visible.firstIndex { $0.id == selectedId }
+        guard let next = LibraryPresentation.nextIndex(from: current, move: move, columns: columns,
+                                                        count: visible.count) else { return false }
+        selectedId = visible[next].id
+        return true
+    }
 
     /// All papers currently being imported/regenerated (running or queued).
     /// Multiple imports can run concurrently, so the bottom bar can cycle
@@ -323,7 +479,7 @@ final class AppStore: ObservableObject {
     func refresh() {
         Task {
             let ids = (try? await storage.list()) ?? []
-            var seen = Set(ids)
+            let seen = Set(ids)
             for id in ids {
                 if papers[id] == nil, let p: Paper = await storage.exists(Paper.self, K.paper(id)) {
                     papers[id] = p
@@ -352,11 +508,24 @@ final class AppStore: ObservableObject {
     }
 
     // MARK: Metadata mutations
+    /// Save a paper's record. Saves run one at a time and each writes the
+    /// paper's state *when its turn comes*, so quick successive edits can't
+    /// land on disk out of order (an older snapshot overwriting a newer one).
+    private var saveQueue: Task<Void, Never>?
+    private func persist(_ id: String) {
+        let previous = saveQueue
+        saveQueue = Task {
+            await previous?.value
+            guard let latest = papers[id] else { return }
+            await storage.save(latest, K.paper(id))
+        }
+    }
+
     private func optimistic(_ id: String, _ mutate: (inout Paper) -> Void) {
         guard var p = papers[id] else { return }
         mutate(&p)
         papers[id] = p
-        Task { await storage.save(p, K.paper(id)) }
+        persist(id)
     }
     func toggleFavorite(_ id: String) {
         optimistic(id, { $0.favorite.toggle() })
@@ -386,8 +555,14 @@ final class AppStore: ObservableObject {
         p.progress = progress
         p.duration = duration
         papers[id] = p
-        Task { await storage.save(p, K.paper(id)) }
+        persist(id)
     }
+    /// Save the Edit metadata sheet.
+    func saveMetadata(_ id: String, _ form: MetadataForm) {
+        saveEditableMeta(id, title: form.title, filename: form.filename, authors: form.authorList,
+                         affiliations: form.affiliationList, doi: form.doi)
+    }
+
     func saveEditableMeta(_ id: String, title: String, filename: String, authors: [String], affiliations: [String], doi: String) {
         let split: (String) -> [String] = { $0.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
         guard var p = papers[id] else { return }
@@ -397,7 +572,7 @@ final class AppStore: ObservableObject {
         p.affiliations = split(affiliations.joined(separator: "\n"))
         p.doi = doi.trimmingCharacters(in: .whitespaces)
         papers[id] = p
-        Task { await storage.save(p, K.paper(id)) }
+        persist(id)
     }
 
     // MARK: Actions
@@ -427,7 +602,7 @@ final class AppStore: ObservableObject {
         guard let p = papers[id] else { return }
         let next = p.dismissingError()
         papers[id] = next
-        Task { await storage.save(next, K.paper(id)) }
+        persist(id)
     }
     func delete(_ id: String) {
         // A running conversion would recreate the folder as it writes.
@@ -437,6 +612,9 @@ final class AppStore: ObservableObject {
         Task {
             do {
                 if playingPaperId == id { player.stopAll(); playingPaperId = nil }
+                // Let queued saves finish first: one writing into the folder
+                // while it's being removed made the delete fail.
+                await saveQueue?.value
                 try await storage.deleteFolder(K.folder(id))
                 thumbCache[id] = nil
                 if selectedId == id { selectedId = nil }
@@ -917,7 +1095,7 @@ final class AppStore: ObservableObject {
             let direct = Transcript(paperTitle: name,
                                     speakers: [Transcript.Speaker(name: "Reader", persona: "")],
                                     segments: [Transcript.Segment(title: "Paper", turns: turns)])
-            try? await storage.save(direct, K.transcript(id))
+            await storage.save(direct, K.transcript(id))
             updateRec(id) { $0.stage = "audio"; $0.progress = 0.78; $0.message = "Synthesizing audio…" }
             if let failure = await bakeAudio(id, direct, from: 0.80, to: 1.0) {
                 await storage.save(direct, K.transcript(id))
@@ -931,7 +1109,7 @@ final class AppStore: ObservableObject {
         // Fill title/authors/DOI/tags from the LLM right away (before the script),
         // so the detail view shows real metadata even while the episode is being written.
         if !base.isEmpty {
-            await extractMetaLLM(id, text: text, fallback: name)
+            _ = await extractMetaLLM(id, text: text, fallback: name)
             // Duplicate-import guard: if an existing paper already has this title
             // or DOI, let the user decide before spending LLM + TTS time on it.
             if existing == nil, let dup = findDuplicate(of: papers[id]),
@@ -990,7 +1168,7 @@ final class AppStore: ObservableObject {
                                                                     expert: rec.speakers.count > 1 ? rec.speakers[1].name : nil)
                 script = result.transcript
                 // Persist now so an interrupted run can resume past segments later.
-                try? await storage.save(script, K.transcript(id))
+                await storage.save(script, K.transcript(id))
                 appendLog("Got transcript (\(script.segments.count) segments)", paper: id)
             }
             updateRec(id) { $0.stage = "audio"; $0.progress = 0.78; $0.message = "Synthesizing audio…" }

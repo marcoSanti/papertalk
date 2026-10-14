@@ -8,14 +8,8 @@ struct AuthorsView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 170, maximum: 230), spacing: 16, alignment: .top)]
 
-    private struct Entry: Identifiable {
-        let name: String
-        let papers: [Paper]
-        var id: String { name }
-    }
-
     var body: some View {
-        let sections = groupedEntries()
+        let sections = AuthorsPresentation.sections(store.papersByAuthor, search: store.search)
         Group {
             if store.authorCounts.isEmpty {
                 ContentUnavailableView {
@@ -42,7 +36,7 @@ struct AuthorsView: View {
                         .padding(.bottom, 24)
                     }
                     .overlay(alignment: .trailing) {
-                        if sections.count > 4 {
+                        if AuthorsPresentation.showsLetterIndex(sectionCount: sections.count) {
                             letterIndex(sections.map(\.letter), proxy: proxy)
                         }
                     }
@@ -52,28 +46,7 @@ struct AuthorsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AmbientBackground())
         .navigationTitle("Authors")
-        .navigationSubtitle(store.authorCounts.isEmpty ? "" : subtitle(store.authorCounts.count))
-    }
-
-    private func subtitle(_ n: Int) -> String { n == 1 ? "1 author" : "\(n) authors" }
-
-    // MARK: grouping
-
-    /// Authors matching the search, grouped A–Z by surname.
-    private func groupedEntries() -> [(letter: String, entries: [Entry])] {
-        let q = store.search.trimmingCharacters(in: .whitespaces).lowercased()
-        let byAuthor = store.papersByAuthor
-        let entries = byAuthor.keys
-            .filter { q.isEmpty || q.hasPrefix("#") || $0.lowercased().contains(q) }
-            .sorted { AuthorName.sortKey($0).localizedCompare(AuthorName.sortKey($1)) == .orderedAscending }
-            .map { Entry(name: $0, papers: byAuthor[$0] ?? []) }
-        var out: [(letter: String, entries: [Entry])] = []
-        for e in entries {
-            let letter = AuthorName.indexLetter(e.name)
-            if out.last?.letter == letter { out[out.count - 1].entries.append(e) }
-            else { out.append((letter, [e])) }
-        }
-        return out
+        .navigationSubtitle(LibraryPresentation.authorsSubtitle(store.authorCounts.count))
     }
 
     // MARK: pieces
@@ -134,7 +107,7 @@ private struct AuthorCard: View {
                         .font(.callout.weight(.semibold))
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
-                    Text(papers.count == 1 ? "1 paper" : "\(papers.count) papers")
+                    Text(LibraryPresentation.paperCount(papers.count))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -154,7 +127,7 @@ private struct AuthorCard: View {
 
     /// Up to three of the author's newest paper covers, fanned out.
     private var coverStack: some View {
-        let shown = papers.prefix(3)
+        let (shown, more) = AuthorsPresentation.coverStack(papers)
         return HStack(spacing: -12) {
             ForEach(Array(shown.enumerated()), id: \.element.id) { i, p in
                 PaperArtwork(paper: p)
@@ -166,8 +139,8 @@ private struct AuthorCard: View {
                     .rotationEffect(.degrees(shown.count == 1 ? 0 : Double(i - 1) * 6))
                     .zIndex(Double(shown.count - i))
             }
-            if papers.count > shown.count {
-                Text("+\(papers.count - shown.count)")
+            if more > 0 {
+                Text("+\(more)")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.leading, 18)
@@ -185,17 +158,17 @@ struct AuthorHeader: View {
 
     var body: some View {
         let papers = store.papersByAuthor[name] ?? []
-        let coauthors = coauthorCounts(papers)
+        let coauthors = AuthorsPresentation.coauthors(of: name, in: papers)
         HStack(alignment: .top, spacing: 14) {
             AuthorAvatar(name: name, size: 56)
             VStack(alignment: .leading, spacing: 6) {
                 Text(name).font(.title2.weight(.semibold))
-                Text(summary(papers.count, coauthors.count))
+                Text(AuthorsPresentation.summary(papers: papers.count, coauthors: coauthors.count))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if !coauthors.isEmpty {
                     FlowLayout(spacing: 6, lineSpacing: 6) {
-                        ForEach(coauthors.prefix(10), id: \.0) { co, shared in
+                        ForEach(coauthors.prefix(10), id: \.name) { co, shared in
                             Button {
                                 store.showAuthor(co)
                             } label: {
@@ -223,22 +196,6 @@ struct AuthorHeader: View {
         .padding(.bottom, 2)
     }
 
-    private func summary(_ papers: Int, _ coauthors: Int) -> String {
-        let p = papers == 1 ? "1 paper" : "\(papers) papers"
-        guard coauthors > 0 else { return p }
-        return p + " · " + (coauthors == 1 ? "1 co-author" : "\(coauthors) co-authors")
-    }
-
-    /// Co-authors ranked by how many papers they share with this author.
-    private func coauthorCounts(_ papers: [Paper]) -> [(String, Int)] {
-        var counts: [String: Int] = [:]
-        for p in papers {
-            for a in Set(p.authors.map(AuthorName.clean)) where !a.isEmpty && a != name {
-                counts[a, default: 0] += 1
-            }
-        }
-        return counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-    }
 }
 
 // MARK: - Avatar + name helpers
@@ -248,38 +205,12 @@ struct AuthorAvatar: View {
     let name: String
     var size: CGFloat = 24
 
-    private var initials: String {
-        let parts = name.split(whereSeparator: \.isWhitespace)
-        let first = parts.first?.first.map(String.init) ?? "?"
-        let last = parts.count > 1 ? (parts.last?.first.map(String.init) ?? "") : ""
-        return (first + last).uppercased()
-    }
-
     var body: some View {
-        Text(initials)
+        Text(AuthorName.initials(name))
             .font(.system(size: size * 0.4, weight: .bold, design: .rounded))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
             .background(Color.stable(for: name).gradient, in: Circle())
             .accessibilityHidden(true)
-    }
-}
-
-enum AuthorName {
-    static func clean(_ s: String) -> String {
-        s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-    }
-
-    /// "Ada Lovelace" sorts as "Lovelace Ada", like a contact book.
-    static func sortKey(_ name: String) -> String {
-        let parts = name.split(separator: " ")
-        guard parts.count > 1, let last = parts.last else { return name }
-        return last + " " + parts.dropLast().joined(separator: " ")
-    }
-
-    static func indexLetter(_ name: String) -> String {
-        let c = sortKey(name).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).first
-        guard let c, c.isLetter else { return "#" }
-        return String(c).uppercased()
     }
 }

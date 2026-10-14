@@ -46,9 +46,9 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     /// samples, live rendering and import-time baking. `@Published` + defaults
     /// rather than `@AppStorage`, which doesn't notify views from an
     /// ObservableObject (the slider wouldn't redraw).
-    static let speedKey = "papertalk.voiceSpeed"
-    static let defaultSpeed = 0.95
-    static let speedRange = 0.5...2.0
+    nonisolated static let speedKey = "papertalk.voiceSpeed"
+    nonisolated static let defaultSpeed = 0.95
+    nonisolated static let speedRange = 0.5...2.0
     @Published var voiceSpeed: Double = PlayerController.storedSpeed() {
         didSet { UserDefaults.standard.set(voiceSpeed, forKey: Self.speedKey) }
     }
@@ -110,7 +110,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         previewGeneration += 1
         let gen = previewGeneration
         preview = .generating(voice)
-        Task {
+        Task { [self] in
             do {
                 try await KokoroEngine.shared.prepare()
                 modelLoaded = true
@@ -330,7 +330,8 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     private func startTimer() {
         stopTimer()
         let t = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            self?.tick()
+            // Scheduled on the main run loop, so this fires on the main actor.
+            MainActor.assumeIsolated { self?.tick() }
         }
         timer = t
         t.tolerance = 0.05

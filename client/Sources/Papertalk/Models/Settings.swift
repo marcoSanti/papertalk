@@ -19,7 +19,7 @@ enum KeychainStore {
         SecItemAdd(attrs as CFDictionary, nil)
     }
     static func get(_ account: String) -> String? {
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
@@ -117,15 +117,21 @@ struct LLMSettings: Codable, Equatable {
                            model: env["PAPERTALK_MODEL"] ?? "",
                            keyEnv: keyEnv)
     }
+    /// What goes into user defaults: everything except the key, which lives
+    /// in the Keychain only.
+    var persisted: LLMSettings {
+        var copy = self
+        copy.apiKey = ""
+        return copy
+    }
+
     func save() {
         if apiKey.isEmpty {
             KeychainStore.delete(Self.typedKeyAccount)
         } else {
             KeychainStore.set(apiKey, account: Self.typedKeyAccount)
         }
-        var stored = self
-        stored.apiKey = ""   // the key lives in the Keychain only
-        if let data = try? JSONEncoder().encode(stored) {
+        if let data = try? JSONEncoder().encode(persisted) {
             UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: "papertalk.llm.json")
         }
     }

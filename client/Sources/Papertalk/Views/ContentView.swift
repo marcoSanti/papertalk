@@ -10,15 +10,19 @@ struct ContentView: View {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
         } detail: {
-            LibraryView(onImport: { showUpload = true })
-                // Floating Liquid Glass mini-player; the library scrolls underneath it.
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    BottomBar(player: store.player)
-                }
-                .inspector(isPresented: $showInspector) {
+            HStack(spacing: 0) {
+                LibraryView(onImport: { showUpload = true })
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        BottomBar(player: store.player)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if showInspector {
+                    Divider()
                     inspectorContent
-                        .inspectorColumnWidth(min: 320, ideal: 380, max: 540)
+                        .frame(width: 340)
                 }
+            }
         }
         .searchable(text: $store.search, placement: .toolbar, prompt: "Search papers")
         .toolbar { toolbarContent }

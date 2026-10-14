@@ -58,6 +58,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         totalBefore = []
         didEnd = false
         renderError = nil
+        isRendering = false
     }
 
     /// Renders every turn to audio (async). Not ready until `isRendering` clears.

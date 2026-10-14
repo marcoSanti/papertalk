@@ -37,6 +37,8 @@ struct UploadSheet: View {
     @State private var pdfData: Data?
     @State private var depth: Depth = .inDepth
     @State private var depthNote = ""
+    @State private var presetName = ""
+    @State private var promptName = false
     @State private var isImporting = false
     @State private var isTargeted = false
 
@@ -67,6 +69,26 @@ struct UploadSheet: View {
                         .lineLimit(3, reservesSpace: true)
                         .textFieldStyle(.roundedBorder)
                         .transition(.opacity.combined(with: .move(edge: .top)))
+                    HStack(spacing: 12) {
+                        Menu {
+                            ForEach(store.customPresets.entries) { preset in
+                                Button(preset.name) { depthNote = preset.text }
+                            }
+                        } label: {
+                            Label("Load preset", systemImage: "bookmark")
+                        }
+                        .disabled(store.customPresets.entries.isEmpty)
+                        Button {
+                            guard !depthNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                            promptName = true
+                        } label: {
+                            Label("Save as preset", systemImage: "bookmark.badge.plus")
+                        }
+                        Spacer()
+                    }
+                    .font(.callout)
+                    .controlSize(.small)
+                    .transition(.opacity)
                 }
             }
             .animation(.snappy, value: depth)
@@ -98,6 +120,13 @@ struct UploadSheet: View {
             case .failure(let e):
                 store.show("Could not read file: \(e.localizedDescription)")
             }
+        }
+        .alert("Save custom depth preset", isPresented: $promptName) {
+            TextField("Preset name", text: $presetName)
+            Button("Save") { store.saveCustomPreset(name: presetName, text: depthNote) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Give this prompt a name so you can reload it later.")
         }
     }
 
@@ -172,6 +201,7 @@ struct UploadSheet: View {
         case .inDepth: return "books.vertical"
         case .summary: return "text.append"
         case .custom: return "slider.horizontal.3"
+        case .direct: return "text.quote"
         }
     }
 
@@ -306,11 +336,6 @@ struct ServerSettingsPage: View {
                 Text("API token").font(.caption)
                 SecureField("token (optional)", text: $token).textFieldStyle(.roundedBorder)
             }
-            HStack {
-                if saved { Text("Saved ✓").font(.caption).foregroundStyle(.secondary) }
-                Spacer()
-                Button("Save & reconnect") { save() }.buttonStyle(.borderedProminent)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
@@ -386,17 +411,13 @@ struct LLMSettingsPage: View {
             }
 
             field("Model") { modelPicker }
+            if let err = modelError {
+                Text(err).font(.caption).foregroundStyle(.red)
+            }
             HStack {
-                if saved { Text("Saved ✓").font(.caption).foregroundStyle(.secondary) }
-                if let err = modelError {
-                    Text(err).font(.caption).foregroundStyle(.red)
-                }
-                Spacer()
                 Button("Refresh models") { loadModels() }
                     .disabled(loadingModels || baseUrl.trimmingCharacters(in: .whitespaces).isEmpty)
-                Button(saving ? "Saving…" : "Save") { save() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(saving || baseUrl.trimmingCharacters(in: .whitespaces).isEmpty)
+                Spacer()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -499,37 +520,63 @@ struct PromptsSettingsPage: View {
     @State private var writeForEar = ""
     @State private var saved = false
 
+    @State private var selected = 0
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("Query prompts").font(.title3).fontWeight(.semibold)
             Text("Customise the LLM's context and instructions. Reply-format prompts and the outline repair query are locked to keep replies parseable. Tokens: {host}, {expert}, {minutes}, {minSeg}, {maxSeg}, {plannedWords}, {depthGuide}.")
                 .font(.caption).foregroundStyle(.secondary)
-            editor("Outline planning rules", $outlineRules, tall: true)
-            editor("Host & expert personas", $dialoguePersona, tall: false)
-            editor("Monologue persona", $monologuePersona, tall: false)
-            editor("Write-for-the-ear style", $writeForEar, tall: true)
-            HStack {
-                if saved { Text("Saved ✓").font(.caption).foregroundStyle(.secondary) }
-                Spacer()
-                Button("Restore defaults") { load(PromptSettings.defaults); saved = false }
-                Button("Save") { save() }.buttonStyle(.borderedProminent)
+
+            Picker("", selection: $selected) {
+                Text("Outline rules").tag(0)
+                Text("Personas").tag(1)
+                Text("Monologue").tag(2)
+                Text("Ear style").tag(3)
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            Group {
+                switch selected {
+                case 0: detail("Outline planning rules",
+                               usedWhen: "When the LLM plans the episode: it breaks the paper into a section index and designs the listening segments before any dialogue is written.",
+                               text: $outlineRules)
+                case 1: detail("Host & expert personas",
+                               usedWhen: "When the LLM writes the two-speaker conversational dialogue segments — {host} asks the questions, {expert} (the author) carries the technical content.",
+                               text: $dialoguePersona)
+                case 2: detail("Monologue persona",
+                               usedWhen: "When the LLM writes a technical section as a single long spoken monologue delivered by the first author, {expert}.",
+                               text: $monologuePersona)
+                default: detail("Write-for-the-ear style",
+                                usedWhen: "Applied on top of the other prompts to all generated text, so it reads naturally when spoken by the TTS engine.",
+                                text: $writeForEar)
+                }
+            }
+            .animation(.snappy, value: selected)
+
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .padding(20)
         .onAppear { load(store.prompts) }
         .onDisappear { save() }
         .onReceive(NotificationCenter.default.publisher(for: .papertalkSaveSettings)) { _ in save() }
+        .onReceive(NotificationCenter.default.publisher(for: .papertalkRestorePrompts)) { _ in
+            load(PromptSettings.defaults); saved = false
+        }
     }
 
-    private func editor(_ label: String, _ t: Binding<String>, tall: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption)
-            TextEditor(text: t)
+    private func detail(_ title: String, usedWhen: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.headline)
+            Text(usedWhen).font(.caption).foregroundStyle(.secondary)
+            TextEditor(text: text)
                 .font(.system(.caption, design: .monospaced))
-                .frame(minHeight: tall ? 76 : 46)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.35)))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func load(_ p: PromptSettings) {
@@ -543,6 +590,86 @@ struct PromptsSettingsPage: View {
         store.prompts = PromptSettings(outlineRules: outlineRules, dialoguePersona: dialoguePersona,
                                        monologuePersona: monologuePersona, writeForEar: writeForEar)
         store.show("Prompts saved")
+        saved = true
+    }
+}
+
+// MARK: - Editable custom-depth prompt presets (the "Custom" option in import)
+struct CustomPresetsPage: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var entries: [Entry] = []
+    @State private var saved = false
+
+    struct Entry: Identifiable {
+        let id = UUID()
+        var name: String
+        var text: String
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Prompt presets").font(.title3).fontWeight(.semibold)
+            Text("Custom depth prompts selectable from the upload sheet's Custom mode. Each preset is a named set of extra instructions sent to the LLM.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button { entries.append(Entry(name: "New prompt", text: "")); saved = false } label: {
+                    Label("Add preset", systemImage: "plus")
+                }
+                Spacer()
+            }
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach($entries) { $e in
+                        card($e)
+                    }
+                    if entries.isEmpty {
+                        ContentUnavailableView("No presets yet", systemImage: "slider.horizontal.3",
+                                               description: Text("Add one with the + button above."))
+                            .padding(.top, 40)
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear { entries = store.customPresets.entries.map { Entry(name: $0.name, text: $0.text) } }
+        .onDisappear { save() }
+        .onReceive(NotificationCenter.default.publisher(for: .papertalkSaveSettings)) { _ in save() }
+    }
+
+    private func card(_ e: Binding<Entry>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                TextField("Prompt name", text: e.name)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 280)
+                Spacer()
+                Button(role: .destructive) { entries.removeAll { $0.id == e.wrappedValue.id }; saved = false } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+            }
+            TextEditor(text: e.text)
+                .font(.system(.caption, design: .monospaced))
+                .frame(minHeight: 110)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.35)))
+        }
+        .padding(12)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func save() {
+        var seen = Set<String>()
+        var clean: [CustomDepthPresets.Entry] = []
+        for e in entries {
+            let name = e.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = e.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, !text.isEmpty, !seen.contains(name) else { continue }
+            seen.insert(name)
+            clean.append(.init(name: name, text: text))
+        }
+        store.customPresets = CustomDepthPresets(entries: clean)
+        store.customPresets.save()
         saved = true
     }
 }
@@ -564,36 +691,48 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: selectedIndex) {
-                Label("LLM Settings", systemImage: "waveform").tag(0)
-                Label("Server Settings", systemImage: "server.rack").tag(1)
-                Label("Query Prompts", systemImage: "quote.bubble").tag(2)
-                Label("Clear Data", systemImage: "trash").tag(3)
-            }
-            .listStyle(.sidebar)
-            .frame(minWidth: 190)
-        } detail: {
-            Group {
-                switch store.settingsPage {
-                case .llm: LLMSettingsPage()
-                case .server: ServerSettingsPage()
-                case .prompts: PromptsSettingsPage()
-                case .clear: ClearDataPage()
+        VStack(spacing: 0) {
+            NavigationSplitView {
+                List(selection: selectedIndex) {
+                    Label("LLM Settings", systemImage: "waveform").tag(0)
+                    Label("Server Settings", systemImage: "server.rack").tag(1)
+                    Label("Query Prompts", systemImage: "quote.bubble").tag(2)
+                    Label("Prompt Presets", systemImage: "slider.horizontal.3").tag(3)
+                    Label("Clear Data", systemImage: "trash").tag(4)
                 }
+                .listStyle(.sidebar)
+                .frame(minWidth: 190)
+            } detail: {
+                Group {
+                    switch store.settingsPage {
+                    case .llm: LLMSettingsPage()
+                    case .server: ServerSettingsPage()
+                    case .prompts: PromptsSettingsPage()
+                    case .presets: CustomPresetsPage()
+                    case .clear: ClearDataPage()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SettingsActionBar {
+                if store.settingsPage == .prompts {
+                    Button("Restore prompt defaults") { restorePrompts() }
+                }
+                Spacer()
+                Button("Save") { saveCurrent() }.buttonStyle(.borderedProminent)
+            }
         }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Close") { dismiss() }
             }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { saveCurrent() }
-            }
         }
         .frame(width: 720, height: 560)
         .tint(Color.appAccent)
+    }
+
+    private func restorePrompts() {
+        NotificationCenter.default.post(name: .papertalkRestorePrompts, object: nil)
     }
 
     private func saveCurrent() {
@@ -601,6 +740,22 @@ struct SettingsView: View {
     }
 }
 
+/// Bottom action bar for the unified settings window.
+private struct SettingsActionBar<Content: View>: View {
+    @ViewBuilder let content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    var body: some View {
+        HStack {
+            content
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+}
+
 extension Notification.Name {
     static let papertalkSaveSettings = Notification.Name("papertalkSaveSettings")
+    static let papertalkRestorePrompts = Notification.Name("papertalkRestorePrompts")
 }

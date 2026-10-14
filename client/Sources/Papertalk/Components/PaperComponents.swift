@@ -155,8 +155,10 @@ struct PaperArtwork: View {
 struct ContextMenuItems: View {
     @EnvironmentObject private var store: AppStore
     let paper: Paper
+    @State private var confirmDelete = false
 
     var body: some View {
+        Group {
         Button {
             store.selectedId = paper.id
         } label: {
@@ -199,9 +201,16 @@ struct ContextMenuItems: View {
         }
         Divider()
         Button(role: .destructive) {
-            store.delete(paper.id)
+            confirmDelete = true
         } label: {
             Label("Delete", systemImage: "trash")
+        }
+        }
+        .confirmationDialog("Delete “\(paper.displayTitle)”?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete paper", role: .destructive) { store.delete(paper.id) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The PDF, transcript and generated audio are removed from the library. This can’t be undone.")
         }
     }
 }

@@ -24,7 +24,7 @@ struct ContentView: View {
                 }
             }
         }
-        .searchable(text: $store.search, placement: .toolbar, prompt: "Search papers")
+        .searchable(text: $store.search, placement: .toolbar, prompt: "Search papers (#tag to search tags)")
         .toolbar { toolbarContent }
         .sheet(isPresented: $showUpload) {
             UploadSheet()
@@ -51,14 +51,12 @@ struct ContentView: View {
         .animation(.spring(duration: 0.35), value: store.toast)
         .onAppear {
             store.trackPlayback()
-            Task { await store.loadAudioForSelected() }
         }
         .onChange(of: store.selectedId) { _, _ in
             // reveal the inspector automatically when a paper is selected
             if store.selectedPaper() != nil {
                 withAnimation(.snappy) { showInspector = true }
             }
-            Task { await store.loadAudioForSelected() }
         }
     }
 

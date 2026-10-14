@@ -22,6 +22,7 @@ struct DetailView: View {
     @State private var confirmDelete = false
     @State private var showAllAuthors = false
     @State private var showLog = false
+    @State private var showCitation = false
 
     var body: some View {
         ScrollView {
@@ -50,7 +51,13 @@ struct DetailView: View {
         .sheet(isPresented: $showTranscript) {
             if let t = transcript {
                 TranscriptView(transcript: t, title: paper.displayTitle)
+            } else {
+                ContentUnavailableView("No transcript yet", systemImage: "text.quote", description: Text("The transcript for this paper isn’t available."))
+                    .frame(width: 700, height: 660)
             }
+        }
+        .sheet(isPresented: $showCitation) {
+            CitationView(bibtex: paper.bibtex ?? "")
         }
         .confirmationDialog("Delete “\(paper.displayTitle)”?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete paper", role: .destructive) { store.delete(paper.id) }
@@ -77,7 +84,6 @@ struct DetailView: View {
         showLog = p.isActive
         Task {
             transcript = await store.transcript(for: p.id)
-            await store.prepareAudio(for: p.id)
         }
     }
 
@@ -205,6 +211,16 @@ struct DetailView: View {
                                 Text(paper.doi)
                             }
                             CopyButton(value: paper.doi)
+                        }
+                    }
+                    if let bib = paper.bibtex, !bib.isEmpty {
+                        detailRow("LaTeX") {
+                            Button {
+                                showCitation = true
+                            } label: {
+                                Label("Show citation", systemImage: "chevron.left.forwardslash.chevron.right")
+                            }
+                            .buttonStyle(.link)
                         }
                     }
                 }
@@ -347,7 +363,7 @@ struct DetailView: View {
     private func openTranscript() {
         Task {
             if transcript == nil { transcript = await store.transcript(for: paper.id) }
-            if transcript != nil { showTranscript = true }
+            showTranscript = true
         }
     }
 }
@@ -674,6 +690,47 @@ private struct CopyButton: View {
         }
         .buttonStyle(.plain)
         .help("Copy")
+    }
+}
+
+/// Presents a paper's LaTeX (BibTeX) citation with a copy button.
+private struct CitationView: View {
+    let bibtex: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("LaTeX citation", systemImage: "chevron.left.forwardslash.chevron.right")
+                    .font(.headline)
+                Spacer()
+                Button { dismiss() } label: { Label("Close", systemImage: "xmark") }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+            }
+            TextEditor(text: .constant(bibtex))
+                .font(.system(.body, design: .monospaced))
+                .frame(minWidth: 480, minHeight: 220)
+                .textSelection(.enabled)
+            HStack {
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(bibtex, forType: .string)
+                    copied = true
+                    Task {
+                        try? await Task.sleep(nanoseconds: 1_400_000_000)
+                        copied = false
+                    }
+                } label: {
+                    Label(copied ? "Copied" : "Copy citation", systemImage: copied ? "checkmark" : "doc.on.doc")
+                }
+                .buttonStyle(.glassProminent)
+            }
+        }
+        .padding(20)
+        .frame(width: 540)
     }
 }
 

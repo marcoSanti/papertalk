@@ -168,6 +168,29 @@ struct PromptSettings: Codable, Equatable {
     }
 }
 
+struct CustomDepthPresets: Codable {
+    struct Entry: Codable, Identifiable, Equatable {
+        let name: String
+        let text: String
+        var id: String { name }
+    }
+    var entries: [Entry]
+
+    static func load() -> CustomDepthPresets {
+        if let raw = UserDefaults.standard.string(forKey: "papertalk.customDepths.json"),
+           let data = raw.data(using: .utf8),
+           let p = try? JSONDecoder().decode(CustomDepthPresets.self, from: data) {
+            return p
+        }
+        return CustomDepthPresets(entries: [])
+    }
+    func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: "papertalk.customDepths.json")
+        }
+    }
+}
+
 /// Names of environment variables that (when set) look like current API keys,
 /// offered in the settings sheet as selectable key sources.
 func candidateKeyEnvs() -> [String] {

@@ -92,7 +92,7 @@ struct StatusBadge: View {
         case .running: return paper.state == "queued" ? "Queued" : "Converting"
         case .done: return paper.read ? "Listened" : "Ready"
         case .error: return "Failed"
-        case .unknown: return paper.state.isEmpty ? "Draft" : paper.state.capitalized
+        case .unknown: return paper.state.isEmpty || paper.state == "draft" ? "Not converted" : paper.state.capitalized
         }
     }
 

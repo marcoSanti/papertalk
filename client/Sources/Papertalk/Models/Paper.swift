@@ -17,6 +17,7 @@ struct Paper: Identifiable, Codable, Equatable {
     var doi: String
     var read: Bool
     var depth: String?
+    var bibtex: String?
     var progress: Double
     var duration: Double
     var progressTs: String?
@@ -25,7 +26,7 @@ struct Paper: Identifiable, Codable, Equatable {
     var statusError: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, filename, tags, favorite, authors, affiliations, doi, read, depth
+        case id, title, filename, tags, favorite, authors, affiliations, doi, read, depth, bibtex
         case hasPdf = "has_pdf", hasScript = "has_script", hasAudio = "has_audio"
         case createdIso = "created_iso", state, progress, duration
         case progressTs = "progress_ts", stage, message
@@ -40,14 +41,16 @@ struct Paper: Identifiable, Codable, Equatable {
     /// Which status row class to render against.
     var statusKind: StatusKind { isActive ? .running : isError ? .error : isDone ? .done : .unknown }
 
-    /// A copy with the error state cleared and progress reset, ready to retry.
-    func revertingError() -> Paper {
+    /// A copy with the error acknowledged: back to "done" when an earlier
+    /// episode is still on disk, otherwise an unconverted "draft".
+    func dismissingError() -> Paper {
         var p = self
-        p.state = "running"
-        p.stage = "extract"
-        p.message = "Retrying…"
+        if hasScript {
+            p.state = "done"; p.stage = "done"; p.progress = 1; p.message = "Done"
+        } else {
+            p.state = "draft"; p.stage = nil; p.progress = 0; p.message = nil
+        }
         p.statusError = nil
-        p.progress = 0.02
         return p
     }
 }

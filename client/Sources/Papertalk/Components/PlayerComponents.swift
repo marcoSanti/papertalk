@@ -115,39 +115,68 @@ struct BottomBar: View {
     }
 
     var body: some View {
-        Group {
-            if let run = store.activeRun {
-                capsule { importProgress(run) }
-            } else if let paper {
-                capsule {
-                    if player.turnCount > 0 || player.isRendering {
-                        PlayerBar(player: player,
-                                  onSeek: { player.seek(toTime: $0) },
-                                  activeTurn: player.activeTurn,
-                                  paper: paper)
-                    } else {
-                        HStack(spacing: 10) {
-                            Image(systemName: "waveform.slash")
-                                .foregroundStyle(.secondary)
-                            Text(paper.isActive ? "Episode is being produced…" : "No audio for this paper yet")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                        .frame(height: 28)
+Group {
+            // A loaded/playing paper earns its pane beside the import. Merely
+            // selecting (or resuming) a paper must not squat in the bar.
+            if let run = store.activeRun,
+               let playing = store.playingPaperId.flatMap({ store.papers[$0] }),
+               playing.id != run.id {
+                capsule(maxWidth: 1100) {
+                    HStack(spacing: 16) {
+                        playPane(playing)
+                        Divider().frame(height: 40)
+                        importPane(run)
                     }
                 }
+            } else if let run = store.activeRun {
+                capsule { importProgress(run) }
+            } else if let paper {
+                capsule { playPane(paper) }
             }
         }
         .animation(.spring(duration: 0.35), value: store.activeRun?.id)
         .animation(.spring(duration: 0.35), value: paper?.id)
     }
 
-    private func capsule<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+    @ViewBuilder
+    private func playPane(_ paper: Paper) -> some View {
+        pane {
+            if player.turnCount > 0 || player.isRendering {
+                PlayerBar(player: player,
+                          onSeek: { player.seek(toTime: $0) },
+                          activeTurn: player.activeTurn,
+                          paper: paper)
+            } else {
+                HStack(spacing: 10) {
+                    Image(systemName: "waveform.slash")
+                        .foregroundStyle(.secondary)
+                    Text(paper.isActive ? "Episode is being produced…" : "No audio for this paper yet")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(height: 28)
+            }
+        }
+    }
+
+    private func importPane(_ run: Paper) -> some View {
+        pane {
+            importProgress(run)
+        }
+    }
+
+    private func pane<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        content()
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func capsule<C: View>(maxWidth: CGFloat = 760,
+                                  @ViewBuilder _ content: () -> C) -> some View {
         content()
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .frame(maxWidth: 760)
+            .frame(maxWidth: maxWidth)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .shadow(color: .black.opacity(0.10), radius: 16, y: 6)
             .padding(.horizontal, 16)
@@ -159,6 +188,17 @@ struct BottomBar: View {
 
     private func importProgress(_ p: Paper) -> some View {
         HStack(spacing: 12) {
+            if store.activeRuns.count > 1 {
+                VStack(spacing: 8) {
+                    arrowButton("chevron.up", -1)
+                    arrowButton("chevron.down", 1)
+                    let n = store.activeRuns.count
+                    Text("\((store.activeRunIndex % n) + 1)/\(n)")
+                        .font(.system(size: 9).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 4)
+            }
             ZStack {
                 if p.isError {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
@@ -199,6 +239,21 @@ struct BottomBar: View {
                 }
             }
         }
+    }
+
+    private func arrowButton(_ systemImage: String, _ delta: Int) -> some View {
+        Button {
+            store.focusImport(delta)
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(store.activeRuns.count <= 1)
+        .help(delta < 0 ? "Previous import" : "Next import")
     }
 }
 

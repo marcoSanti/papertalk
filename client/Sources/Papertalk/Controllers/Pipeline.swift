@@ -82,6 +82,27 @@ struct LocalPipeline {
         return out
     }
 
+    /// Direct-read transcript: chunk the extracted text into turns so it is
+    /// read out loud as-is, with no LLM rewriting. Only collapses blank lines and
+    /// merges short lines, and caps each turn so synthesis stays snappy.
+    static func readThroughTurns(_ text: String) -> [Transcript.Turn] {
+        let lines = text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0.count > 1 }
+        var turns: [Transcript.Turn] = []
+        var buf = ""
+        for line in lines {
+            if !buf.isEmpty, buf.count + line.count > 1400 {
+                turns.append(Transcript.Turn(speaker: "Reader", text: buf))
+                buf = line
+            } else {
+                buf = buf.isEmpty ? line : buf + " " + line
+            }
+        }
+        if !buf.isEmpty { turns.append(Transcript.Turn(speaker: "Reader", text: buf)) }
+        return turns
+    }
+
     /// List model ids from an OpenAI-compatible `/models` endpoint.
     func listModels() async throws -> [String] {
         let url = URL(string: baseUrl.replacingOccurrences(of: "/+$", with: "", options: .regularExpression) + "/models")!
@@ -109,7 +130,7 @@ struct LocalPipeline {
             + "\n- authors: full author names in order. Empty if unknown."
             + "\n- affiliations: institution/department strings, deduplicated. Empty if unknown."
             + "\n- doi: the DOI when present (e.g. \"10.1016/j.jpdc.2017.07.010\"), else \"\"."
-            + "\n- tags: 3-6 short topical keywords (e.g. \"reinforcement-learning\", \"distributed-systems\") describing the research. Never empty unless the text is unusable."
+            + "\n- tags: 2-4 CONSISTENT, broad topical research-areas so related papers group together. Prefer established field categories (e.g. \"machine-learning\", \"nlp\", \"computer-vision\", \"algorithms\", \"databases\", \"distributed-systems\", \"security\", \"bioinformatics\", \"neuroscience\", \"quantum-computing\"). Multi-word tags are kebab-case with no spaces. NEVER use paper-specific jargon, method acronyms, author names, or narrow low-comsumption fragments that won't recur in other papers. Reuse the same category names you'd assign to any similar paper. Never empty unless the text is unusable."
         let user = String(text.prefix(20_000))  // title/authors/DOI live near the top; keeps the call cheap
         let raw = (try? await chat(system: system, user: user, maxTokens: 1500)) ?? ""
         guard let json = Self.extractJSON(raw),
@@ -221,6 +242,8 @@ struct LocalPipeline {
                 : "USER-REQUESTED DEPTH:\n" + depthNote
         case .inDepth:
             depthGuide = "DEPTH: IN-DEPTH. Cover methods and results fully and technically, so a student could re-derive the work."
+        case .direct:
+            depthGuide = ""
         }
         let outlineInstructions = prompts.outlineRules + """
         \n\nRespond with ONLY a JSON object, no markdown, exactly:

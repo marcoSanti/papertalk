@@ -29,7 +29,7 @@ struct ClearDataPage: View {
     }
 }
 
-// MARK: - Upload sheet: pick a PDF, choose episode depth, start.
+// MARK: - Upload sheet: pick (or drop) a PDF, choose episode depth, start.
 struct UploadSheet: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
@@ -38,62 +38,63 @@ struct UploadSheet: View {
     @State private var depth: Depth = .inDepth
     @State private var depthNote = ""
     @State private var isImporting = false
+    @State private var isTargeted = false
 
     private var hasFile: Bool { pdfData != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("How in-depth should this episode be?")
-                .font(.title3).fontWeight(.semibold)
-            if let f = fileURL {
-                HStack(spacing: 8) {
-                    Image(systemName: "doc.fill").foregroundStyle(Color.appAccent)
-                    Text(f.lastPathComponent).font(.callout).lineLimit(1)
-                    Spacer()
-                    Button("Choose another…") { pick() }.buttonStyle(.link)
+            HStack(spacing: 12) {
+                Image(systemName: "waveform.badge.plus")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Color.appAccent.gradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("New episode").font(.title3.weight(.semibold))
+                    Text("Turn a paper into a podcast, converted on this Mac.")
+                        .font(.callout).foregroundStyle(.secondary)
                 }
-            } else {
-                Button {
-                    pick()
-                } label: {
-                    Label("Choose a PDF…", systemImage: "arrow.up.doc")
-                }
-                .buttonStyle(.borderedProminent)
             }
-            Divider()
-            VStack(spacing: 10) {
-                depthChoice(.inDepth)
-                depthChoice(.summary)
-                depthChoice(.custom)
+
+            dropZone
+
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel(title: "Depth", systemImage: "dial.medium")
+                ForEach(Depth.allCases) { depthChoice($0) }
                 if depth == .custom {
                     TextField("Describe the depth you want…", text: $depthNote, axis: .vertical)
                         .lineLimit(3, reservesSpace: true)
                         .textFieldStyle(.roundedBorder)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
+            .animation(.snappy, value: depth)
+
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.glass)
+                    .keyboardShortcut(.cancelAction)
                 Button("Start episode") {
                     if let d = pdfData, let name = fileURL?.lastPathComponent {
                         store.upload(d, filename: name, depth: depth, depthNote: depthNote)
                         dismiss()
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .disabled(!hasFile)
                 .keyboardShortcut(.defaultAction)
             }
+            .controlSize(.large)
         }
         .padding(24)
-        .frame(width: 440)
+        .frame(width: 480)
         .tint(Color.appAccent)
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.pdf]) { result in
             switch result {
             case .success(let url):
-                _ = url.startAccessingSecurityScopedResource()
-                pdfData = try? Data(contentsOf: url)
-                fileURL = url
+                load(url)
             case .failure(let e):
                 store.show("Could not read file: \(e.localizedDescription)")
             }
@@ -102,22 +103,105 @@ struct UploadSheet: View {
 
     private func pick() { isImporting = true }
 
+    private func load(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else {
+            store.show("Could not read \(url.lastPathComponent)")
+            return
+        }
+        withAnimation(.snappy) {
+            pdfData = data
+            fileURL = url
+        }
+    }
+
+    private var dropZone: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return Button(action: pick) {
+            Group {
+                if let f = fileURL {
+                    HStack(spacing: 12) {
+                        Image(systemName: "doc.richtext.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(Color.appAccent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(f.lastPathComponent).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.middle)
+                            if let n = pdfData?.count {
+                                Text(ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Text("Change…").font(.callout).foregroundStyle(Color.appAccent)
+                    }
+                    .padding(14)
+                } else {
+                    VStack(spacing: 8) {
+                        Image(systemName: isTargeted ? "arrow.down.doc.fill" : "arrow.down.doc")
+                            .font(.system(size: 30, weight: .light))
+                            .foregroundStyle(isTargeted ? Color.appAccent : Color.secondary)
+                            .symbolEffect(.bounce, value: isTargeted)
+                        Text("Drop a PDF here").font(.callout.weight(.medium))
+                        Text("or click to choose a file").font(.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 26)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .background(shape.fill(Color.appAccent.opacity(isTargeted ? 0.12 : 0.04)))
+            .overlay(
+                shape.strokeBorder(isTargeted || hasFile ? Color.appAccent.opacity(0.7) : Color.secondary.opacity(0.4),
+                                   style: StrokeStyle(lineWidth: 1.5, dash: hasFile ? [] : [6, 4]))
+            )
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first(where: { $0.pathExtension.lowercased() == "pdf" }) else { return false }
+            load(url)
+            return true
+        } isTargeted: { t in
+            withAnimation(.snappy(duration: 0.15)) { isTargeted = t }
+        }
+    }
+
+    private func icon(_ d: Depth) -> String {
+        switch d {
+        case .inDepth: return "books.vertical"
+        case .summary: return "text.append"
+        case .custom: return "slider.horizontal.3"
+        }
+    }
+
     private func depthChoice(_ d: Depth) -> some View {
-        Button {
+        let selected = depth == d
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return Button {
             depth = d
         } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: depth == d ? "largecircle.fill.circle" : "circle")
-                    .foregroundStyle(depth == d ? Color.appAccent : Color.secondary)
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: icon(d))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(selected ? Color.white : Color.appAccent)
+                    .frame(width: 32, height: 32)
+                    .background(selected ? AnyShapeStyle(Color.appAccent.gradient) : AnyShapeStyle(Color.appAccent.opacity(0.12)),
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(d.label).font(.headline)
                     Text(d.blurb).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
                 }
                 Spacer()
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(selected ? Color.appAccent : Color.secondary.opacity(0.5))
+                    .contentTransition(.symbolEffect(.replace))
             }
             .padding(10)
-            .background(RoundedRectangle(cornerRadius: 8).fill(depth == d ? Color.appAccent.opacity(0.10) : .clear))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(depth == d ? Color.appAccent : .clear, lineWidth: 1))
+            .background(shape.fill(Color.appAccent.opacity(selected ? 0.10 : 0.0)))
+            .overlay(shape.strokeBorder(selected ? Color.appAccent.opacity(0.8) : Color.primary.opacity(0.08), lineWidth: selected ? 1.5 : 1))
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
     }
@@ -135,47 +219,69 @@ struct EditMetaSheet: View {
     @State private var filename = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Edit paper").font(.title3).fontWeight(.semibold)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Title").font(.caption)
-                TextField("Title", text: $title).textFieldStyle(.roundedBorder)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                PaperArtwork(paper: paper)
+                    .frame(width: 36)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Edit paper").font(.title3.weight(.semibold))
+                    Text(paper.filename ?? paper.displayTitle)
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Authors").font(.caption)
-                TextField("One per line", text: $authors, axis: .vertical).lineLimit(3, reservesSpace: true).textFieldStyle(.roundedBorder)
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+
+            Form {
+                Section {
+                    TextField("Title", text: $title)
+                    TextField("Filename", text: $filename, prompt: Text("Shown in the library list"))
+                    TextField("DOI", text: $doi, prompt: Text("10.xxxx/xxxxx"))
+                }
+                Section {
+                    TextField("Authors", text: $authors, prompt: Text("One per line"), axis: .vertical)
+                        .lineLimit(3...8)
+                } header: {
+                    Text("Authors")
+                } footer: {
+                    Text("One author per line.").font(.caption).foregroundStyle(.secondary)
+                }
+                Section("Affiliations") {
+                    TextField("Affiliations", text: $affils, prompt: Text("One per line"), axis: .vertical)
+                        .lineLimit(2...6)
+                }
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Affiliations").font(.caption)
-                TextField("One per line", text: $affils, axis: .vertical).lineLimit(3, reservesSpace: true).textFieldStyle(.roundedBorder)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("DOI").font(.caption)
-                TextField("10.xxxx/xxxxx", text: $doi).textFieldStyle(.roundedBorder)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Filename").font(.caption)
-                TextField("Shown in the library list", text: $filename).textFieldStyle(.roundedBorder)
-            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.glass)
+                    .keyboardShortcut(.cancelAction)
                 Button("Save") {
                     let a = authors.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                     let af = affils.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                     store.saveEditableMeta(paper.id, title: title, filename: filename, authors: a, affiliations: af, doi: doi)
                     dismiss()
-                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                }
+                .buttonStyle(.glassProminent)
+                .keyboardShortcut(.defaultAction)
             }
+            .controlSize(.large)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
         }
-        .padding(24)
-        .frame(width: 420)
+        .frame(width: 480, height: 560)
         .tint(Color.appAccent)
         .onAppear {
             title = paper.title ?? ""
             authors = paper.authors.joined(separator: "\n")
             affils = paper.affiliations.joined(separator: "\n")
-            doi = paper.doi ?? ""
+            doi = paper.doi
             filename = paper.filename ?? ""
         }
     }

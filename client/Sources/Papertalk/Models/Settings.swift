@@ -1,9 +1,9 @@
 import Foundation
 import Security
 
-/// Minimal Keychain string store (system framework — no dependencies) used to
-/// persist an LLM API key that was sourced from an env var, so GUI-launched
-/// apps (which don't inherit shell env vars) can still resolve it.
+/// Minimal Keychain string store (system framework — no dependencies) for LLM
+/// API keys: one typed into Settings, or one sourced from an env var (so
+/// GUI-launched apps, which don't inherit shell env vars, can still resolve it).
 enum KeychainStore {
     private static let service = "com.papertalk.key"
     static func set(_ value: String, account: String) {
@@ -30,6 +30,14 @@ enum KeychainStore {
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
               let data = item as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+    static func delete(_ account: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 }
 
@@ -84,11 +92,22 @@ struct LLMSettings: Codable, Equatable {
         KeychainStore.set(v, account: keyEnv)
     }
 
+    /// Keychain account holding a key typed into Settings. It is never written
+    /// to user defaults.
+    static let typedKeyAccount = "papertalk.llm.apiKey"
+
     static func load() -> LLMSettings {
         // Stored value wins; otherwise seed from the environment.
         if let raw = UserDefaults.standard.string(forKey: "papertalk.llm.json"),
            let data = raw.data(using: .utf8),
-           let s = try? JSONDecoder().decode(LLMSettings.self, from: data) {
+           var s = try? JSONDecoder().decode(LLMSettings.self, from: data) {
+            if !s.apiKey.isEmpty {
+                // Older builds stored the key in plain text: move it to the
+                // Keychain and rewrite the defaults entry without it.
+                s.save()
+            } else {
+                s.apiKey = KeychainStore.get(typedKeyAccount) ?? ""
+            }
             return s
         }
         let env = ProcessInfo.processInfo.environment
@@ -99,7 +118,14 @@ struct LLMSettings: Codable, Equatable {
                            keyEnv: keyEnv)
     }
     func save() {
-        if let data = try? JSONEncoder().encode(self) {
+        if apiKey.isEmpty {
+            KeychainStore.delete(Self.typedKeyAccount)
+        } else {
+            KeychainStore.set(apiKey, account: Self.typedKeyAccount)
+        }
+        var stored = self
+        stored.apiKey = ""   // the key lives in the Keychain only
+        if let data = try? JSONEncoder().encode(stored) {
             UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: "papertalk.llm.json")
         }
     }

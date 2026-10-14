@@ -21,6 +21,23 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     /// True while the transcript's turns are being rendered to audio.
     @Published private(set) var isRendering = false
     @Published private(set) var renderError: String?
+    /// Voice-sample preview, independent of the episode being listened to.
+    enum PreviewPhase: Equatable {
+        case generating(String)          // synthesizing the sample for this voice
+        case playing(String)
+        case failed(String, String)      // voice, message
+        var voice: String {
+            switch self { case .generating(let v), .playing(let v), .failed(let v, _): return v }
+        }
+    }
+    @Published private(set) var preview: PreviewPhase?
+    /// Fraction of the playing sample already heard (0…1), for the ring.
+    @Published private(set) var previewProgress: Double = 0
+    /// False until the Kokoro model has been loaded once; the first sample is slow.
+    @Published private(set) var modelLoaded = false
+    private var previewPlayer: AVAudioPlayer?
+    private var previewGeneration = 0
+    private var previewTimer: Timer?
 
     private struct RenderedTurn {
         let wav: Data
@@ -61,15 +78,58 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         isRendering = false
     }
 
+    /// Synthesize and play a short spoken sample of `voice` so the user can hear
+    /// it before committing. Uses its own audio player: the episode is only
+    /// paused, never unloaded. A new request replaces any running preview.
+    func previewVoice(_ voice: String) {
+        stopPreview()
+        if isPlaying { pause() }
+        previewGeneration += 1
+        let gen = previewGeneration
+        preview = .generating(voice)
+        Task {
+            do {
+                try await manager.initialize()
+                modelLoaded = true
+                let data = try await manager.synthesize(text: KokoroSpeech.samplePrompt(for: voice), voice: voice, speed: 0.95)
+                guard gen == previewGeneration else { return }
+                let p = try AVAudioPlayer(data: data)
+                p.delegate = self
+                previewPlayer = p
+                previewProgress = 0
+                p.play()
+                preview = .playing(voice)
+                previewTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                    Task { @MainActor in
+                        guard let self, let pp = self.previewPlayer, pp.duration > 0 else { return }
+                        self.previewProgress = min(1, pp.currentTime / pp.duration)
+                    }
+                }
+            } catch {
+                guard gen == previewGeneration else { return }
+                preview = .failed(voice, error.localizedDescription)
+            }
+        }
+    }
+
+    /// Cancel a generating sample or stop one that's playing.
+    func stopPreview() {
+        previewGeneration += 1
+        previewTimer?.invalidate(); previewTimer = nil
+        previewPlayer?.stop()
+        previewPlayer = nil
+        previewProgress = 0
+        preview = nil
+    }
+
     /// Renders every turn to audio (async). Not ready until `isRendering` clears.
-    func prepare(transcript: Transcript) {
+    func prepare(transcript: Transcript, voiceMap: [String: String]) {
         let flat = transcript.segments.flatMap { $0.turns.map { (speaker: $0.speaker, text: $0.text) } }
         stopAll()
         guard !flat.isEmpty else { return }
 
         turnCount = flat.count
         turns = flat.map { $0.text }
-        let voiceMap = KokoroSpeech.voices(for: flat.map { $0.speaker })
         voices = flat.map { voiceMap[$0.speaker] ?? KokoroSpeech.defaultVoice }
         rendered = Array(repeating: nil, count: flat.count)
         totalBefore = [] // filled after each render
@@ -132,6 +192,14 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         }
     }
 
+    /// Plays now, or once the in-flight live render finishes (baked audio is
+    /// already ready, so this returns immediately). Awaits without blocking.
+    func playWhenReady() async {
+        while isRendering { try? await Task.sleep(nanoseconds: 30_000_000) }
+        guard renderError == nil else { return }
+        play()
+    }
+
     private func play() {
         guard !isRendering else { return }
         if player == nil { startTurn(activeTurn >= 0 ? activeTurn : 0) }
@@ -186,6 +254,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     // MARK: - AVAudioPlayerDelegate
 
     func audioPlayerDidFinishPlaying(_ audioPlayer: AVAudioPlayer, successfully flag: Bool) {
+        if audioPlayer === previewPlayer { stopPreview(); return }
         guard player === audioPlayer else { return }
         let next = activeTurn + 1
         if next < turnCount {

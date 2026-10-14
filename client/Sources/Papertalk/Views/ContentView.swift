@@ -11,11 +11,18 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 300)
         } detail: {
             HStack(spacing: 0) {
-                LibraryView(onImport: { store.beginImport() })
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        BottomBar(player: store.player)
+                Group {
+                    if store.view == .authors, store.activeAuthor == nil {
+                        AuthorsView()
+                    } else {
+                        LibraryView(onImport: { store.beginImport() })
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                // The player stays put while browsing authors too.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    BottomBar(player: store.player)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if showInspector {
                     InspectorResizeHandle(width: $inspectorWidth, range: 300...520)
@@ -39,6 +46,11 @@ struct ContentView: View {
             OnboardingView()
                 .interactiveDismissDisabled()
         }
+        .sheet(isPresented: castShown) {
+            if let p = store.pendingCast {
+                CastSheet(paperTitle: p.paperTitle, proposals: p.proposals, authors: p.authors)
+            }
+        }
         .confirmationDialog(confirmationTitle, isPresented: confirmationShown,
                             titleVisibility: .visible, presenting: store.pendingConfirmation) { pending in
             switch pending {
@@ -54,6 +66,15 @@ struct ContentView: View {
                 Text("The PDF, transcript and generated audio are removed from the library. This can’t be undone.")
             case .rerun:
                 Text("The current script and audio are replaced with a newly written episode.")
+            }
+        }
+        .confirmationDialog(duplicateTitle, isPresented: duplicateShown,
+                            titleVisibility: .visible) {
+            Button("Import anyway") { store.resolveDuplicate(true) }
+            Button("Cancel", role: .cancel) { store.resolveDuplicate(false) }
+        } message: {
+            if let d = store.pendingDuplicate {
+                Text("“\(d.duplicateOf.displayTitle)” already exists with the same title or DOI. Import it anyway?")
             }
         }
         .overlay(alignment: .bottom) {
@@ -83,6 +104,16 @@ struct ContentView: View {
         case .rerun(let p): return "Rerun “\(p.displayTitle)”?"
         case nil: return ""
         }
+    }
+
+    private var duplicateTitle: String { store.pendingDuplicate != nil ? "Already in library" : "" }
+    private var duplicateShown: Binding<Bool> {
+        Binding(get: { store.pendingDuplicate != nil },
+                set: { if !$0 { store.resolveDuplicate(false) } })
+    }
+    private var castShown: Binding<Bool> {
+        Binding(get: { store.pendingCast != nil },
+                set: { if !$0 { store.cancelCast() } })
     }
 
     @ViewBuilder private var inspectorContent: some View {

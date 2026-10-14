@@ -1,31 +1,68 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: - Clear all data, settings, and cache (settings page)
+// MARK: - Clear data page: library + settings, and (separately) voice models
 struct ClearDataPage: View {
     @EnvironmentObject private var store: AppStore
-    @State private var confirm = false
+    @State private var confirmErase = false
+    @State private var confirmModels = false
+    @State private var modelBytes: Int64 = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Clear all data").font(.title3).fontWeight(.semibold)
-            Text("This permanently deletes every paper in the library, resets all settings (server, LLM, prompts, first-run flag), and removes the Kokoro model cache. This cannot be undone.")
-                .font(.caption).foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Text("Papers: \(store.papers.count)")
-                .font(.callout)
-            Button("Erase everything", role: .destructive) { confirm = true }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Clear data").font(.title3).fontWeight(.semibold)
+
+            section(title: "Library and settings",
+                    detail: "Deletes every paper in the library and resets all settings (server, LLM, API keys, prompts, presets). Voice models are kept.") {
+                Text(store.papers.count == 1 ? "1 paper" : "\(store.papers.count) papers")
+                    .font(.callout).foregroundStyle(.secondary)
+                Spacer()
+                Button("Erase library and settings…", role: .destructive) { confirmErase = true }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+            }
+
+            section(title: "Voice models",
+                    detail: "The Kokoro voices used to speak episodes. Deleting them frees disk space; they download again the next time audio is generated.") {
+                Text(modelBytes > 0 ? ByteCountFormatter.string(fromByteCount: modelBytes, countStyle: .file) : "Not downloaded")
+                    .font(.callout).foregroundStyle(.secondary)
+                Spacer()
+                Button("Delete voice models…", role: .destructive) { confirmModels = true }
+                    .disabled(modelBytes == 0 || store.activeRun != nil)
+                    .help(store.activeRun != nil ? "Wait for conversions to finish" : "")
+            }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(20)
-        .confirmationDialog("Delete all papers, settings and cache?", isPresented: $confirm, titleVisibility: .visible) {
-            Button("Erase everything", role: .destructive) {
-                store.clearAll()
+        .onAppear { modelBytes = store.voiceModelsSize() }
+        .confirmationDialog("Erase the library and all settings?", isPresented: $confirmErase, titleVisibility: .visible) {
+            Button("Erase everything", role: .destructive) { store.clearAll() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This can’t be undone.")
+        }
+        .confirmationDialog("Delete the voice models?", isPresented: $confirmModels, titleVisibility: .visible) {
+            Button("Delete voice models", role: .destructive) {
+                store.clearVoiceModels()
+                modelBytes = store.voiceModelsSize()
             }
             Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("They’ll be downloaded again (about \(ByteCountFormatter.string(fromByteCount: modelBytes, countStyle: .file))) the next time audio is generated.")
         }
+    }
+
+    private func section<Content: View>(title: String, detail: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.headline)
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack { content() }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -764,12 +801,9 @@ struct SettingsView: View {
                         .foregroundStyle(.green)
                         .transition(.opacity)
                 }
-                Button("Save") { saveCurrent() }.buttonStyle(.borderedProminent)
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
                 Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") { saveCurrent() }.buttonStyle(.borderedProminent)
             }
         }
         .frame(width: 720, height: 560)
@@ -803,6 +837,309 @@ private struct SettingsActionBar<Content: View>: View {
         .padding(.vertical, 10)
         .background(.bar)
         .overlay(alignment: .top) { Divider() }
+    }
+}
+
+// MARK: - Cast confirmation: show the model's proposed speakers, let the user
+// rename each person and pick (and hear) their voice before the script is written.
+struct CastSheet: View {
+    let paperTitle: String
+    let proposals: [ProposedSpeaker]
+    let authors: [String]
+    @EnvironmentObject private var store: AppStore
+
+    struct Row: Identifiable, Equatable {
+        let id = UUID()
+        var role: String
+        var name: String
+        var voice: String
+        /// Once the user picks a voice by hand, renaming no longer re-guesses it.
+        var voiceTouched = false
+    }
+    @State private var rows: [Row]
+
+    init(paperTitle: String, proposals: [ProposedSpeaker], authors: [String]) {
+        self.paperTitle = paperTitle
+        self.proposals = proposals
+        self.authors = authors
+        _rows = State(initialValue: Self.initialRows(proposals))
+    }
+
+    /// Default voices: each scientist gets the canonical voice for their
+    /// (guessed) gender first; the interviewer then takes a voice nobody else
+    /// has, so the two are never cast identically by default.
+    private static func initialRows(_ proposals: [ProposedSpeaker]) -> [Row] {
+        var rows = proposals.map { Row(role: $0.role, name: $0.name, voice: $0.voice) }
+        var used = Set<String>()
+        for i in rows.indices where !isHost(rows[i].role) {
+            let gender = KokoroSpeech.gender(for: rows[i].name) ?? proposals[i].gender
+            rows[i].voice = KokoroSpeech.defaultVoice(forGender: gender, avoiding: used)
+            used.insert(rows[i].voice)
+        }
+        for i in rows.indices where isHost(rows[i].role) {
+            rows[i].voice = KokoroSpeech.defaultVoice(forGender: proposals[i].gender, avoiding: used)
+            used.insert(rows[i].voice)
+        }
+        return rows
+    }
+
+    /// The host/anchor speaks for the show; everything else is an interviewed
+    /// author, whose name is picked from the paper's real authors.
+    private static func isHost(_ role: String) -> Bool {
+        let r = role.lowercased()
+        return r.contains("interviewer") || r.contains("host") || r.contains("anchor")
+            || r.contains("moderator") || r.contains("presenter")
+    }
+
+    private var trimmedNames: [String] { rows.map { $0.name.trimmingCharacters(in: .whitespaces) } }
+    private var hasEmptyName: Bool { trimmedNames.contains { $0.isEmpty } }
+    private var hasDuplicateName: Bool {
+        Set(trimmedNames.map { $0.lowercased() }).count < trimmedNames.count
+    }
+    private var sharesVoice: Bool { Set(rows.map(\.voice)).count < rows.count }
+    private var canConfirm: Bool { !rows.isEmpty && !hasEmptyName && !hasDuplicateName }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            header
+
+            VStack(spacing: 10) {
+                ForEach($rows) { $row in speakerCard($row) }
+            }
+            .animation(.snappy, value: rows)
+
+            validation
+
+            HStack {
+                Spacer()
+                Button("Cancel import") { store.cancelCast() }
+                    .buttonStyle(.glass)
+                    .keyboardShortcut(.cancelAction)
+                Button("Use these voices") {
+                    let cast = zip(rows, trimmedNames).map { SpeakerConfig(name: $1, voice: $0.voice) }
+                    store.resolveCast(cast)
+                }
+                .buttonStyle(.glassProminent)
+                .disabled(!canConfirm)
+                .keyboardShortcut(.defaultAction)
+            }
+            .controlSize(.large)
+        }
+        .padding(24)
+        .frame(width: 520)
+        .tint(Color.appAccent)
+        .onDisappear { store.player.stopPreview() }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.2.wave.2.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(Color.appAccent.gradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Who should speak?").font(.title3.weight(.semibold))
+                Text(paperTitle)
+                    .font(.callout).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+                    .help(paperTitle)
+            }
+        }
+    }
+
+    private func speakerCard(_ row: Binding<Row>) -> some View {
+        let r = row.wrappedValue
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return HStack(alignment: .top, spacing: 12) {
+            AuthorAvatar(name: r.name.isEmpty ? r.role : r.name, size: 40)
+                .animation(.snappy, value: r.name)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(r.role.uppercased())
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.5)
+                nameField(row)
+                HStack(spacing: 8) {
+                    voicePicker(row)
+                    Spacer(minLength: 0)
+                    VoiceSampleButton(player: store.player, voice: r.voice)
+                }
+            }
+        }
+        .padding(12)
+        .background(shape.fill(Color.primary.opacity(0.04)))
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+    }
+
+    @ViewBuilder private func nameField(_ row: Binding<Row>) -> some View {
+        if !Self.isHost(row.wrappedValue.role) && !authors.isEmpty {
+            Picker("Author", selection: Binding(
+                get: { row.wrappedValue.name },
+                set: { rename(row, to: $0) }
+            )) {
+                if !authors.contains(row.wrappedValue.name) {
+                    Text(row.wrappedValue.name.isEmpty ? "Choose an author…" : row.wrappedValue.name)
+                        .tag(row.wrappedValue.name)
+                }
+                ForEach(authors, id: \.self) { Text($0).tag($0) }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help("The interviewed scientist is one of the paper's authors")
+        } else {
+            TextField("Name", text: Binding(
+                get: { row.wrappedValue.name },
+                set: { rename(row, to: $0) }
+            ))
+            .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    private func voicePicker(_ row: Binding<Row>) -> some View {
+        Picker("Voice", selection: Binding(
+            get: { row.wrappedValue.voice },
+            set: { v in
+                row.wrappedValue.voice = v
+                row.wrappedValue.voiceTouched = true
+                store.player.previewVoice(v)   // hear the choice straight away
+            }
+        )) {
+            ForEach(KokoroSpeech.voiceGroups, id: \.title) { group in
+                Section(group.title) {
+                    ForEach(group.voices, id: \.self) { Text(KokoroSpeech.displayName($0)).tag($0) }
+                }
+            }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+        .help("\(KokoroSpeech.accent(row.wrappedValue.voice)) · \(KokoroSpeech.voiceGender(row.wrappedValue.voice) ?? "voice")")
+    }
+
+    /// Rename a speaker; until the user picks a voice by hand, follow the
+    /// new name's likely gender so a swapped author keeps a fitting voice.
+    private func rename(_ row: Binding<Row>, to name: String) {
+        row.wrappedValue.name = name
+        let id = row.wrappedValue.id
+        guard !row.wrappedValue.voiceTouched, let g = KokoroSpeech.gender(for: name),
+              KokoroSpeech.voiceGender(row.wrappedValue.voice) != g else { return }
+        if Self.isHost(row.wrappedValue.role) {
+            // The interviewer adapts around everyone else.
+            let others = Set(rows.filter { $0.id != id }.map(\.voice))
+            row.wrappedValue.voice = KokoroSpeech.defaultVoice(forGender: g, avoiding: others)
+        } else {
+            // The scientist gets the canonical voice for their gender; an
+            // interviewer still on an automatic voice moves aside if they clash.
+            row.wrappedValue.voice = KokoroSpeech.defaultVoice(forGender: g)
+            for i in rows.indices where rows[i].id != id && !rows[i].voiceTouched
+                && rows[i].voice == row.wrappedValue.voice {
+                let taken = Set(rows.enumerated().filter { $0.offset != i }.map(\.element.voice))
+                rows[i].voice = KokoroSpeech.defaultVoice(forGender: KokoroSpeech.voiceGender(rows[i].voice),
+                                                          avoiding: taken)
+            }
+        }
+    }
+
+    @ViewBuilder private var validation: some View {
+        if hasEmptyName || hasDuplicateName {
+            Label(hasEmptyName ? "Every speaker needs a name." : "Each speaker needs a different name.",
+                  systemImage: "exclamationmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+        } else if sharesVoice {
+            Label("Speakers share a voice, so they'll be hard to tell apart.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        } else {
+            Text("Each person's voice is used whenever they speak. Choosing a voice plays a short sample.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Play / generating / playing / failed control for a voice sample. While the
+/// sample is synthesized it shows a spinner (click to cancel); while playing, a
+/// progress ring around a stop button.
+private struct VoiceSampleButton: View {
+    @ObservedObject var player: PlayerController
+    let voice: String
+    @State private var hovering = false
+
+    private var phase: PlayerController.PreviewPhase? {
+        player.preview?.voice == voice ? player.preview : nil
+    }
+
+    var body: some View {
+        Button(action: tap) {
+            HStack(spacing: 7) {
+                icon.frame(width: 18, height: 18)
+                Text(label)
+                    .font(.callout)
+                    .contentTransition(.opacity)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.snappy, value: phase)
+        .help(help)
+    }
+
+    @ViewBuilder private var icon: some View {
+        switch phase {
+        case .generating:
+            if hovering {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        case .playing:
+            ZStack {
+                Circle().stroke(Color.appAccent.opacity(0.2), lineWidth: 2)
+                Circle()
+                    .trim(from: 0, to: player.previewProgress)
+                    .stroke(Color.appAccent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 0.05), value: player.previewProgress)
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(Color.appAccent)
+            }
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        case nil:
+            Image(systemName: "play.circle.fill").foregroundStyle(Color.appAccent)
+        }
+    }
+
+    private var label: String {
+        switch phase {
+        case .generating: return player.modelLoaded ? "Generating…" : "Loading voices…"
+        case .playing: return "Playing"
+        case .failed: return "Retry"
+        case nil: return "Sample"
+        }
+    }
+
+    private var help: String {
+        switch phase {
+        case .generating: return "Synthesizing a sample of \(KokoroSpeech.displayName(voice)) — click to cancel"
+        case .playing: return "Stop the sample"
+        case .failed(_, let msg): return "Couldn't play the sample: \(msg)"
+        case nil: return "Hear \(KokoroSpeech.displayName(voice))"
+        }
+    }
+
+    private func tap() {
+        switch phase {
+        case .generating, .playing: player.stopPreview()
+        default: player.previewVoice(voice)
+        }
     }
 }
 

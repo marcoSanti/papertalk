@@ -129,7 +129,7 @@ struct DetailView: View {
                 if let d = paper.depthTitle {
                     pill(d, icon: "dial.medium")
                 }
-                if let iso = paper.createdIso, !formatDate(iso).isEmpty {
+                if let iso = paper.publishedIso, !formatDate(iso).isEmpty {
                     pill(formatDate(iso), icon: "calendar")
                 }
             }
@@ -161,12 +161,9 @@ struct DetailView: View {
             SectionLabel(title: "Authors", systemImage: "person.2", trailing: "\(paper.authors.count)")
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(visible.enumerated()), id: \.offset) { _, name in
-                    HStack(spacing: 10) {
-                        AuthorAvatar(name: name)
-                        Text(name).font(.callout).lineLimit(1)
-                        Spacer(minLength: 0)
+                    AuthorRow(name: name, paperCount: store.papersByAuthor[AuthorName.clean(name)]?.count ?? 1) {
+                        store.showAuthor(name)
                     }
-                    .textSelection(.enabled)
                 }
             }
             if paper.authors.count > 5 {
@@ -220,8 +217,8 @@ struct DetailView: View {
                 detailRow("File") {
                     Text(paper.filename ?? "—").lineLimit(1).truncationMode(.middle)
                 }
-                if let iso = paper.createdIso, !formatDate(iso).isEmpty {
-                    detailRow("Added") { Text(formatDate(iso)) }
+                if let iso = paper.publishedIso, !formatDate(iso).isEmpty {
+                    detailRow("Published") { Text(formatDate(iso)) }
                 }
                 if paper.duration > 0 {
                     detailRow("Length") { Text(formatT(paper.duration)) }
@@ -629,25 +626,6 @@ private struct EpisodeCard: View {
 
 // MARK: - Small pieces
 
-private struct AuthorAvatar: View {
-    let name: String
-
-    private var initials: String {
-        let parts = name.split(separator: " ").filter { !$0.isEmpty }
-        let first = parts.first?.first.map(String.init) ?? "?"
-        let last = parts.count > 1 ? (parts.last?.first.map(String.init) ?? "") : ""
-        return (first + last).uppercased()
-    }
-
-    var body: some View {
-        Text(initials)
-            .font(.system(size: 10, weight: .bold, design: .rounded))
-            .foregroundStyle(.white)
-            .frame(width: 24, height: 24)
-            .background(Color.stable(for: name).gradient, in: Circle())
-    }
-}
-
 private struct CopyButton: View {
     let value: String
     @State private var copied = false
@@ -800,5 +778,43 @@ private struct TagEntryField: View {
         let t = text.trimmingCharacters(in: .whitespaces)
         if !t.isEmpty { onAdd(t) }
         text = ""
+    }
+}
+
+/// Inspector author line; opens that author's papers.
+private struct AuthorRow: View {
+    let name: String
+    let paperCount: Int
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                AuthorAvatar(name: name)
+                Text(name).font(.callout).lineLimit(1)
+                Spacer(minLength: 0)
+                if paperCount > 1 {
+                    Text("\(paperCount) papers")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .opacity(hovering ? 1 : 0)
+            }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Show all papers by \(name)")
+        .contextMenu {
+            Button("Copy name") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(name, forType: .string)
+            }
+        }
     }
 }

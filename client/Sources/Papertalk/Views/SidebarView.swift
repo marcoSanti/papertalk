@@ -2,7 +2,7 @@ import SwiftUI
 
 /// What the sidebar can point the library at.
 enum SidebarItem: Hashable {
-    case all, favorites, tag(String)
+    case all, favorites, authors, tag(String)
 }
 
 struct SidebarView: View {
@@ -17,6 +17,10 @@ struct SidebarView: View {
                 Label("Favorites", systemImage: "star")
                     .badge(favoritesCount)
                     .tag(SidebarItem.favorites)
+                Label("Authors", systemImage: "person.2")
+                    .badge(store.authorCounts.count)
+                    .help("Browse papers by author — like a contact book")
+                    .tag(SidebarItem.authors)
             }
 
             Section("Tags") {
@@ -44,6 +48,8 @@ struct SidebarView: View {
         switch store.view {
         case .all: return .all
         case .fav: return .favorites
+        case .authors: return .authors
+        case .author: return .authors // drilling into a single author keeps Authors highlighted
         case .tag: return store.activeTag.map { SidebarItem.tag($0) } ?? .all
         }
     }
@@ -55,11 +61,13 @@ struct SidebarView: View {
                 guard let item, item != current else { return }
                 switch item {
                 case .all:
-                    store.view = .all; store.activeTag = nil
+                    store.view = .all; store.activeTag = nil; store.activeAuthor = nil
                 case .favorites:
-                    store.view = .fav; store.activeTag = nil
+                    store.view = .fav; store.activeTag = nil; store.activeAuthor = nil
+                case .authors:
+                    store.view = .authors; store.activeTag = nil; store.activeAuthor = nil
                 case .tag(let t):
-                    store.view = .tag; store.activeTag = t
+                    store.view = .tag; store.activeTag = t; store.activeAuthor = nil
                 }
                 // Keep the inspector on the current paper if it's still in scope.
                 if let id = store.selectedId, !store.filteredPapers().contains(where: { $0.id == id }) {

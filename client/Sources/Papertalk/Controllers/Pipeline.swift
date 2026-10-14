@@ -33,6 +33,10 @@ enum PipelineError: Error, LocalizedError {
     }
 }
 
+private extension String {
+    var nonEmpty: String? { isEmpty ? nil : self }
+}
+
 enum Parsers {
     /// Parse "Name: text" dialogue lines into turns, tolerating the model
     /// occasionally mis-labeling a speaker or wrapping in prose.
@@ -159,14 +163,14 @@ struct LocalPipeline {
     ///    rolling window of recent turns for consistency.
     /// 3. Methodology segments are delivered as FULL-LENGTH expert monologues,
     ///    chunked by source size so the audio scales with the paper.
-    func generateTranscript(text: String, depth: Depth = .inDepth, depthNote: String = "") async throws -> PipelineResult {
+    func generateTranscript(text: String, depth: Depth = .inDepth, depthNote: String = "", host: String? = nil, expert: String? = nil) async throws -> PipelineResult {
         let cleaned = String(text.prefix(240_000)).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { throw PipelineError.noText }
         let lines = cleaned.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         let title = lines.first.map { String($0.prefix(200)) } ?? "Untitled"
         let authors = detectAuthors(lines: lines)
-        let expert = authors.first.flatMap(firstGivenName) ?? "Sam"
-        let host = "Jordan"
+        let expert = expert?.nonEmpty ?? authors.first.flatMap(firstGivenName) ?? "Sam"
+        let host = host?.nonEmpty ?? "Jordan"
 
         // Target episode length. Generous planned words because the model
         // generally under-writes the requested budget.
@@ -637,5 +641,40 @@ struct LocalPipeline {
         let first = full.replacingOccurrences(of: ",", with: " ")
             .split(separator: " ").first.map(String.init) ?? ""
         return first.count > 1 ? first : nil
+    }
+
+    /// Ask the LLM to cast the episode: who speaks, each person's gender and a
+    /// suggested name. Used *after* metadata so the scientist's real author name
+    /// can inform it. Falls back to a sensible two-person cast when the model is
+    /// unreachable or returns unusable JSON.
+    ///
+    /// ponytail: the reported "how many voices" is capped at the interviewer +
+    /// scientist pair the dialogue generator supports; a future N-speaker rewrite
+    /// of planScript/writeDialogue would lift that ceiling.
+    func proposeCast(title: String, authors: [String], cleaned: String, depthNote: String) async -> [ProposedSpeaker] {
+        let scientistName = authors.first.flatMap(firstGivenName) ?? "Sam"
+        let fallback = [
+            ProposedSpeaker(role: "Interviewer", gender: "female", name: "Jordan"),
+            ProposedSpeaker(role: "Scientist", gender: KokoroSpeech.gender(for: scientistName), name: scientistName),
+        ]
+        let system = "You are casting a short research-podcast interview. Decide who speaks and how they sound. Return ONLY a JSON array, no markdown or prose: [{\"role\": string, \"gender\": \"male\"|\"female\", \"name\": string}]. Use exactly two speakers: the interviewer (female by default) and the interviewed scientist, who is one of the paper's real authors — use their given first name. Propose a realistic first name for the interviewer."
+        let user = "Title: \(title)\nAuthors: \(authors.joined(separator: ", "))\nMode: \(depthNote.isEmpty ? "In-depth discussion" : depthNote)\n\nPaper excerpt:\n\(cleaned.prefix(2500))"
+        guard let raw = try? await chat(system: system, user: user, maxTokens: 400),
+              let parsed = Self.parseSpeakers(raw), !parsed.isEmpty else { return fallback }
+        return parsed
+    }
+
+    private static func parseSpeakers(_ raw: String) -> [ProposedSpeaker]? {
+        guard let json = extractJSON(raw), let data = json.data(using: .utf8),
+              let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return nil }
+        var out: [ProposedSpeaker] = []
+        for d in arr {
+            let role = (d["role"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            let name = (d["name"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            guard !role.isEmpty, !name.isEmpty else { continue }
+            let g = (d["gender"] as? String)?.lowercased() ?? ""
+            out.append(ProposedSpeaker(role: role, gender: (g == "male" || g == "female") ? g : nil, name: name))
+        }
+        return out.isEmpty ? nil : out
     }
 }

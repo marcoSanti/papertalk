@@ -20,12 +20,25 @@ func stageLabel(_ stage: String) -> String {
     }
 }
 
-/// ISO8601 string -> short date.
+/// ISO8601 string -> short date. Handles full timestamps, plus the partial
+/// calendar dates Crossref returns (YYYY, YYYY-MM, YYYY-MM-DD).
 func formatDate(_ iso: String) -> String {
-    let f = ISO8601DateFormatter()
-    if let d = f.date(from: iso) {
+    let full = ISO8601DateFormatter()
+    if let d = full.date(from: iso) {
         let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .none
         return df.string(from: d)
     }
-    return ""
+    let parse = DateFormatter()
+    parse.locale = Locale(identifier: "en_US_POSIX")
+    parse.calendar = Calendar(identifier: .gregorian)
+    let out = DateFormatter()
+    out.locale = Locale(identifier: "en_US_POSIX")
+    out.calendar = Calendar(identifier: .gregorian)
+    switch iso.count {
+    case 0...4: parse.dateFormat = "yyyy"; out.dateFormat = "yyyy"
+    case 5...7: parse.dateFormat = "yyyy-MM"; out.dateFormat = "MMMM yyyy"
+    default: parse.dateFormat = "yyyy-MM-dd"; out.dateStyle = .medium; out.timeStyle = .none
+    }
+    guard let d = parse.date(from: iso) else { return "" }
+    return out.string(from: d)
 }

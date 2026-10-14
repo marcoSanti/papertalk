@@ -55,10 +55,30 @@ final class AppStore: ObservableObject {
             }
         }
     }
+    /// Pending "already in library" prompt whose answer is awaited by the
+    /// import pipeline. Lives on the store so it survives sheet dismissal.
+    struct DuplicatePrompt {
+        let incoming: Paper
+        let duplicateOf: Paper
+        let cont: CheckedContinuation<Bool, Never>
+    }
+    @Published var pendingDuplicate: DuplicatePrompt?
+
+    /// Pending cast-selection prompt (shown once the model has proposed names
+    /// and genders). The import pipeline waits on its continuation; resuming
+    /// with nil means "cancel the whole import".
+    struct CastPrompt {
+        let paperTitle: String
+        let proposals: [ProposedSpeaker]
+        let authors: [String]
+        let cont: CheckedContinuation<[SpeakerConfig]?, Never>
+    }
+    @Published var pendingCast: CastPrompt?
 
     // filtering
     @Published var view: ViewMode = .all
     @Published var activeTag: String?
+    @Published var activeAuthor: String?
     /// Named custom-depth prompts, selectable from the upload sheet's dropdown.
     @Published var customPresets: CustomDepthPresets = .load()
     /// Library presentation: thumbnail grid or compact list.
@@ -105,7 +125,7 @@ final class AppStore: ObservableObject {
     private var toastTask: Task<Void, Never>?
     private var playbackCancelables: Set<AnyCancellable> = []
 
-    enum ViewMode { case all, fav, tag }
+    enum ViewMode { case all, fav, authors, tag, author }
 
     init() {
         player = PlayerController()
@@ -179,7 +199,8 @@ final class AppStore: ObservableObject {
         switch view {
         case .fav: out = out.filter { $0.favorite }
         case .tag: if let t = activeTag { out = out.filter { $0.tags.contains(t) } }
-        case .all: break
+        case .author: if let a = activeAuthor { out = out.filter { $0.authors.map(AuthorName.clean).contains(a) } }
+        case .all, .authors: break
         }
         if statusFilter != "all" { out = out.filter { Self.matches($0, status: statusFilter) } }
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -247,6 +268,30 @@ final class AppStore: ObservableObject {
             for t in Set(p.tags) { counts[t, default: 0] += 1 }
         }
         return counts.sorted { $0.key.localizedCompare($1.key) == .orderedAscending }
+    }
+
+    var authorCounts: [(String, Int)] {
+        papersByAuthor.map { ($0.key, $0.value.count) }
+            .sorted { $0.0.localizedCompare($1.0) == .orderedAscending }
+    }
+
+    /// Each author (whitespace-normalised) with their papers, newest first.
+    var papersByAuthor: [String: [Paper]] {
+        var out: [String: [Paper]] = [:]
+        for p in papers.values {
+            for a in Set(p.authors.map(AuthorName.clean)) where !a.isEmpty {
+                out[a, default: []].append(p)
+            }
+        }
+        return out.mapValues { $0.sorted { ($0.createdIso ?? "") > ($1.createdIso ?? "") } }
+    }
+
+    /// Drill the library into one author's papers.
+    func showAuthor(_ name: String) {
+        view = .author
+        activeAuthor = AuthorName.clean(name)
+        activeTag = nil
+        if let id = selectedId, !filteredPapers().contains(where: { $0.id == id }) { selectedId = nil }
     }
 
     // MARK: Artifact access (all via the active storage)
@@ -385,6 +430,74 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// First existing paper (other than `p`) that shares its title or DOI.
+    private func findDuplicate(of p: Paper?) -> Paper? {
+        guard let p else { return nil }
+        func norm(_ s: String?) -> String { (s ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+        let title = norm(p.title), doi = norm(p.doi)
+        guard !title.isEmpty || !doi.isEmpty else { return nil }
+        return papers.values.first { q in
+            guard q.id != p.id else { return false }
+            let qTitle = norm(q.title), qDoi = norm(q.doi)
+            return (!doi.isEmpty && !qDoi.isEmpty && qDoi == doi) ||
+                   (!title.isEmpty && !qTitle.isEmpty && qTitle == title)
+        }
+    }
+
+    /// Pause the import pipeline for the user to allow a duplicate. Resolves
+    /// with true to continue the import, false to abort it.
+    private func askDuplicate(_ incoming: Paper, duplicateOf dup: Paper) async -> Bool {
+        // One prompt at a time: wait for any other import's question to be answered.
+        while pendingDuplicate != nil { try? await Task.sleep(nanoseconds: 200_000_000) }
+        return await withCheckedContinuation { c in
+            pendingDuplicate = DuplicatePrompt(incoming: incoming, duplicateOf: dup, cont: c)
+        }
+    }
+
+    /// Called by the confirmation dialog: continues or aborts an in-flight
+    /// duplicate import.
+    func resolveDuplicate(_ allow: Bool) {
+        guard let q = pendingDuplicate else { return }
+        pendingDuplicate = nil
+        q.cont.resume(returning: allow)
+    }
+
+    /// Pause the import pipeline to confirm the episode cast the model proposed.
+    /// Resolves with nil if the user cancels the import, else the final cast.
+    private func askCast(_ proposals: [ProposedSpeaker], authors: [String], paperTitle: String) async -> [SpeakerConfig]? {
+        while pendingCast != nil { try? await Task.sleep(nanoseconds: 200_000_000) }
+        return await withCheckedContinuation { c in
+            pendingCast = CastPrompt(paperTitle: paperTitle, proposals: proposals, authors: authors, cont: c)
+        }
+    }
+
+    /// Called by the cast sheet: applies the user's names/voices and resumes the
+    /// import pipeline.
+    func resolveCast(_ speakers: [SpeakerConfig]) {
+        guard let q = pendingCast else { return }
+        player.stopPreview()
+        pendingCast = nil
+        q.cont.resume(returning: speakers)
+    }
+
+    /// Called when the cast sheet is cancelled: aborts the in-flight import.
+    func cancelCast() {
+        guard let q = pendingCast else { return }
+        player.stopPreview()
+        pendingCast = nil
+        q.cont.resume(returning: nil)
+    }
+
+    /// Abort an in-flight import and drop its files (used when the user
+    /// declines a duplicate).
+    private func discardImport(_ id: String) async {
+        for key in [K.paper(id), K.pdf(id), K.script(id), K.transcript(id), K.captions(id), K.audio(id)] {
+            try? await storage.delete(key)
+        }
+        if selectedId == id { selectedId = nil }
+        papers.removeValue(forKey: id)
+    }
+
     /// Remove a paper's baked per-turn WAVs + manifest (best-effort).
     private func deleteBakedAudio(_ id: String) async {
         if let manifest = await storage.exists(AudioManifest.self, K.audioManifest(id)) {
@@ -416,10 +529,11 @@ final class AppStore: ObservableObject {
                         "paper2pod.server.json", "paper2pod.llm.json", "paper2pod.onboarded"] {
                 d.removeObject(forKey: key)
             }
-            // 3. Kokoro model cache download dir, if present.
-            if let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
-                let audio = caches.appendingPathComponent("fluidaudio", isDirectory: true)
-                try? FileManager.default.removeItem(at: audio)
+            // 3. API keys in the Keychain (typed key + env-sourced copies).
+            //    Voice models are left alone: they have their own button.
+            KeychainStore.delete(LLMSettings.typedKeyAccount)
+            for env in ["OPENWEBUI_API_KEY", "LLM_API_KEY", "PAPERTALK_API_KEY", llm.keyEnv] where !env.isEmpty {
+                KeychainStore.delete(env)
             }
             // 4. Back to a clean reactive state.
             config = ServerConfig.load()   // save() re-persists env defaults
@@ -434,6 +548,38 @@ final class AppStore: ObservableObject {
             showOnboarding = true
         }
     }
+    // MARK: Voice models
+
+    /// Kokoro model folders FluidAudio downloads to `~/.cache/fluidaudio/Models/`.
+    private var voiceModelDirs: [URL] {
+        let models = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/fluidaudio/Models", isDirectory: true)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: models.path)) ?? []
+        return names.filter { $0.lowercased().hasPrefix("kokoro") }
+            .map { models.appendingPathComponent($0, isDirectory: true) }
+    }
+
+    /// Bytes used by the downloaded voice models (0 when none).
+    func voiceModelsSize() -> Int64 {
+        var total: Int64 = 0
+        for dir in voiceModelDirs {
+            let files = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: [.totalFileAllocatedSizeKey])
+            while let f = files?.nextObject() as? URL {
+                total += Int64((try? f.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0)
+            }
+        }
+        return total
+    }
+
+    /// Delete the downloaded voice models; they're fetched again on next use.
+    func clearVoiceModels() {
+        guard activeRun == nil else { show("Wait for conversions to finish first"); return }
+        player.stopPreview()
+        if playingPaperId != nil { player.stopAll(); playingPaperId = nil }
+        for dir in voiceModelDirs { try? FileManager.default.removeItem(at: dir) }
+        show("Voice models deleted — they'll download again when needed")
+    }
+
     func refreshMeta(_ id: String) {
         Task {
             appendLog("Extracting metadata with LLM…", paper: id)
@@ -442,35 +588,36 @@ final class AppStore: ObservableObject {
             }
             let text = LocalPipeline.extractText(pdfData)
             guard !text.isEmpty else { show("Could not read PDF text"); return }
-            applyMetaFromLLM(id, text: text, fallback: papers[id]?.displayTitle ?? "Untitled")
+            _ = await extractMetaLLM(id, text: text, fallback: papers[id]?.displayTitle ?? "Untitled")
         }
     }
 
     /// (Re)extract title/authors/affiliations/DOI/tags via the LLM and merge into
     /// the paper only for fields that are empty, keeping hand-edited values.
-    private func applyMetaFromLLM(_ id: String, text: String, fallback: String) {
-        Task {
-            do {
-                let base = llm.baseUrl
-                guard !base.isEmpty else { show("Configure an LLM to extract metadata"); return }
-                let p = LocalPipeline(baseUrl: base, apiKey: llm.resolvedKey(), model: llm.model.isEmpty ? "llama3.1:70b" : llm.model)
-                var pipeline = p
-                pipeline.prompts = prompts
-                pipeline.log = { [weak self] line in Task { @MainActor in self?.appendLog(line, paper: id) } }
-                let meta = try await pipeline.extractMeta(text: text, fallbackTitle: fallback)
-                optimistic(id, {
-                    if ($0.title ?? "").isEmpty { $0.title = meta.title }
-                    if $0.authors.isEmpty { $0.authors = meta.authors }
-                    if $0.affiliations.isEmpty { $0.affiliations = meta.affiliations }
-                    if $0.doi.isEmpty { $0.doi = meta.doi }
-                    if $0.tags.isEmpty { $0.tags = meta.tags }
-                })
-                appendLog("Metadata: \(meta.authors.joined(separator: ", ")) · \(meta.tags.joined(separator: ", "))", paper: id)
-                // Resolve the paper's DOI into a BibTeX citation from doi2bib. Use
-                // the currently-stored DOI (authoritative, survives LLM variance)
-                // and skip if one is already resolved.
-                let doi = (papers[id]?.doi ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                if !doi.isEmpty, papers[id]?.bibtex == nil {
+    /// Returns the extracted metadata once merged (nil if no LLM or it fails).
+    private func extractMetaLLM(_ id: String, text: String, fallback: String) async -> PaperMeta? {
+        let base = llm.baseUrl
+        guard !base.isEmpty else { show("Configure an LLM to extract metadata"); return nil }
+        let p = LocalPipeline(baseUrl: base, apiKey: llm.resolvedKey(), model: llm.model.isEmpty ? "llama3.1:70b" : llm.model)
+        var pipeline = p
+        pipeline.prompts = prompts
+        pipeline.log = { [weak self] line in Task { @MainActor in self?.appendLog(line, paper: id) } }
+        do {
+            let meta = try await pipeline.extractMeta(text: text, fallbackTitle: fallback)
+            optimistic(id, {
+                if ($0.title ?? "").isEmpty { $0.title = meta.title }
+                if $0.authors.isEmpty { $0.authors = meta.authors }
+                if $0.affiliations.isEmpty { $0.affiliations = meta.affiliations }
+                if $0.doi.isEmpty { $0.doi = meta.doi }
+                if $0.tags.isEmpty { $0.tags = meta.tags }
+            })
+            appendLog("Metadata: \(meta.authors.joined(separator: ", ")) · \(meta.tags.joined(separator: ", "))", paper: id)
+            // Resolve the paper's DOI into a BibTeX citation from doi2bib. Use
+            // the currently-stored DOI (authoritative, survives LLM variance)
+            // and skip if one is already resolved.
+            let doi = (papers[id]?.doi ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !doi.isEmpty {
+                if papers[id]?.bibtex == nil {
                     if let bib = await fetchBibliography(doi: doi) {
                         optimistic(id, { $0.bibtex = bib })
                         appendLog("Fetched LaTeX citation from doi2bib", paper: id)
@@ -478,9 +625,16 @@ final class AppStore: ObservableObject {
                         appendLog("WARN: could not resolve a citation for \(doi)", paper: id)
                     }
                 }
-            } catch {
-                appendLog("WARN: metadata extraction failed: \(error.localizedDescription)", paper: id)
+                // Publication date from the DOI service (shown instead of the
+                // import date). Leave empty when the DOI doesn't publish one.
+                if papers[id]?.publishedIso == nil, let pub = await fetchPublishedDate(doi: doi) {
+                    optimistic(id, { $0.publishedIso = pub })
+                }
             }
+            return meta
+        } catch {
+            appendLog("WARN: metadata extraction failed: \(error.localizedDescription)", paper: id)
+            return nil
         }
     }
 
@@ -526,7 +680,7 @@ final class AppStore: ObservableObject {
             try await manager.initialize()
 
             var durations: [Double] = []
-            let voiceMap = KokoroSpeech.voices(for: flat.map { $0.speaker })
+            let voiceMap = castVoices(for: id, speakers: flat.map { $0.speaker })
             for (i, turn) in flat.enumerated() {
                 if Task.isCancelled { return false }
                 // Resume from the last successfully synthesized chunk: reuse any
@@ -550,6 +704,16 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// Preferred voice per speaker for a paper: the paper's configured cast wins,
+    /// every other speaker falls back to the default gender-based distinct voices.
+    func castVoices(for id: String, speakers: [String]) -> [String: String] {
+        var map = KokoroSpeech.voices(for: speakers)
+        if let p = papers[id] {
+            for c in p.speakers where map[c.name] != nil { map[c.name] = c.voice }
+        }
+        return map
+    }
+
     /// Load a baked episode's per-turn WAVs for playback, or nil if not baked.
     func loadBakedAudio(for id: String) async -> [BakedTurn]? {
         guard let manifest = await storage.exists(AudioManifest.self, K.audioManifest(id)) else { return nil }
@@ -569,7 +733,8 @@ final class AppStore: ObservableObject {
         if let baked = await loadBakedAudio(for: id), !baked.isEmpty {
             player.prepare(baked: baked)
         } else {
-            player.prepare(transcript: t)
+            let vm = castVoices(for: id, speakers: t.segments.flatMap { $0.turns.map(\.speaker) })
+            player.prepare(transcript: t, voiceMap: vm)
         }
     }
 
@@ -583,7 +748,7 @@ final class AppStore: ObservableObject {
             Task {
                 await prepareAudio(for: id)
                 resumeIfNeeded(id)
-                player.playPause()
+                await player.playWhenReady()
             }
         }
     }
@@ -652,7 +817,7 @@ final class AppStore: ObservableObject {
         let name = filename.isEmpty ? (existing?.filename ?? "Paper") : filename
 
         var rec = existing ?? Paper(id: id, title: "", filename: name, hasPdf: true, hasScript: false, hasAudio: false,
-                                     createdIso: ISO8601DateFormatter().string(from: Date()), state: "queued",
+                                     createdIso: ISO8601DateFormatter().string(from: Date()), publishedIso: existing?.publishedIso, state: "queued",
                                      tags: [], favorite: false, authors: [], affiliations: [], doi: "", read: false,
                                      depth: existing?.depth ?? depth.rawValue, bibtex: nil, progress: 0, duration: 0, progressTs: nil,
                                      stage: "extract", message: "Queued", statusError: nil)
@@ -708,7 +873,38 @@ final class AppStore: ObservableObject {
         // Fill title/authors/DOI/tags from the LLM right away (before the script),
         // so the detail view shows real metadata even while the episode is being written.
         if !base.isEmpty {
-            applyMetaFromLLM(id, text: text, fallback: name)
+            await extractMetaLLM(id, text: text, fallback: name)
+            // Duplicate-import guard: if an existing paper already has this title
+            // or DOI, let the user decide before spending LLM + TTS time on it.
+            if existing == nil, let dup = findDuplicate(of: papers[id]),
+               !(await askDuplicate(papers[id]!, duplicateOf: dup)) {
+                await discardImport(id)
+                show("Skipped import — already have “\(dup.displayTitle)”")
+                return
+            }
+            // Cast (who speaks + how they sound): ask the model to propose the
+            // voices and names now that metadata and the depth instruction are
+            // known, then let the user confirm/rename before writing the script.
+            // Resuming with a script already on disk: the names are baked in, so
+            // there's nothing to cast.
+            let hasScript = await transcript(for: id) != nil
+            let proposals = hasScript ? [] : await pipeline.proposeCast(title: papers[id]?.displayTitle ?? rec.displayTitle,
+                                                               authors: papers[id]?.authors ?? rec.authors,
+                                                               cleaned: text, depthNote: depthNote)
+            let cast = hasScript ? [] : await askCast(proposals, authors: papers[id]?.authors ?? rec.authors,
+                                                      paperTitle: papers[id]?.displayTitle ?? rec.displayTitle)
+            guard let cast else {
+                await discardImport(id)
+                show("Import cancelled")
+                return
+            }
+            if !cast.isEmpty {
+                // Merge into the live record: `rec` predates the metadata
+                // extraction and the progress updates, so it must not overwrite them.
+                rec.speakers = cast
+                updateRec(id) { $0.speakers = cast }
+                if let live = papers[id] { await storage.save(live, K.paper(id)) }
+            }
         }
 
         guard !base.isEmpty else {
@@ -731,7 +927,9 @@ final class AppStore: ObservableObject {
                 script = persisted
                 appendLog("Resuming with previously generated transcript…", paper: id)
             } else {
-                let result = try await pipeline.generateTranscript(text: text, depth: depth, depthNote: depthNote)
+                let result = try await pipeline.generateTranscript(text: text, depth: depth, depthNote: depthNote,
+                                                                    host: rec.speakers.first?.name,
+                                                                    expert: rec.speakers.count > 1 ? rec.speakers[1].name : nil)
                 script = result.transcript
                 // Persist now so an interrupted run can resume past segments later.
                 try? await storage.save(script, K.transcript(id))
@@ -789,6 +987,31 @@ final class AppStore: ObservableObject {
               let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
         let s = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         return s.hasPrefix("@") ? s : nil
+    }
+
+    /// Best-effort publication date (YYYY, YYYY-MM or YYYY-MM-DD) for a DOI,
+    /// from Crossref. Returns nil when the registry has no date.
+    private func fetchPublishedDate(doi: String) async -> String? {
+        var doi = doi.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !doi.isEmpty else { return nil }
+        if doi.hasPrefix("doi:") { doi = String(doi.dropFirst(4)) }
+        if let range = doi.range(of: "doi.org/") { doi = String(doi[range.upperBound...]) }
+        guard let url = URL(string: "https://api.crossref.org/works/" + (doi.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? doi)) else { return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 20
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let message = json["message"] as? [String: Any] else { return nil }
+        let parts = (message["published"] as? [String: Any])?["date-parts"] as? [[Int]]
+            ?? (message["issued"] as? [String: Any])?["date-parts"] as? [[Int]]
+        guard let p = parts?.first, p.first ?? 0 > 0 else { return nil }
+        var s = String(p[0])
+        if p.count > 1, p[1] > 0 {
+            s += String(format: "-%02d", p[1])
+            if p.count > 2, p[2] > 0 { s += String(format: "-%02d", p[2]) }
+        }
+        return s
     }
 
     func show(_ message: String) {

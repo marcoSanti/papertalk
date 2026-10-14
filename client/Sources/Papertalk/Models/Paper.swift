@@ -1,5 +1,31 @@
 import Foundation
 
+/// One participant in a podcast: the name used in the transcript and the
+/// Kokoro voice (id) they speak in. Persisted per paper so baked and live
+/// audio always use the user's chosen voices.
+struct SpeakerConfig: Codable, Equatable, Hashable {
+    var name: String
+    var voice: String
+}
+
+/// A cast member the LLM proposes for an episode before the user confirms
+/// names and voices. `voice` defaults to the gender's canonical Kokoro voice.
+struct ProposedSpeaker: Equatable, Hashable {
+    var role: String
+    var gender: String?
+    var name: String
+    var voice: String
+
+    init(role: String, gender: String?, name: String) {
+        self.role = role
+        self.gender = gender
+        self.name = name
+        self.voice = KokoroSpeech.defaultVoice(forGender: gender)
+    }
+
+    var asConfig: SpeakerConfig { SpeakerConfig(name: name, voice: voice) }
+}
+
 // MARK: - Paper (library record) — mirrors /api/library entries
 struct Paper: Identifiable, Codable, Equatable {
     var id: String
@@ -9,6 +35,7 @@ struct Paper: Identifiable, Codable, Equatable {
     var hasScript: Bool
     var hasAudio: Bool
     var createdIso: String?
+    var publishedIso: String?
     var state: String
     var tags: [String]
     var favorite: Bool
@@ -18,6 +45,7 @@ struct Paper: Identifiable, Codable, Equatable {
     var read: Bool
     var depth: String?
     var bibtex: String?
+    var speakers: [SpeakerConfig] = []
     var progress: Double
     var duration: Double
     var progressTs: String?
@@ -29,6 +57,7 @@ struct Paper: Identifiable, Codable, Equatable {
         case id, title, filename, tags, favorite, authors, affiliations, doi, read, depth, bibtex
         case hasPdf = "has_pdf", hasScript = "has_script", hasAudio = "has_audio"
         case createdIso = "created_iso", state, progress, duration
+        case publishedIso = "published_iso"
         case progressTs = "progress_ts", stage, message
         case statusError = "status_error"
     }

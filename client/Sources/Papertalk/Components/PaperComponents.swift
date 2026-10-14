@@ -255,7 +255,7 @@ struct PaperListRow: View {
                 Image(systemName: "star.fill").font(.caption).foregroundStyle(.yellow)
             }
             StatusBadge(paper: paper, compact: true)
-            if let iso = paper.createdIso {
+            if let iso = paper.publishedIso {
                 Text(formatDate(iso))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)

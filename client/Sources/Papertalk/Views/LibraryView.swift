@@ -58,10 +58,31 @@ struct LibraryView: View {
                     .allowsHitTesting(false)
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) { filterBar }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                if store.view == .author, let name = store.activeAuthor {
+                    AuthorHeader(name: name)
+                }
+                filterBar
+            }
+        }
         .background(AmbientBackground())
         .navigationTitle(title)
         .navigationSubtitle(subtitle(papers.count))
+        .toolbar {
+            if store.view == .author {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            store.view = .authors; store.activeAuthor = nil
+                        }
+                    } label: {
+                        Label("All authors", systemImage: "chevron.left")
+                    }
+                    .help("Back to all authors")
+                }
+            }
+        }
     }
 
     // MARK: titles
@@ -70,7 +91,9 @@ struct LibraryView: View {
         switch store.view {
         case .all: return "All Papers"
         case .fav: return "Favorites"
+        case .authors: return "Authors"
         case .tag: return store.activeTag.map { "#\($0)" } ?? "Tag"
+        case .author: return store.activeAuthor ?? "Author"
         }
     }
 
@@ -143,7 +166,9 @@ struct LibraryView: View {
             switch store.view {
             case .all: return true
             case .fav: return p.favorite
+            case .authors: return true
             case .tag: return store.activeTag.map { p.tags.contains($0) } ?? true
+            case .author: return store.activeAuthor.map { p.authors.map(AuthorName.clean).contains($0) } ?? true
             }
         }
         return value == "all" ? scoped.count : scoped.filter { AppStore.matches($0, status: value) }.count

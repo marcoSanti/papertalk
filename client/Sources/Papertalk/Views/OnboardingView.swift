@@ -16,7 +16,7 @@ struct OnboardingView: View {
     // llm
     @State private var baseUrl = ""
     @State private var model = ""
-    @State private var keySource: LLMSettingsSheet.KeySource = .none
+    @State private var keySource: LLMKeySource = .none
     @State private var selectedEnv = ""
     @State private var manualKey = ""
     @State private var models: [String] = []
@@ -129,7 +129,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("API key source").font(.caption)
                 Picker("", selection: $keySource) {
-                    ForEach(LLMSettingsSheet.KeySource.allCases) { s in Text(s.rawValue).tag(s) }
+                    ForEach(LLMKeySource.allCases) { s in Text(s.rawValue).tag(s) }
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
@@ -292,6 +292,7 @@ struct OnboardingView: View {
                                 apiKey: keySource == .manual ? manualKey.trimmingCharacters(in: .whitespaces) : "",
                                 model: model.trimmingCharacters(in: .whitespaces),
                                 keyEnv: keySource == .env ? selectedEnv : "")
+        store.llm.saveResolvedKey()
         store.show("Setup complete")
         store.markOnboarded()
     }

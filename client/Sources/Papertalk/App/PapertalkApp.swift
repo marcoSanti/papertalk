@@ -12,12 +12,10 @@ struct PapertalkApp: App {
         }
         .commands {
             CommandGroup(after: .appSettings) {
-                Button("Setup Wizard…") { store.showOnboarding = true }
+                Button("Settings…") { store.settingsPage = .llm; store.showSettings = true }
+                    .keyboardShortcut(",", modifiers: .command)
                 Divider()
-                Button("Server Settings…") { store.settingsSheet = .connection }
-                Button("LLM Settings…") { store.settingsSheet = .llm }
-                Divider()
-                Button("Clear All Data…") { store.settingsSheet = .clear }
+                Button("Clear All Data…") { store.settingsPage = .clear; store.showSettings = true }
             }
             CommandGroup(replacing: .newItem) { }
         }

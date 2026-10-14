@@ -1,28 +1,5 @@
 import SwiftUI
 
-// MARK: - Flow tags (chip layout, removable)
-struct FlowTags: View {
-    let tags: [String]
-    var onRemove: (String) -> Void
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(chunks, id: \.self) { row in
-                HStack(spacing: 6) { ForEach(row, id: \.self) { chip($0) } }
-            }
-        }
-    }
-    private var chunks: [[String]] { stride(from: 0, to: tags.count, by: 3).map { Array(tags[$0..<min($0+3, tags.count)]) } }
-    private func chip(_ tag: String) -> some View {
-        HStack(spacing: 4) {
-            Text("#\(tag)").font(.caption)
-            Button { onRemove(tag) } label: { Image(systemName: "xmark").font(.system(size: 8)).foregroundStyle(.secondary) }
-                .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 8).padding(.vertical, 3)
-        .background(Color.accentColor.opacity(0.12), in: Capsule())
-    }
-}
-
 // MARK: - Player bar (bottom status bar transport + paper info)
 struct PlayerBar: View {
     @ObservedObject var player: PlayerController
@@ -108,12 +85,6 @@ struct PlayerBar: View {
     }
 }
 
-private func formatT(_ s: Double) -> String {
-    guard s.isFinite else { return "–:––" }
-    let m = Int(s) / 60, sec = Int(s) % 60
-    return "\(m):" + String(format: "%02d", sec)
-}
-
 // MARK: - Bottom global status bar (iTunes-style): active import OR selected paper + player
 struct BottomBar: View {
     @EnvironmentObject private var store: AppStore
@@ -184,94 +155,5 @@ struct WordHighlighter: View {
         // Without live word timing, show plain text (words already space-joined).
         var a = AttributedString(tokens.joined(separator: " "))
         return a
-    }
-}
-
-// MARK: - Transcript sheet
-struct TranscriptView: View {
-    let transcript: Transcript
-    let title: String
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(title).font(.title3).fontWeight(.semibold).lineLimit(1)
-                Spacer()
-                Button { dismiss() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                    .buttonStyle(.plain)
-            }
-            .padding(16)
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(Array(transcript.segments.enumerated()), id: \.offset) { si, seg in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("\(si + 1). \(seg.title)")
-                                .font(.headline)
-                            ForEach(Array(seg.turns.enumerated()), id: \.offset) { _, turn in
-                                HStack(alignment: .top, spacing: 8) {
-                                    Text(turn.speaker + ":").font(.callout).fontWeight(.semibold)
-                                        .frame(minWidth: 90, alignment: .trailing)
-                                    Text(turn.text).font(.callout).frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                        }
-                    }
-                    if transcript.segments.isEmpty {
-                        Text("No transcript yet.").foregroundStyle(.secondary)
-                    }
-                }
-                .padding(20)
-                .frame(maxWidth: 720, alignment: .leading)
-                .frame(maxWidth: .infinity)
-            }
-        }
-        .frame(width: 640, height: 560)
-    }
-}
-
-
-
-// MARK: - Collapsible raw activity log pane (bottom of detail view)
-struct LogPane: View {
-    let lines: [String]
-    @Binding var isOpen: Bool
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Divider()
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { isOpen.toggle() }
-            } label: {
-                HStack {
-                    Image(systemName: "terminal").font(.caption)
-                    Text("Activity log").font(.caption).fontWeight(.semibold)
-                    Spacer()
-                    Text("\(lines.count) lines").font(.caption2).foregroundStyle(.secondary)
-                    Image(systemName: isOpen ? "chevron.down" : "chevron.up").font(.caption2).foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 12).padding(.vertical, 7)
-            }
-            .buttonStyle(.plain)
-            if isOpen {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        Text(lines.isEmpty ? "No activity yet." : lines.joined(separator: "\n"))
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .id("bottom")
-                    }
-                    .frame(maxHeight: 150)
-                    .padding(10)
-                    .onChange(of: lines.count) { _ in
-                        withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
-                    }
-                }
-            }
-        }
-        .background(Color(nsColor: .textBackgroundColor))
     }
 }

@@ -1,33 +1,28 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: - Clear all data, settings, and cache
-struct ClearDataSheet: View {
+// MARK: - Clear all data, settings, and cache (settings page)
+struct ClearDataPage: View {
     @EnvironmentObject private var store: AppStore
-    @Environment(\.dismiss) private var dismiss
     @State private var confirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Clear all data").font(.title3).fontWeight(.semibold)
-            Text("This permanently deletes every paper in the library, resets all settings (server, LLM, first-run flag), and removes the Kokoro model cache. This cannot be undone.")
+            Text("This permanently deletes every paper in the library, resets all settings (server, LLM, prompts, first-run flag), and removes the Kokoro model cache. This cannot be undone.")
                 .font(.caption).foregroundStyle(.secondary)
-            .frame(width: 400, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
             Text("Papers: \(store.papers.count)")
                 .font(.callout)
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Erase everything", role: .destructive) { confirm = true }
-                    .buttonStyle(.borderedProminent)
-            }
+            Button("Erase everything", role: .destructive) { confirm = true }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
         }
-        .padding(24)
-        .frame(width: 460)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
         .confirmationDialog("Delete all papers, settings and cache?", isPresented: $confirm, titleVisibility: .visible) {
             Button("Erase everything", role: .destructive) {
                 store.clearAll()
-                dismiss()
             }
             Button("Cancel", role: .cancel) {}
         }
@@ -184,12 +179,12 @@ struct EditMetaSheet: View {
     }
 }
 
-// MARK: - Connection sheet (which server this app points at)
-struct ConnectionSheet: View {
+// MARK: - Server settings page (which server this app points at)
+struct ServerSettingsPage: View {
     @EnvironmentObject private var store: AppStore
-    @Environment(\.dismiss) private var dismiss
     @State private var apiBase = ""
     @State private var token = ""
+    @State private var saved = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -204,46 +199,55 @@ struct ConnectionSheet: View {
                 SecureField("token (optional)", text: $token).textFieldStyle(.roundedBorder)
             }
             HStack {
+                if saved { Text("Saved ✓").font(.caption).foregroundStyle(.secondary) }
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Save & reconnect") {
-                    let trimmed = apiBase.trimmingCharacters(in: .whitespaces)
-                    // empty = self-hosted (store locally, run pipeline in this app)
-                    store.config = ServerConfig(apiBase: trimmed.replacingOccurrences(of: "/+$", with: "", options: .regularExpression), token: token)
-                    dismiss()
-                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                Button("Save & reconnect") { save() }.buttonStyle(.borderedProminent)
             }
         }
-        .padding(24)
-        .frame(width: 440)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
         .onAppear {
             apiBase = store.config.apiBase
             token = store.config.token
         }
+        .onDisappear { save() }
+        .onReceive(NotificationCenter.default.publisher(for: .papertalkSaveSettings)) { _ in save() }
+    }
+
+    private func save() {
+        let trimmed = apiBase.trimmingCharacters(in: .whitespaces)
+        // empty = self-hosted (store locally, run pipeline in this app)
+        store.config = ServerConfig(apiBase: trimmed.replacingOccurrences(of: "/+$", with: "", options: .regularExpression), token: token)
+        saved = true
     }
 }
 
-// MARK: - LLM settings sheet
-struct LLMSettingsSheet: View {
-    enum KeySource: String, CaseIterable, Identifiable {
-        case none = "No key"
-        case env = "From environment"
-        case manual = "Type a key"
-        var id: String { rawValue }
-    }
+// MARK: - LLM API key source selection (shared by LLM settings + onboarding)
+enum LLMKeySource: String, CaseIterable, Identifiable {
+    case none = "No key"
+    case env = "From environment"
+    case manual = "Type a key"
+    var id: String { rawValue }
+}
 
+// MARK: - LLM settings page
+struct LLMSettingsPage: View {
     @EnvironmentObject private var store: AppStore
-    @Environment(\.dismiss) private var dismiss
     @State private var baseUrl = ""
     @State private var model = ""
-    @State private var keySource: KeySource = .none
+    @State private var keySource: LLMKeySource = .none
     @State private var selectedEnv = ""
     @State private var manualKey = ""
     @State private var saving = false
+    @State private var saved = false
     @State private var models: [String] = []
     @State private var loadingModels = false
     @State private var modelError: String?
-    private let envOptions = candidateKeyEnvs()
+    private var envOptions: [String] {
+        var opts = candidateKeyEnvs()
+        if !selectedEnv.isEmpty && !opts.contains(selectedEnv) { opts.insert(selectedEnv, at: 0) }
+        return opts
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -254,7 +258,7 @@ struct LLMSettingsSheet: View {
 
             field("API key source") {
                 Picker("", selection: $keySource) {
-                    ForEach(KeySource.allCases) { s in Text(s.rawValue).tag(s) }
+                    ForEach(LLMKeySource.allCases) { s in Text(s.rawValue).tag(s) }
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
@@ -275,31 +279,27 @@ struct LLMSettingsSheet: View {
 
             field("Model") { modelPicker }
             HStack {
+                if saved { Text("Saved ✓").font(.caption).foregroundStyle(.secondary) }
                 if let err = modelError {
                     Text(err).font(.caption).foregroundStyle(.red)
                 }
                 Spacer()
-                Button(loadingModels ? "Loading…" : "Refresh models") { loadModels() }
+                Button("Refresh models") { loadModels() }
                     .disabled(loadingModels || baseUrl.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Save") { save() }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(saving || baseUrl.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button(saving ? "Saving…" : "Save") { save() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(saving || baseUrl.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .padding(24)
-        .frame(width: 480)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
         .onAppear {
             baseUrl = store.llm.baseUrl
             model = store.llm.model
             let env = store.llm.keyEnv
-            if envOptions.contains(env) {
+            selectedEnv = env
+            if !env.isEmpty {
                 keySource = .env
-                selectedEnv = env
             } else if !store.llm.apiKey.isEmpty {
                 keySource = .manual
                 manualKey = store.llm.apiKey
@@ -308,6 +308,8 @@ struct LLMSettingsSheet: View {
             }
             if !baseUrl.isEmpty { loadModels() }
         }
+        .onDisappear { save() }
+        .onReceive(NotificationCenter.default.publisher(for: .papertalkSaveSettings)) { _ in save() }
     }
 
     @ViewBuilder private var modelPicker: some View {
@@ -373,8 +375,123 @@ struct LLMSettingsSheet: View {
                                 apiKey: apiKey,
                                 model: model.trimmingCharacters(in: .whitespaces),
                                 keyEnv: keyEnv)
+        store.llm.saveResolvedKey()
         store.show("LLM settings saved")
+        saved = true
         saving = false
-        dismiss()
     }
+}
+
+// MARK: - Editable LLM prose prompts (data-format / fix-query prompts excluded)
+struct PromptsSettingsPage: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var outlineRules = ""
+    @State private var dialoguePersona = ""
+    @State private var monologuePersona = ""
+    @State private var writeForEar = ""
+    @State private var saved = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Query prompts").font(.title3).fontWeight(.semibold)
+            Text("Customise the LLM's context and instructions. Reply-format prompts and the outline repair query are locked to keep replies parseable. Tokens: {host}, {expert}, {minutes}, {minSeg}, {maxSeg}, {plannedWords}, {depthGuide}.")
+                .font(.caption).foregroundStyle(.secondary)
+            editor("Outline planning rules", $outlineRules, tall: true)
+            editor("Host & expert personas", $dialoguePersona, tall: false)
+            editor("Monologue persona", $monologuePersona, tall: false)
+            editor("Write-for-the-ear style", $writeForEar, tall: true)
+            HStack {
+                if saved { Text("Saved ✓").font(.caption).foregroundStyle(.secondary) }
+                Spacer()
+                Button("Restore defaults") { load(PromptSettings.defaults); saved = false }
+                Button("Save") { save() }.buttonStyle(.borderedProminent)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .onAppear { load(store.prompts) }
+        .onDisappear { save() }
+        .onReceive(NotificationCenter.default.publisher(for: .papertalkSaveSettings)) { _ in save() }
+    }
+
+    private func editor(_ label: String, _ t: Binding<String>, tall: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.caption)
+            TextEditor(text: t)
+                .font(.system(.caption, design: .monospaced))
+                .frame(minHeight: tall ? 76 : 46)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.35)))
+        }
+    }
+
+    private func load(_ p: PromptSettings) {
+        outlineRules = p.outlineRules
+        dialoguePersona = p.dialoguePersona
+        monologuePersona = p.monologuePersona
+        writeForEar = p.writeForEar
+    }
+
+    private func save() {
+        store.prompts = PromptSettings(outlineRules: outlineRules, dialoguePersona: dialoguePersona,
+                                       monologuePersona: monologuePersona, writeForEar: writeForEar)
+        store.show("Prompts saved")
+        saved = true
+    }
+}
+
+// MARK: - Unified settings window with a sidebar of pages
+struct SettingsView: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("papertalk.settingsPage") private var pageRaw: Int = 0
+
+    private var selectedIndex: Binding<Int> {
+        Binding(
+            get: { store.settingsPage.rawValue },
+            set: {
+                pageRaw = $0
+                store.settingsPage = AppStore.SettingsPage(rawValue: $0) ?? .llm
+            }
+        )
+    }
+
+    var body: some View {
+        NavigationSplitView {
+            List(selection: selectedIndex) {
+                Label("LLM Settings", systemImage: "waveform").tag(0)
+                Label("Server Settings", systemImage: "server.rack").tag(1)
+                Label("Query Prompts", systemImage: "quote.bubble").tag(2)
+                Label("Clear Data", systemImage: "trash").tag(3)
+            }
+            .listStyle(.sidebar)
+            .frame(minWidth: 190)
+        } detail: {
+            Group {
+                switch store.settingsPage {
+                case .llm: LLMSettingsPage()
+                case .server: ServerSettingsPage()
+                case .prompts: PromptsSettingsPage()
+                case .clear: ClearDataPage()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Close") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") { saveCurrent() }
+            }
+        }
+        .frame(width: 720, height: 560)
+    }
+
+    private func saveCurrent() {
+        NotificationCenter.default.post(name: .papertalkSaveSettings, object: nil)
+    }
+}
+
+extension Notification.Name {
+    static let papertalkSaveSettings = Notification.Name("papertalkSaveSettings")
 }

@@ -1,0 +1,181 @@
+import Foundation
+import Security
+
+/// Minimal Keychain string store (system framework — no dependencies) used to
+/// persist an LLM API key that was sourced from an env var, so GUI-launched
+/// apps (which don't inherit shell env vars) can still resolve it.
+enum KeychainStore {
+    private static let service = "com.papertalk.key"
+    static func set(_ value: String, account: String) {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        SecItemDelete(query as CFDictionary)
+        var attrs = query
+        attrs[kSecValueData as String] = data
+        SecItemAdd(attrs as CFDictionary, nil)
+    }
+    static func get(_ account: String) -> String? {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+}
+
+// MARK: - Server configuration (persisted in the app)
+struct ServerConfig: Codable, Equatable {
+    var apiBase: String
+    var token: String
+
+    static func load() -> ServerConfig {
+        let defaults = UserDefaults.standard
+        let envBase = ProcessInfo.processInfo.environment["PAPERTALK_SERVER_URL"] ?? ""
+        let envToken = ProcessInfo.processInfo.environment["PAPERTALK_API_TOKEN"] ?? ""
+        if let raw = defaults.string(forKey: "papertalk.server.json"),
+           let data = raw.data(using: .utf8),
+           let c = try? JSONDecoder().decode(ServerConfig.self, from: data) {
+            return c
+        }
+        return ServerConfig(apiBase: envBase.replacingOccurrences(of: "/+$", with: "", options: .regularExpression), token: envToken)
+    }
+    func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: "papertalk.server.json")
+        }
+    }
+}
+
+// MARK: - LLM settings for the in-process pipeline (persisted locally)
+struct LLMSettings: Codable, Equatable {
+    var baseUrl: String
+    var apiKey: String
+    var model: String
+    /// Optional env var name whose value supplies the API key at request time.
+    /// When set, `apiKey` is ignored and the key is never persisted.
+    var keyEnv: String
+
+    /// The effective API key: env var wins when one is selected; otherwise the
+    /// keychain copy captured at save time (GUI-launched apps don't see shell env).
+    func resolvedKey() -> String {
+        if !keyEnv.isEmpty {
+            if let v = ProcessInfo.processInfo.environment[keyEnv], !v.isEmpty { return v }
+            if let v = KeychainStore.get(keyEnv), !v.isEmpty { return v }
+            return ""
+        }
+        return apiKey
+    }
+
+    /// Persist the env-sourced key into the keychain (no-op when key comes from a
+    /// shell env var the app can actually see).
+    func saveResolvedKey() {
+        guard !keyEnv.isEmpty,
+              let v = ProcessInfo.processInfo.environment[keyEnv], !v.isEmpty else { return }
+        KeychainStore.set(v, account: keyEnv)
+    }
+
+    static func load() -> LLMSettings {
+        // Stored value wins; otherwise seed from the environment.
+        if let raw = UserDefaults.standard.string(forKey: "papertalk.llm.json"),
+           let data = raw.data(using: .utf8),
+           let s = try? JSONDecoder().decode(LLMSettings.self, from: data) {
+            return s
+        }
+        let env = ProcessInfo.processInfo.environment
+        let keyEnv = firstSet(env, ["OPENWEBUI_API_KEY", "LLM_API_KEY", "PAPERTALK_API_KEY"])
+        return LLMSettings(baseUrl: env["OPENWEBUI_BASE_URL"] ?? env["LLM_BASE_URL"] ?? "",
+                           apiKey: "",
+                           model: env["PAPERTALK_MODEL"] ?? "",
+                           keyEnv: keyEnv)
+    }
+    func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: "papertalk.llm.json")
+        }
+    }
+}
+
+// MARK: - Editable LLM prose prompts (persisted locally)
+//
+// Only NON data-format instructions are exposed here. The JSON-reply-context
+// prompts and the outline "fix" query are deliberately kept hardcoded in the
+// pipeline so users cannot break the schema contract.
+//
+// Templates may use these tokens, replaced at request time:
+//   {host}, {expert}, {minutes}, {minSeg}, {maxSeg}, {plannedWords}, {depthGuide}
+struct PromptSettings: Codable, Equatable {
+    /// Prose planning rules appended to the outline request (before the schema).
+    var outlineRules: String
+    /// Host/expert personas shown to the dialogue writer.
+    var dialoguePersona: String
+    /// First-author persona for technical method monologues.
+    var monologuePersona: String
+    /// "Write for the ear" style rules (shared, plain prose).
+    var writeForEar: String
+
+    static let defaults = PromptSettings(
+        outlineRules: """
+        You are planning a two-speaker podcast episode about a research paper. First break the paper into an ordered, numbered SECTION INDEX of its major sections (Abstract, Introduction, Related Work, Method/Model/Approach, Experiments/Evaluation, Results, Discussion, Conclusion, ... Keep the paper's own titles where clear). Then design an OUTLINE of listening segments covering the whole paper.
+
+        OUTLINE & SEGMENTATION RULES:
+        - Target total length ≈ {minutes} minutes.
+        - Use no less than {minSeg} and no more than {maxSeg} segments.
+        - The technical heart of the paper (Method / Model / Approach / Algorithm sections) MUST be its own segment(s) with "monologue": true — these are delivered as a long, faithful, full-length spoken walkthrough.
+        - Every section in the section index must be covered by at least one segment (map each segment to the 1-based indices of the sections it covers via "sections").
+        - Give each segment: a clear spoken goal (e.g. "explain the key idea of attention"), the key_points that must be hit, and a "weight" (0–1, sums used to split the ~{plannedWords} planned words so longer/more technical parts get more airtime).
+        - {depthGuide}
+        """,
+        dialoguePersona: """
+        You are a scriptwriter writing a faithful, detailed, two-speaker spoken podcast episode from a scientific paper. {host} is the HOST (sharp, technical, asks the questions a smart listener would, asks for intuition, signposts transitions). {expert} is the EXPERT, the paper's first author (carries the technical content, exact figures, never condescending).
+        """,
+        monologuePersona: """
+        You are {expert}, the paper's first author, explaining the method aloud to a listener who wants to re-derive it. Build a SINGLE continuous monologue that reproduces the paper's method FAITHFULLY and at FULL length — do not summarise, condense, or drop any step, definition, parameter, equation, assumption, dataset, baseline, or number. The source is raw OCR/PDF text full of extraction artifacts (broken hyphenated words, mangled symbols and equations): repair those so it reads as clean, natural spoken prose, and verbalise every equation in words. Keep the paper's own framing and every number exactly as stated. Never add content the source does not state.
+        """,
+        writeForEar: """
+        WRITE FOR THE EAR — the text will be read aloud by a text-to-speech engine:
+        - Plain sentences only. No markdown, bullets, headings, emojis, stage directions, or sound effects.
+        - No citation markers like [12] or (Smith et al., 2020); say "earlier work by Smith and colleagues" if needed.
+        - Verbalise math: "x squared", "the sum over all tokens of the log probability"; explain what an equation means rather than reading long formulas symbol by symbol.
+        - Say numbers as they are spoken: "about ninety-two point four percent", "ten to the minus three".
+        - Expand abbreviations the first time they appear.
+        - Mostly 1–5 sentences per turn; vary rhythm with occasional short reactions ("Right.", "Wait, so...").
+        - Stay faithful to the source. Never invent results, numbers or claims.
+        """
+    )
+
+    static func load() -> PromptSettings {
+        if let raw = UserDefaults.standard.string(forKey: "papertalk.prompts.json"),
+           let data = raw.data(using: .utf8),
+           let s = try? JSONDecoder().decode(PromptSettings.self, from: data) {
+            return s
+        }
+        return defaults
+    }
+    func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: "papertalk.prompts.json")
+        }
+    }
+}
+
+/// Names of environment variables that (when set) look like current API keys,
+/// offered in the settings sheet as selectable key sources.
+func candidateKeyEnvs() -> [String] {
+    let env = ProcessInfo.processInfo.environment
+    return ["OPENWEBUI_API_KEY", "LLM_API_KEY", "PAPERTALK_API_KEY"]
+        .filter { !(env[$0] ?? "").isEmpty }
+}
+
+private func firstSet(_ env: [String: String], _ keys: [String]) -> String {
+    keys.first { !(env[$0] ?? "").isEmpty } ?? ""
+}

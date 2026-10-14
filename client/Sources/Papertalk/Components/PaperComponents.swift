@@ -128,13 +128,6 @@ struct ContextMenuItems: View {
     }
 }
 
-extension Paper {
-    var depthTitle: String? {
-        guard let d = depth else { return nil }
-        return Depth(rawValue: d)?.label
-    }
-}
-
 /// Renders a paper's first-page PDF thumbnail (aspect-fit inside a fixed-height,
 /// rounded box) asynchronously, falling back to a generic placeholder.
 struct PDFThumb: View {

@@ -39,10 +39,16 @@ struct ContentView: View {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { showInspector.toggle() }
                 } label: {
-                    Label("Toggle Inspector", systemImage: "sidebar.trailing")
+                    Image(systemName: "sidebar.trailing")
                 }
-                .buttonStyle(.glass)
                 .help("Show or hide the paper inspector")
+                Button {
+                    store.settingsPage = .llm
+                    store.showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .help("Open settings")
             }
         }
         .sheet(isPresented: $showUpload) {
@@ -51,12 +57,8 @@ struct ContentView: View {
         .sheet(item: $store.editingPaper) { paper in
             EditMetaSheet(paper: paper)
         }
-        .sheet(item: $store.settingsSheet) { kind in
-            switch kind {
-            case .connection: ConnectionSheet()
-            case .llm: LLMSettingsSheet()
-            case .clear: ClearDataSheet()
-            }
+        .sheet(isPresented: $store.showSettings) {
+            SettingsView()
         }
         .sheet(isPresented: $store.showOnboarding) {
             OnboardingView()

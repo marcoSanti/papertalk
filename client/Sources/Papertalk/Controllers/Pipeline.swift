@@ -58,6 +58,8 @@ struct LocalPipeline {
     var baseUrl: String
     var apiKey: String
     var model: String
+    /// Editable prose prompts (data-format + fix-query prompts stay hardcoded).
+    var prompts: PromptSettings = .defaults
     /// Optional hook for emitting progress lines; no-ops when unset.
     var log: (String) -> Void = { _ in }
     /// Optional hook for live progress: fraction (0...1) + current stage label.
@@ -220,20 +222,15 @@ struct LocalPipeline {
         case .inDepth:
             depthGuide = "DEPTH: IN-DEPTH. Cover methods and results fully and technically, so a student could re-derive the work."
         }
-        let outlineInstructions = """
-        You are planning a two-speaker podcast episode about a research paper. First break the paper into an ordered, numbered SECTION INDEX of its major sections (Abstract, Introduction, Related Work, Method/Model/Approach, Experiments/Evaluation, Results, Discussion, Conclusion, ... Keep the paper's own titles where clear). Then design an OUTLINE of listening segments covering the whole paper.
-
-        OUTLINE & SEGMENTATION RULES:
-        - Target total length ≈ \(minutes) minutes.
-        - Use no less than \(minSeg) and no more than \(maxSeg) segments.
-        - The technical heart of the paper (Method / Model / Approach / Algorithm sections) MUST be its own segment(s) with "monologue": true — these are delivered as a long, faithful, full-length spoken walkthrough.
-        - Every section in the section index must be covered by at least one segment (map each segment to the 1-based indices of the sections it covers via "sections").
-        - Give each segment: a clear spoken goal ("explain the key idea of attention"), the key_points that must be hit, and a "weight" (0–1, sums used to split the ~\(plannedWords) planned words so longer/more technical parts get more airtime).
-        - \(depthGuide)
-
-        Respond with ONLY a JSON object, no markdown, exactly:
+        let outlineInstructions = prompts.outlineRules + """
+        \n\nRespond with ONLY a JSON object, no markdown, exactly:
         {"tags": [short keywords], "sections": [{"title": string, "min_sec": int}], "segments": [{"title": string, "goal": string, "sections": [int], "key_points": [string], "weight": number, "monologue": boolean}]}
         """
+        .replacingOccurrences(of: "{minutes}", with: "\(minutes)")
+        .replacingOccurrences(of: "{minSeg}", with: "\(minSeg)")
+        .replacingOccurrences(of: "{maxSeg}", with: "\(maxSeg)")
+        .replacingOccurrences(of: "{plannedWords}", with: "\(plannedWords)")
+        .replacingOccurrences(of: "{depthGuide}", with: depthGuide)
         let system = "You are an expert science-podcast editor. You respond with strict JSON only."
         log("Outline: requesting section index + segment plan for \(title)…")
 
@@ -318,16 +315,7 @@ struct LocalPipeline {
         let coveredStr = covered.isEmpty ? "None yet." : covered.map { "- \($0)" }.joined(separator: "\n")
         let recent = history.suffix(8).map { "\($0.speaker): \($0.text)" }.joined(separator: "\n")
 
-        let spoken = """
-        WRITE FOR THE EAR — the text will be read aloud by a text-to-speech engine:
-        - Plain sentences only. No markdown, bullets, headings, emojis, stage directions, or sound effects.
-        - No citation markers like [12] or (Smith et al., 2020); say "earlier work by Smith and colleagues" if needed.
-        - Verbalise math: "x squared", "the sum over all tokens of the log probability"; explain what an equation means rather than reading long formulas symbol by symbol.
-        - Say numbers as they are spoken: "about ninety-two point four percent", "ten to the minus three".
-        - Expand abbreviations the first time they appear.
-        - Mostly 1–5 sentences per turn; vary rhythm with occasional short reactions ("Right.", "Wait, so...").
-        - Stay faithful to the source. Never invent results, numbers or claims.
-        """
+        let spoken = prompts.writeForEar
 
         let segPrompt = """
         SEGMENT \(k + 1) of \(n) — Title: "\(seg.title)"
@@ -359,9 +347,9 @@ struct LocalPipeline {
         \(cleaned)
         """
 
-        let system = "You are a scriptwriter writing a faithful, detailed, two-speaker spoken podcast episode from a scientific paper. "
-            + "\(host) is the HOST (sharp, technical, asks the questions a smart listener would, asks for intuition, signposts transitions). "
-            + "\(expert) is the EXPERT, the paper's first author (carries the technical content, exact figures, never condescending).\n\n" + spoken
+        let system = prompts.dialoguePersona.replacingOccurrences(of: "{host}", with: host)
+            .replacingOccurrences(of: "{expert}", with: expert)
+            + "\n\n" + spoken
 
         for _ in 0..<2 {
             let raw = try await chat(system: system, user: segPrompt, maxTokens: 9000)
@@ -397,14 +385,8 @@ struct LocalPipeline {
             else if i == blocks.count - 1 { position = "This is the final block." }
             else { position = "This block continues the monologue; keep the same voice and flow." }
 
-            let system = "You are \(expert), the paper's first author, explaining the method aloud "
-                + "to a listener who wants to re-derive it. Build a SINGLE continuous monologue that reproduces "
-                + "the paper's method FAITHFULLY and at FULL length — do not summarise, condense, or drop any step, "
-                + "definition, parameter, equation, assumption, dataset, baseline, or number. The source is raw OCR/PDF "
-                + "text full of extraction artifacts (broken hyphenated words, mangled symbols and equations): repair those "
-                + "so it reads as clean, natural spoken prose, and verbalise every equation in words. Keep the paper's own "
-                + "framing and every number exactly as stated. Never add content the source does not state.\n\n"
-                + "WRITE FOR THE EAR: plain sentences, no markdown, no headings, no stage directions.\n"
+            let system = prompts.monologuePersona.replacingOccurrences(of: "{expert}", with: expert)
+                + "\n\nWRITE FOR THE EAR: plain sentences, no markdown, no headings, no stage directions.\n"
                 + position
                 + "\n\nOutput ONLY the narration text — no speaker name, no notes."
 

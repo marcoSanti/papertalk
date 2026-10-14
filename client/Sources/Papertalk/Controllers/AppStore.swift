@@ -36,6 +36,9 @@ final class AppStore: ObservableObject {
     /// LLM endpoint the in-process pipeline uses. Stored locally.
     @Published var llm = LLMSettings.load() { didSet { llm.save() } }
 
+    /// Editable LLM prose prompts. Stored locally.
+    @Published var prompts = PromptSettings.load() { didSet { prompts.save() } }
+
     @Published var toast: String?
     /// True while the first-run setup wizard should be shown.
     @Published var showOnboarding = false
@@ -51,11 +54,14 @@ final class AppStore: ObservableObject {
         if logLines.count > 2000 { logLines.removeFirst(logLines.count - 2000) }
     }
 
-    enum SettingsSheet: Int, Identifiable {
-        case connection, llm, clear
+    enum SettingsPage: Int, Identifiable {
+        case llm, server, prompts, clear
         var id: Int { rawValue }
     }
-    @Published var settingsSheet: SettingsSheet?
+    /// Whether the unified settings sheet is open.
+    @Published var showSettings = false
+    /// The settings page to show once open.
+    @Published var settingsPage: SettingsPage = .llm
 
     private var toastTask: Task<Void, Never>?
     private var playbackCancelables: Set<AnyCancellable> = []
@@ -306,7 +312,7 @@ final class AppStore: ObservableObject {
             logLines = []
             // 2. All settings + old (pre-rename) keys.
             let d = UserDefaults.standard
-            for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.onboarded",
+            for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.prompts.json", "papertalk.settingsPage", "papertalk.onboarded",
                         "paper2pod.server.json", "paper2pod.llm.json", "paper2pod.onboarded"] {
                 d.removeObject(forKey: key)
             }
@@ -342,6 +348,7 @@ final class AppStore: ObservableObject {
                 guard !base.isEmpty else { toast = "Configure an LLM to extract metadata"; return }
                 let p = LocalPipeline(baseUrl: base, apiKey: llm.resolvedKey(), model: llm.model.isEmpty ? "llama3.1:70b" : llm.model)
                 var pipeline = p
+                pipeline.prompts = prompts
                 pipeline.log = { [weak self] line in Task { @MainActor in self?.appendLog(line) } }
                 let meta = try await pipeline.extractMeta(text: text, fallbackTitle: fallback)
                 optimistic(id, {
@@ -515,6 +522,7 @@ final class AppStore: ObservableObject {
             updateRec(id) { $0.state = "error"; $0.statusError = "No PDF" }; appendLog("ERROR: No PDF to convert"); return
         }
         var pipeline = LocalPipeline(baseUrl: base, apiKey: key, model: model)
+        pipeline.prompts = prompts
         pipeline.log = { [weak self] line in Task { @MainActor in self?.appendLog(line) } }
         // Transcript writing spans 0.10 → 0.75 of the unified pipeline bar.
         pipeline.onProgress = { [weak self] frac, label in

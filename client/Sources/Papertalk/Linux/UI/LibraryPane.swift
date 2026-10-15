@@ -9,7 +9,7 @@ struct LibraryPane: View {
     var body: some View {
         let store = bridge.store
         let papers = store.filteredPapers()
-        return VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(LibraryPresentation.title(view: store.view, tag: store.activeTag, author: store.activeAuthor))
                     .font(.title2)

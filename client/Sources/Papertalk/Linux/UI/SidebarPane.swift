@@ -8,6 +8,10 @@ import SwiftCrossUI
 /// on the pane's root view. With a List inside, SwiftCrossUI 0.9 then lays the
 /// pane out at its minimum size, centred and clipped. Pad the rows instead, and
 /// set the column's width with a `PaneWidth` strut inside the pane.
+///
+/// And for every view: write `body` in view-builder style (`let` is fine, an
+/// explicit `return` is not). A returned view skips the builder's tuple
+/// wrapping and SwiftCrossUI then lays it out wrongly, or not at all.
 struct SidebarPane: View {
     @State var bridge: StoreBridge
 
@@ -15,7 +19,7 @@ struct SidebarPane: View {
         let store = bridge.store
         let selection = Binding<SidebarItem?>(get: { store.sidebarSelection },
                                               set: { if let item = $0 { store.selectSidebar(item) } })
-        return VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Library").font(.caption).foregroundColor(.gray).padding(.horizontal, 12).padding(.top, 12)
             List(store.sidebarItems, id: \.self, selection: selection) { item in
                 HStack {

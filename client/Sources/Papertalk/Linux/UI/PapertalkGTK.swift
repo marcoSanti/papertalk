@@ -30,10 +30,11 @@ struct RootView: View {
     @State var bridge: StoreBridge
 
     var body: some View {
-        _ = bridge.revision
-        // The split view must be the root: inside a stack it isn't given the
-        // window's height and its panes overflow. The player sits under the detail.
-        return NavigationSplitView {
+        let _ = bridge.revision
+        // The split view must be the root, with no modifiers: inside a stack it
+        // isn't given the window's height, and a modifier on it breaks its
+        // layout. Presentations (alerts, sheets) go on inner views.
+        NavigationSplitView {
             SidebarPane(bridge: bridge)
         } content: {
             LibraryPane(bridge: bridge)
@@ -42,8 +43,23 @@ struct RootView: View {
                 DetailPane(bridge: bridge)
                 Spacer()
                 PlayerBar(bridge: bridge)
+                    .alert(confirmationTitle, isPresented: confirmationShown) {
+                        if let pending = bridge.store.pendingConfirmation {
+                            Button(ConfirmationText(pending).confirmLabel) { bridge.store.confirmPending(pending) }
+                        }
+                        Button("Cancel") { bridge.store.pendingConfirmation = nil }
+                    }
             }
         }
+    }
+
+    private var confirmationTitle: String {
+        bridge.store.pendingConfirmation.map { ConfirmationText($0).title } ?? ""
+    }
+
+    private var confirmationShown: Binding<Bool> {
+        Binding(get: { bridge.store.pendingConfirmation != nil },
+                set: { if !$0 { bridge.store.pendingConfirmation = nil } })
     }
 }
 #endif

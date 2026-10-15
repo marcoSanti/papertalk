@@ -36,14 +36,14 @@ PAPERS = [
 ]
 
 root = os.path.join(sys.argv[1], "papers")
-for pid, title, authors, tags, fav, state in PAPERS:
+for day, (pid, title, authors, tags, fav, state) in enumerate(PAPERS, 1):
     folder = os.path.join(root, pid)
     os.makedirs(folder, exist_ok=True)
     words = title.split()
     open(os.path.join(folder, "source.pdf"), "wb").write(pdf([" ".join(words[:3]), " ".join(words[3:])] + authors))
     record = {
         "id": pid, "title": title, "filename": pid + ".pdf", "has_pdf": True,
-        "has_script": state == "done", "has_audio": False, "created_iso": "2026-10-01T09:00:00Z",
+        "has_script": state == "done", "has_audio": False, "created_iso": f"2026-10-{day:02d}T09:00:00Z",
         "state": state, "tags": tags, "favorite": fav, "authors": authors, "affiliations": [],
         "doi": "", "read": False, "depth": "summary", "progress": 0, "duration": 0,
         "stage": "done" if state == "done" else "script",

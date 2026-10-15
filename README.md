@@ -46,9 +46,9 @@ the app with:
 ../app.sh run
 ```
 
-`app.sh` lives at the repo root and is run from anywhere (from `client/` use
+`app.sh` lives at the repo root and is run from anywhere (from `client-macos/` use
 `../app.sh`). It handles the whole build/run/test/release lifecycle. This puts a debug build in
-`client/dist/Papertalk.app`. Use `app.sh release` for an optimized build zipped to
+`client-macos/dist/Papertalk.app`. Use `app.sh release` for an optimized build zipped to
 `dist/Papertalk-<version>.zip`, with the committed source next to it as
 `dist/Papertalk-<version>-source.tar.gz`. Builds you make yourself, like the development builds
 below, show a yellow "DEV" stripe on the app icon; only official releases use the plain icon
@@ -130,7 +130,7 @@ separately delete the voice models if you want the disk space back.
 ## Contributing
 
 As the note at the top says, there are rough edges, and help is very welcome. The app lives in
-`client/` (a Swift package), the storage server in `server/`. `client/UI_ISSUES.md` lists known
+`client-macos/` (a Swift package), the storage server in `server/`. `client-macos/UI_ISSUES.md` lists known
 UI problems and what's already been fixed. If you report a bug, the **Activity** log in the
 paper's details panel is the most useful thing to include.
 
@@ -148,7 +148,7 @@ calling one.
 
 The SwiftUI views contain only layout: every rule they display (labels, validation, which
 controls are enabled, how authors are grouped, what the player shows) lives in plain Swift types
-under `client/Sources/Papertalk/Presentation/`, so it can be tested without running the UI.
+under `client-macos/Sources/Papertalk/Presentation/`, so it can be tested without running the UI.
 
 It covers the presentation layer, the library (filtering, search, sorting, authors, tags, edits
 and how they're saved, deleting), the storage backends, the LLM steps (metadata, casting, outline, dialogue and

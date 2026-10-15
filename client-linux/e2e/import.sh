@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'kill $LLM 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
-(cd "$ROOT/client" && swift build --scratch-path .build-linux/main 2>&1 | grep -E "error|Build complete")
+(cd "$ROOT/client-macos" && swift build --scratch-path .build-linux/main 2>&1 | grep -E "error|Build complete")
 python3 "$ROOT/client-linux/e2e/sample_pdf.py" "$WORK/paper.pdf"
 python3 "$ROOT/client-linux/e2e/fake_llm.py" 8765 & LLM=$!
 sleep 1
@@ -16,7 +16,7 @@ sleep 1
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 export LLM_BASE_URL=http://127.0.0.1:8765/v1 PAPERTALK_MODEL=fake-model HOME="$WORK/home"
 mkdir -p "$HOME"
-"$ROOT/client/.build-linux/main/debug/Papertalk" --import "$WORK/paper.pdf" --library "$WORK/library"
+"$ROOT/client-macos/.build-linux/main/debug/Papertalk" --import "$WORK/paper.pdf" --library "$WORK/library"
 
 PAPER="$(ls -d "$WORK"/library/papers/*/ | head -1)"
 echo "Library folder: $(ls "$PAPER" | tr '\n' ' ')"

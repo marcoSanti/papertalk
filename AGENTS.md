@@ -5,7 +5,8 @@ file covers how to work on it and the traps that have already bitten.
 
 ## Repo map
 
-- `client/`: the macOS app, a Swift package (`Package.swift`, target `Papertalk`). The UI and
+- `client-macos/`: the Swift package (`Package.swift`, target `Papertalk`). It is the macOS app and
+  also builds the Linux binary (Linux shims in `Platform/Linux/`; tooling in `client-linux/`). The UI and
   the whole pipeline (PDF → metadata → cast → script → audio) run in-process.
   - `Controllers/AppStore.swift`: the single `@MainActor` `ObservableObject` holding all app
     state, the import pipeline orchestration, and every mutation. Start here.
@@ -28,24 +29,24 @@ file covers how to work on it and the traps that have already bitten.
 - `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
 - `.github/workflows/`: `tests.yml` (PRs and `main`) and `release.yml` (dev + stable releases).
 - `shared/`: app icon.
-- Linux port pieces: `client/Sources/Papertalk/Platform/Linux/` (compat shims, `#if os(Linux)`),
+- Linux port pieces: `client-macos/Sources/Papertalk/Platform/Linux/` (compat shims, `#if os(Linux)`),
   `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
   `client-linux/` (dev container `Dockerfile`, `dev.sh`, spikes, `e2e/import.sh`).
-- `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
-- `client/UI_ISSUES.md`: running list of UI/UX issues and fix notes. Update it when you fix or
+- `client-macos/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
+- `client-macos/UI_ISSUES.md`: running list of UI/UX issues and fix notes. Update it when you fix or
   find one.
 
 ## Build and test
 
 ```bash
-swift build          # compile (from client/)
-../app.sh test       # the whole suite, ~10 s, no network or real data (from client/)
+swift build          # compile (from client-macos/)
+../app.sh test       # the whole suite, ~10 s, no network or real data (from client-macos/)
 ../app.sh coverage   # the suite with coverage → ../coverage/ (summary.md, report.txt, lcov.info)
 ../app.sh app        # build dist/Papertalk.app (debug); `app.sh release` → dist/Papertalk-<version>.zip
 ```
 
 `app.sh` (repo root) replaces the old Makefile: build/app/run/release/test/coverage/clean/version
-and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with `../`.
+and the `bump-*` targets. It's run from anywhere; from `client-macos/` prefix it with `../`.
 
 - Requires macOS 26 and Swift 6.2 tools; app and tests compile in Swift 5 language mode.
 - After every change, run `swift build` **and** `app.sh test`, and report the results. Read the
@@ -78,7 +79,7 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
 - Icons: the `CHANNEL` env var of `app.sh` (default `dev`) picks the app icon. Only the stable
   release (a `VERSION` bump merged to `main`) builds with `CHANNEL=stable` and gets the official
   `shared/icon.icns`; every other build (local, CI, dev pre-releases) gets a "DEV" stripe version
-  generated into `client/.build/icons/` by `scripts/dev_icon.swift`. Don't ship the official icon
+  generated into `client-macos/.build/icons/` by `scripts/dev_icon.swift`. Don't ship the official icon
   from anything but a stable release.
 - `app.sh release` also writes `dist/Papertalk-<version>-source.tar.gz` (`git archive` of HEAD);
   the release workflow publishes it, with checksums, beside the app zip.
@@ -124,7 +125,7 @@ Still to do, in order:
 Open questions for the maintainer: x86_64 only or arm64 too; whether to download the Python
 dependencies on first launch or bundle them (≈400 MB with ONNX Runtime).
 
-## Tests (`client/Tests/PapertalkTests`)
+## Tests (`client-macos/Tests/PapertalkTests`)
 
 - The suite is **XCTest only**. `app.sh test` runs `swift test --disable-swift-testing`, so the
   empty Swift Testing pass doesn't print a confusing "0 tests" line. If you ever add

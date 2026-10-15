@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: client
+        working-directory: client-macos
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,9 +42,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            client/.build
+            client-macos/.build
             ~/Library/Caches/org.swift.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('client/Package.resolved', 'client/Package.swift') }}
+          key: spm-${{ runner.os }}-${{ hashFiles('client-macos/Package.resolved', 'client-macos/Package.swift') }}
           restore-keys: spm-${{ runner.os }}-
 
       - name: Version

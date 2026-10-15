@@ -18,7 +18,7 @@ __pycache__/
 library/
 
 # swift/sourcekit build
-client/.build/
+client-macos/.build/
 .xcodebuild/
 DerivedData/
 

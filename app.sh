@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Papertalk app: build, run, test, release and versioning.
-# Run from anywhere; things that need the Swift package run from client/.
+# Run from anywhere; things that need the Swift package run from client-macos/.
 #
 #   ./app.sh [build|app|run|release|test|coverage|clean|version]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLIENT="$ROOT/client"
+CLIENT="$ROOT/client-macos"
 
 VERSION="${VERSION:-$(cat "$ROOT/VERSION")}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)}"

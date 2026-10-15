@@ -3,15 +3,15 @@ name: Release
 # Two kinds of release, both: test, build the optimized app, publish a GitHub
 # release with the zipped Papertalk.app and its SHA-256.
 #
-#  - Stable: pushing a tag v<VERSION> (`make -C client tag && git push origin v0.0.2`)
-#    publishes a full release, marked Latest. The tag must match the VERSION file.
-#  - Dev: every push to main (i.e. every merged pull request) publishes a
-#    pre-release v<VERSION>-dev.<short commit>, so the newest merged code is
-#    always downloadable. Only the newest few dev builds are kept.
+#  - Stable: every push to main that bumps the VERSION file publishes a full
+#    release, marked Latest, tagged v<VERSION>. Versioning is CI-driven: bump
+#    the file, merge to main, and the release appears. No local tag tooling.
+#  - Dev: every other push to main (i.e. a merged PR that didn't bump VERSION)
+#    publishes a pre-release v<VERSION>-dev.<short commit>, so the newest merged
+#    code is always downloadable. Only the newest few dev builds are kept.
 on:
   push:
     branches: [main]
-    tags: ['v*.*.*', '!v*-dev.*']   # dev tags are made by this workflow; never rebuild them
 
 permissions:
   contents: write   # create releases, upload assets, delete old dev builds
@@ -25,7 +25,7 @@ env:
 
 jobs:
   release:
-    name: ${{ github.ref_type == 'tag' && 'Stable release' || 'Dev pre-release' }}
+    name: Release
     runs-on: macos-26
     timeout-minutes: 45
     defaults:
@@ -34,20 +34,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history for the generated release notes
+          fetch-depth: 0   # full history for the version compare and release notes
 
       - name: Decide the version
         id: version
         run: |
-          BASE="$(make -s version)"
+          BASE="$(../app.sh version)"
           SHORT="$(git rev-parse --short HEAD)"
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            ../scripts/version.sh check-tag "${GITHUB_REF_NAME}"
+          # A stable release (tag v<BASE>) exists already → this push isn't a bump.
+          if git cat-file -e "v${BASE}" >/dev/null 2>&1; then
+            KIND=dev
+          else
+            # The previous value of VERSION (before this push) vs now.
+            PREV_REF="$(git log -1 --format=%H HEAD~1 -- VERSION 2>/dev/null)"
+            PREV="$(git show "${PREV_REF}:VERSION" 2>/dev/null || echo "")"
+            if [ "${PREV}" != "${BASE}" ]; then
+              KIND=stable          # VERSION changed → publish the tag
+            else
+              KIND=dev
+            fi
+          fi
+          if [ "$KIND" = "stable" ]; then
             VERSION="${BASE}"
-            KIND=stable
           else
             VERSION="${BASE}-dev.${SHORT}"
-            KIND=dev
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
@@ -70,12 +80,14 @@ jobs:
           restore-keys: spm-release-${{ runner.os }}-
 
       - name: Test
-        run: make test
+        run: ../app.sh test
 
       - name: Build release
-        # VERSION on the command line overrides the VERSION file, so a dev
-        # build carries its -dev.<commit> version in the app and the zip name.
-        run: make release VERSION="${{ steps.version.outputs.version }}"
+        # VERSION env overrides the file, so a dev build carries its -dev.<commit>
+        # version in the app and the zip name.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ../app.sh release
 
       - name: Checksum
         id: artifact
@@ -111,8 +123,10 @@ jobs:
             echo "> This app is vibecoded. I had the need not the time. bugs are expected and help is appreciated"
           } > notes.md
 
+          # gh release create makes the (lightweight) tag itself if missing, so a
+          # stable bump needs no local tag command; the tag just never re-triggers
+          # this workflow because tags aren't in the trigger list.
           if [ "$KIND" = "dev" ]; then
-            # The tag is created here, on the merged commit.
             gh release create "$TAG" "$ZIP" "${ZIP}.sha256" \
               --target "$GITHUB_SHA" \
               --title "Papertalk ${VERSION}" \

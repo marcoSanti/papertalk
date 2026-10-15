@@ -48,10 +48,10 @@ jobs:
           restore-keys: spm-${{ runner.os }}-
 
       - name: Version
-        run: make version
+        run: ../app.sh version
 
       - name: Test with coverage
-        run: make coverage
+        run: ../app.sh coverage
 
       - name: Coverage summary
         if: always() && hashFiles('coverage/summary.md') != ''
@@ -71,7 +71,7 @@ jobs:
           retention-days: 30
 
       - name: Build the app bundle
-        run: make app
+        run: ../app.sh app
 
       - name: Check the storage server
         working-directory: .

@@ -25,8 +25,8 @@ file covers how to work on it and the traps that have already bitten.
     `Color.stable(for:)`); `Support/Clipboard.swift` copies text.
 - `server/storage_server.py`: optional stdlib-only HTTP key/value file store. No compute.
 - `VERSION`, `scripts/version.sh`: the app version and the tool that bumps/checks it.
-- `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`make coverage`).
-- `.github/workflows/`: `tests.yml` (PRs and `main`) and `release.yml` (version tags).
+- `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
+- `.github/workflows/`: `tests.yml` (PRs and `main`) and `release.yml` (dev + stable releases).
 - `shared/`: app icon.
 - `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
 - `client/UI_ISSUES.md`: running list of UI/UX issues and fix notes. Update it when you fix or
@@ -35,15 +35,17 @@ file covers how to work on it and the traps that have already bitten.
 ## Build and test
 
 ```bash
-cd client
-swift build          # compile
-make test            # the whole suite, ~10 s, no network or real data
-make coverage        # the suite with coverage → ../coverage/ (summary.md, report.txt, lcov.info)
-make app             # build dist/Papertalk.app (debug); `make release` → dist/Papertalk-<version>.zip
+swift build          # compile (from client/)
+../app.sh test       # the whole suite, ~10 s, no network or real data (from client/)
+../app.sh coverage   # the suite with coverage → ../coverage/ (summary.md, report.txt, lcov.info)
+../app.sh app        # build dist/Papertalk.app (debug); `app.sh release` → dist/Papertalk-<version>.zip
 ```
 
+`app.sh` (repo root) replaces the old Makefile: build/app/run/release/test/coverage/clean/version
+and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with `../`.
+
 - Requires macOS 26 and Swift 6.2 tools; app and tests compile in Swift 5 language mode.
-- After every change, run `swift build` **and** `make test`, and report the results. Read the
+- After every change, run `swift build` **and** `app.sh test`, and report the results. Read the
   build output for **warnings**, not just errors: the app should compile warning-free (ignore
   warnings from `.build/checkouts/`, i.e. dependencies). Several warnings here become errors in
   Swift 6 mode (e.g. main-actor calls from timer closures). Run the
@@ -54,32 +56,31 @@ make app             # build dist/Papertalk.app (debug); `make release` → dist
 
 ## CI, pull requests and versions
 
-- Work goes through pull requests into `main`. `.github/workflows/tests.yml` runs `make test` and
-  `make app` on every PR and every push to `main` (GitHub's `macos-26` runner). Keep it green:
+- Work goes through pull requests into `main`. `.github/workflows/tests.yml` runs `app.sh test` and
+  `app.sh app` on every PR and every push to `main` (GitHub's `macos-26` runner). Keep it green:
   a change that needs new tooling must update the workflow too.
-- The version lives only in `VERSION` (semver, `MAJOR.MINOR.PATCH`). The Makefile stamps it into
+- The version lives only in `VERSION` (semver, `MAJOR.MINOR.PATCH`). `app.sh` stamps it into
   the built app's `Info.plist`, with the short commit hash as the build number (shown as
   "Version 0.0.1 (a1b2c3d)" in About Papertalk). Don't hard-code
-  versions elsewhere; read them with `make -C client version` or `scripts/version.sh`.
-- Coverage needs no external service: `tests.yml` runs `make coverage` and appends
+  versions elsewhere; read them with `scripts/version.sh`.
+- Coverage needs no external service: `tests.yml` runs `app.sh coverage` and appends
   `coverage/summary.md` to the job summary (and uploads `coverage/` as a run artifact). Nothing is
   published elsewhere. `scripts/coverage.sh` and `scripts/coverage_summary.py` produce the files;
   the "logic" figure excludes `Views/`, `Components/`, `App/` and `Support/Theme.swift`.
-- Bump with `make -C client bump-patch|bump-minor|bump-major` (or `scripts/version.sh set X.Y.Z`)
+- Bump with `app.sh bump-patch|bump-minor|bump-major` (or `scripts/version.sh set X.Y.Z`)
   as part of a PR. Patch for fixes, minor for features, major for breaking changes (e.g. a
   library format that older builds can't read).
-- Stable releases are tag-driven: `make -C client tag` creates `v<VERSION>` (clean tree
-  required); pushing it runs `.github/workflows/release.yml`, which refuses tags that don't match
-  `VERSION` and publishes a full release marked Latest.
-- Dev builds: every push to `main` runs the same workflow and publishes a **pre-release**
-  `v<VERSION>-dev.<short commit>`, built with `make release VERSION=<that>` (the command-line
-  `VERSION` overrides the file for that build only). It keeps the newest 10 dev builds and deletes
-  older ones with their tags. Dev tags are excluded from the tag trigger; never create `-dev.` tags
-  by hand. Never create or push tags, or bump the version, unless the user asks.
+- Stable releases are CI-driven: merge the bumped `VERSION` to `main` and
+  `.github/workflows/release.yml` publishes a full release tagged `v<VERSION>`, marked Latest.
+- Dev builds: every push to `main` that didn't bump the version publishes a **pre-release**
+  `v<VERSION>-dev.<short commit>`, built with `app.sh release VERSION=<that>` (the `VERSION`
+  env overrides the file for that build only). It keeps the newest 10 dev builds and deletes
+  older ones with their tags. Never create `-dev.` tags by hand, and never push tags or bump the
+  version unless the user asks.
 
 ## Tests (`client/Tests/PapertalkTests`)
 
-- The suite is **XCTest only**. `make test` runs `swift test --disable-swift-testing`, so the
+- The suite is **XCTest only**. `app.sh test` runs `swift test --disable-swift-testing`, so the
   empty Swift Testing pass doesn't print a confusing "0 tests" line. If you ever add
   `import Testing` / `@Test` tests, drop that flag or they will silently not run.
 - Every test class subclasses **`PapertalkTestCase`** (`TestSupport.swift`), never

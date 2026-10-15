@@ -52,6 +52,11 @@ build zipped to `dist/Papertalk-<version>.zip`. Ready-made builds are on the
 [Releases](https://github.com/marcoSanti/paper2pod/releases) page. The app is only ad-hoc signed, so if macOS refuses to
 open a copy you've moved to another Mac, right-click it and choose **Open**.
 
+To see whether there is something newer, choose **Papertalk → Check for Updates…** (stable
+releases) or **Papertalk → Check for Dev Builds…** (the latest builds of `main`). Papertalk asks
+GitHub, compares with the version you're running and offers the release page if there's a newer
+one; it never downloads or installs anything by itself.
+
 On first launch a short setup asks where your library should live (on this Mac, or on a
 [storage server](#sharing-a-library-between-macs)) and which LLM should write the episodes:
 its base URL, an optional API key and the model. **Test connection** checks that both work.

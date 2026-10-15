@@ -16,6 +16,12 @@ struct PapertalkApp: App {
                 .frame(minWidth: 960, minHeight: 620)
         }
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { store.requestUpdateCheck(.stable) }
+                    .disabled(store.isCheckingForUpdates)
+                Button("Check for Dev Builds…") { store.requestUpdateCheck(.dev) }
+                    .disabled(store.isCheckingForUpdates)
+            }
             CommandGroup(after: .appSettings) {
                 Button("Settings…") { store.settingsPage = .llm; store.showSettings = true }
                     .keyboardShortcut(",", modifiers: .command)

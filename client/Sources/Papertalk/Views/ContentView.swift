@@ -66,6 +66,17 @@ struct ContentView: View {
         } message: {
             if let message = duplicateText?.message { Text(message) }
         }
+        .alert(store.updateAlert?.title ?? "", isPresented: updateAlertShown,
+               presenting: store.updateAlert) { alert in
+            if let label = alert.actionLabel {
+                Button(label) { store.openUpdateLink(alert) }
+                Button("Not Now", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { alert in
+            Text(alert.message)
+        }
         .overlay(alignment: .bottom) {
             if let t = store.toast {
                 Text(t)
@@ -85,6 +96,11 @@ struct ContentView: View {
     private var confirmationShown: Binding<Bool> {
         Binding(get: { store.pendingConfirmation != nil },
                 set: { if !$0 { store.pendingConfirmation = nil } })
+    }
+
+    private var updateAlertShown: Binding<Bool> {
+        Binding(get: { store.updateAlert != nil },
+                set: { if !$0 { store.updateAlert = nil } })
     }
 
     private var duplicateText: ConfirmationText? {

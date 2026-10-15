@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Run things in the Linux dev container (AGENTS.md, "Linux port"). Needs Docker.
-#   client/linux-dev/dev.sh build | shell | test | e2e | app | screenshot | <command...>
+#   client/linux-dev/dev.sh build | shell | test | e2e | app | screenshot | appimage | <command...>
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE=papertalk-linux-dev
 # Linux build products live in their own folder so they never mix with the macOS .build.
+# VERSION and CHANNEL are passed through when set (for appimage).
 RUN=(docker run --rm -v "$ROOT:/src" -v papertalk-linux-build:/src/client/.build-linux
-     -v papertalk-linux-cache:/root/.cache -w /src "$IMAGE")
+     -v papertalk-linux-cache:/root/.cache -e VERSION -e CHANNEL -w /src "$IMAGE")
 
 case "${1:-}" in
     build) docker build -t "$IMAGE" -f "$ROOT/client/linux-dev/Dockerfile" "$ROOT" ;;
@@ -20,6 +21,8 @@ case "${1:-}" in
     app)   "${RUN[@]}" bash -lc 'cd client && swift build --scratch-path .build-linux/main' ;;
     # Run the UI headless on a demo library and save screenshots (client/.build-linux/shots).
     screenshot) "${RUN[@]}" bash -lc 'client/linux-dev/screenshot.sh' ;;
-    '') echo "usage: $0 build | shell | test | e2e | app | screenshot | <command...>" >&2; exit 2 ;;
+    # Pack the AppImage into client/dist (VERSION and CHANNEL pass through).
+    appimage) "${RUN[@]}" bash -lc 'client/linux-dev/appimage.sh' ;;
+    '') echo "usage: $0 build | shell | test | e2e | app | screenshot | appimage | <command...>" >&2; exit 2 ;;
     *) "${RUN[@]}" bash -lc "$*" ;;
 esac

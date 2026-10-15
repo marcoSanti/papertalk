@@ -43,12 +43,13 @@ You need macOS 26 or later (Apple silicon recommended) and Xcode with Swift 6.2.
 the app with:
 
 ```bash
-cd client
-make run
+../app.sh run
 ```
 
-This puts a debug build in `client/dist/Papertalk.app`. Use `make release` for an optimized
-build zipped to `dist/Papertalk-<version>.zip`. Ready-made builds are on the
+`app.sh` lives at the repo root and is run from anywhere (from `client/` use
+`../app.sh`). It handles the whole build/run/test/release lifecycle. This puts a debug build in
+`client/dist/Papertalk.app`. Use `app.sh release` for an optimized build zipped to
+`dist/Papertalk-<version>.zip`. Ready-made builds are on the
 [Releases](https://github.com/marcoSanti/paper2pod/releases) page. The app is only ad-hoc signed, so if macOS refuses to
 open a copy you've moved to another Mac, right-click it and choose **Open**.
 
@@ -128,8 +129,7 @@ paper's details panel is the most useful thing to include.
 ### Running the tests
 
 ```bash
-cd client
-make test        # or: swift test --disable-swift-testing
+../app.sh test        # or: swift test --disable-swift-testing
 ```
 
 The suite runs in about ten seconds and needs nothing external: no LLM server, no network, no
@@ -148,7 +148,7 @@ monologue, episode length per depth), voice choice, playback timing, settings an
 formats on disk. Speech synthesis itself isn't tested, since it needs the Kokoro model and the
 Neural Engine. When you fix a bug, add a test that fails without the fix.
 
-`make coverage` runs the same suite with code coverage, using only the Xcode toolchain, and
+`app.sh coverage` runs the same suite with code coverage, using only the Xcode toolchain, and
 writes the results to `coverage/` (a per-file table, `report.txt` and `lcov.info` for editors). Coverage is reported two ways: **logic** (models, controllers, helpers), which is what the
 tests are meant to protect, and **all code**, which also counts the SwiftUI views that have no UI
 tests yet.
@@ -166,17 +166,15 @@ Versions follow [semantic versioning](https://semver.org) and live in the `VERSI
 root (starting at `0.0.1`); the build stamps it into the app. To cut a release:
 
 ```bash
-make -C client bump-patch     # or bump-minor / bump-major; open a PR with the new VERSION
-# after that PR is merged, on an up-to-date main:
-make -C client tag            # creates the tag v<version>
-git push origin v0.0.2        # the tag it printed
+./app.sh bump-patch     # or bump-minor / bump-major; open a PR with the new VERSION
+# and merge it to main
 ```
 
-Pushing the tag runs `.github/workflows/release.yml`: it checks the tag matches `VERSION`, runs
-the tests, builds the optimized app and publishes a GitHub release, marked Latest, with
-`Papertalk-<version>.zip` and its SHA-256 checksum.
+Merging the bumped `VERSION` to `main` runs `.github/workflows/release.yml`: it sees the version
+changed, builds the optimized app and publishes a GitHub release, marked Latest, tagged
+`v<VERSION>`, with `Papertalk-<version>.zip` and its SHA-256 checksum.
 
-Every merge to `main` also publishes a **development build** as a pre-release, tagged
+Every other merge to `main` publishes a **development build** as a pre-release, tagged
 `v<VERSION>-dev.<commit>` (for example `v0.0.1-dev.f961491`), so the newest merged code is always
 downloadable from [Releases](https://github.com/marcoSanti/paper2pod/releases). Only the ten newest
 development builds are kept.

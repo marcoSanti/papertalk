@@ -26,3 +26,5 @@ DerivedData/
 ~/.paper2pod/
 # test coverage output (scripts/coverage.sh)
 coverage/
+
+.vscode

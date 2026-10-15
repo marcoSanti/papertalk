@@ -20,6 +20,25 @@ final class LibraryPresentationTests: PapertalkTestCase {
         XCTAssertEqual(LibraryPresentation.emptyStateText(.filteredOut).message, "No papers match the current filters.")
     }
 
+    func testImportFormFileLabels() {
+        var form = ImportForm()
+        XCTAssertEqual(form.chooseButtonTitle, "Choose PDF…")
+        XCTAssertEqual(form.fileLabel, "No file chosen")
+        form.setFile(name: "a.pdf", data: Data([1]))
+        XCTAssertEqual(form.chooseButtonTitle, "Change…")
+        XCTAssertEqual(form.fileLabel, "a.pdf")
+    }
+
+    func testConfirmationTextCombined() {
+        let text = ConfirmationText.duplicate(of: Fixtures.paper(title: "T"))
+        XCTAssertEqual(text.combined, "Already in library\n“T” already exists with the same title or DOI. Import it anyway?")
+    }
+
+    func testImportSheetCopyNamesThisMachine() {
+        XCTAssertEqual(ImportForm.heading, "New episode")
+        XCTAssertTrue(ImportForm.subheading.hasSuffix("converted on \(Device.this)."))
+    }
+
     func testSidebarTitles() {
         XCTAssertEqual(LibraryPresentation.sidebarTitle(.all), "All Papers")
         XCTAssertEqual(LibraryPresentation.sidebarTitle(.favorites), "Favorites")

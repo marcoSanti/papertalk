@@ -49,12 +49,37 @@ struct RootView: View {
                         }
                         Button("Cancel") { bridge.store.pendingConfirmation = nil }
                     }
+                    .alert(duplicateTitle, isPresented: duplicateShown) {
+                        Button(duplicateText?.confirmLabel ?? "") { bridge.store.resolveDuplicate(true) }
+                        Button("Cancel") { bridge.store.resolveDuplicate(false) }
+                    }
+                    .sheet(isPresented: bridge.binding(\.showUpload)) {
+                        ImportSheet(bridge: bridge)
+                    }
+                    .sheet(isPresented: castShown) {
+                        if let prompt = bridge.store.pendingCast {
+                            CastSheet(bridge: bridge, prompt: prompt)
+                        }
+                    }
             }
         }
     }
 
     private var confirmationTitle: String {
-        bridge.store.pendingConfirmation.map { ConfirmationText($0).title } ?? ""
+        bridge.store.pendingConfirmation.map { ConfirmationText($0).combined } ?? ""
+    }
+
+    private var duplicateText: ConfirmationText? {
+        bridge.store.pendingDuplicate.map { ConfirmationText.duplicate(of: $0.duplicateOf) }
+    }
+    private var duplicateTitle: String { duplicateText?.combined ?? "" }
+    private var duplicateShown: Binding<Bool> {
+        Binding(get: { bridge.store.pendingDuplicate != nil },
+                set: { if !$0 { bridge.store.resolveDuplicate(false) } })
+    }
+    private var castShown: Binding<Bool> {
+        Binding(get: { bridge.store.pendingCast != nil },
+                set: { if !$0 { bridge.store.cancelCast() } })
     }
 
     private var confirmationShown: Binding<Bool> {

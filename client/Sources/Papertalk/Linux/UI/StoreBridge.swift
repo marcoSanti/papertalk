@@ -29,6 +29,21 @@ final class StoreBridge: SwiftCrossUI.ObservableObject {
         store.trackPlayback()
     }
 
+    /// `Papertalk paper.pdf` (and "Open with" from a file manager) opens the
+    /// import sheet with that PDF. Called once the window is up: a sheet asked
+    /// for before then (or during the first layout) isn't presented.
+    private var handledLaunchFile = false
+    func importLaunchFile() {
+        guard !handledLaunchFile else { return }
+        handledLaunchFile = true
+        let arguments = CommandLine.arguments.dropFirst().map { URL(fileURLWithPath: $0) }
+        guard let pdf = ImportPresentation.firstPDF(in: arguments) else { return }
+        // Not during the first layout pass either: the presentation would be dropped.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            MainActor.assumeIsolated { self.store.beginImport(pdf) }
+        }
+    }
+
     /// Two-way binding to a store property.
     func binding<T>(_ keyPath: ReferenceWritableKeyPath<AppStore, T>) -> Binding<T> {
         Binding(get: { self.store[keyPath: keyPath] }, set: { self.store[keyPath: keyPath] = $0 })

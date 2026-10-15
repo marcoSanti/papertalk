@@ -19,6 +19,9 @@ struct ConfirmationText: Equatable {
         }
     }
 
+    /// Title and message together, for alerts that only show a title (Linux).
+    var combined: String { "\(title)\n\(message)" }
+
     /// The "already in your library" question during an import.
     static func duplicate(of existing: Paper) -> ConfirmationText {
         ConfirmationText(title: "Already in library", confirmLabel: "Import anyway",

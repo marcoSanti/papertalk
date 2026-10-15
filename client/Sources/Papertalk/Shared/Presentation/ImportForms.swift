@@ -46,6 +46,14 @@ struct ImportForm {
         return (fileData, fileName, depth, depthNote)
     }
 
+    /// The file button and the label beside it.
+    var chooseButtonTitle: String { hasFile ? "Change…" : "Choose PDF…" }
+    var fileLabel: String { fileName ?? "No file chosen" }
+
+    static let heading = "New episode"
+    static let subheading = "Turn a paper into a podcast, converted on \(Device.this)."
+    static let noLLMWarning = "No LLM is configured, so this paper will be read out as-is instead of as a discussion."
+
     static func icon(for depth: Depth) -> String {
         switch depth {
         case .inDepth: return "books.vertical"

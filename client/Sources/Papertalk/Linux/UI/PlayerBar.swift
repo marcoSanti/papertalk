@@ -29,6 +29,7 @@ struct PlayerBar: View {
             }
         }
         .padding(16)
+        .onAppear { bridge.importLaunchFile() }
     }
 }
 
@@ -52,11 +53,11 @@ struct PlayPane: View {
                     Text(message).foregroundColor(.red)
                 case .scrubber:
                     HStack(spacing: 8) {
-                        Button("⏮") { player.skip(by: -1) }
+                        Button("Back") { player.skip(by: -1) }
                             .disabled(!PlayerBarPresentation.canSkipBack(activeTurn: player.activeTurn))
                         Button(PlayerBarPresentation.playButton(isPlaying: player.isPlaying).help) { player.playPause() }
                             .disabled(!PlayerBarPresentation.canPlay(isRendering: player.isRendering, turnCount: player.turnCount))
-                        Button("⏭") { player.skip(by: 1) }
+                        Button("Next") { player.skip(by: 1) }
                             .disabled(!PlayerBarPresentation.canSkipForward(activeTurn: player.activeTurn, turnCount: player.turnCount))
                         Slider(value: Binding(get: { player.currentTime }, set: { player.seek(toTime: $0) }),
                                in: 0...max(player.duration, 1))

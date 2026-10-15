@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import XCTest
 @testable import Papertalk
 
@@ -34,7 +37,7 @@ final class MockLLM {
     static func install(_ handler: @escaping (URLRequest) -> (status: Int, body: Data)) {
         onRequest = handler
         seen = []
-        URLProtocol.registerClass(StubURLProtocol.self)
+        _ = URLProtocol.registerClass(StubURLProtocol.self)
     }
 
     /// Record that a request whose user prompt contains `flag` was made.

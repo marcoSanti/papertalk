@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import XCTest
 @testable import Papertalk
 
@@ -27,8 +30,9 @@ class PapertalkTestCase: XCTestCase {
 }
 
 /// Catch-all `URLProtocol`: answers every request `MockLLM` isn't handling
-/// with a connection error and records it. Registered once for the whole run;
-/// `MockLLM`'s stub is registered later, so it is consulted first while installed.
+/// with a connection error and records it. Registered once for the whole run.
+/// It steps aside while `MockLLM` is installed: macOS consults the latest
+/// registered protocol first, but Linux (corelibs Foundation) the earliest.
 final class NetworkGuard: URLProtocol {
     private static let lock = NSLock()
     private static var installed = false
@@ -41,11 +45,11 @@ final class NetworkGuard: URLProtocol {
         lock.withLock {
             guard !installed else { return }
             installed = true
-            URLProtocol.registerClass(NetworkGuard.self)
+            _ = URLProtocol.registerClass(NetworkGuard.self)
         }
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canInit(with request: URLRequest) -> Bool { MockLLM.onRequest == nil }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let url = request.url?.absoluteString ?? "?"

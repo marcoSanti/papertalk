@@ -1,6 +1,8 @@
 # Porting Papertalk to Linux: plan
 
-Status: **Phase 0 done** (spikes, below); Phase 1 in progress on branch `port/linux-plan`.
+Status: **Phases 0–2 done** on branch `port/linux-plan`: the app builds and the full test suite
+passes on Linux (CI job included), and a headless import runs the whole pipeline there
+(`linux/e2e/import.sh`). Next: Phase 3 (Python dependencies at runtime) and Phase 4 (the GTK UI).
 
 The goal is a Linux build of Papertalk that does what the macOS app does: import a PDF, write the
 episode with an LLM, bake the audio with Kokoro, and play it, all with the same library format.
@@ -32,7 +34,7 @@ The inventory comes from the imports and symbols in `client/Sources/Papertalk` (
 | PDF covers | `AppStore.thumbnail(of:)`, `PaperComponents` | PDFKit + `NSImage` | pypdfium2 page → PNG `Data` |
 | PDF viewer | `PDFViewerWindow.swift` | `NSWindow`, CoreGraphics `CGPDFDocument` | Open the file in the system viewer (`xdg-open`); an in-app viewer can come later |
 | Speech (TTS) | `KokoroEngine.swift`, `Kokoro.swift`, model download in `AppStore` | FluidAudio `KokoroAneManager` (Core ML / Neural Engine) | Python **kokoro-onnx** (ONNX Runtime, CPU). Same Kokoro voices (`af_heart`, `am_michael`, …) |
-| Playback | `PlayerController.swift` | `AVAudioPlayer` (play, pause, seek, `currentTime`, delegate) | Python **sounddevice** (PortAudio) behind a small player protocol |
+| Playback | `PlayerController.swift` | `AVAudioPlayer` (play, pause, seek, `currentTime`, delegate) | Swift: PCM piped to `pw-cat` / `paplay` / `aplay`, clock in Swift (not Python: see Phase 1 notes) |
 | API key | `Models/Settings.swift` (`KeychainStore`) | Security `SecItem*` | Python **keyring** (Secret Service / KWallet) |
 | Notifications | `Notifier.swift` | UserNotifications, `NSApp` | `notify-send`, or Python `desktop-notifier` |
 | Open / reveal | `AppStore` (`NSWorkspace`) | `NSWorkspace` | `xdg-open`, and the FileManager1 D-Bus `ShowItems` call (via `gdbus`). No Python needed |
@@ -139,10 +141,26 @@ Linux too.
   (`linux/dev.sh`), with a Linux CI job. The macOS sources change only by `#if` lines, so check
   that the macOS diff is just those.
 
+**Done (2026-10-15).** Notes from doing it:
+- macOS sources changed only by `#if` lines, plus moving the preview timer into a synchronous
+  method (corelibs Foundation forbids `Timer.scheduledTimer` in async code).
+- Playback moved out of Python: the single Python thread can be busy with Kokoro for seconds,
+  and play/pause/seek must not wait behind it. `AVFoundationCompat.swift` pipes PCM to the sound
+  server's CLI player and keeps the clock in Swift.
+- Tests: on Linux, URLSession consults `URLProtocol`s in registration order (macOS: newest
+  first), so `NetworkGuard` steps aside while `MockLLM` is installed. Linux test discovery aborts
+  on synchronous test methods in `@MainActor` classes, so those are `async`.
+- `linux/dev.sh test` runs the Swift suite (219) and the Python tests; CI runs it on ubuntu-24.04.
+
 ### Phase 2: Linux services end to end
 - A headless debug command (`Papertalk --import paper.pdf` on Linux) produces a complete episode
   folder that the macOS app can play. This proves the PDF → LLM → Kokoro → WAV pipeline on Linux.
 - Shell: notifications (`notify-send`), clipboard, and reveal-in-file-manager over D-Bus.
+
+**Done (2026-10-15)** for the pipeline: `Papertalk --import paper.pdf` on Linux, checked by
+`linux/e2e/import.sh` with a fake LLM (8 turns of 24 kHz WAV in a standard library folder, ~25 s
+with the model cached). The shell part is in `AppKitCompat.swift` (`notify-send`, `xdg-open`,
+FileManager1 over `gdbus`); the clipboard comes with the UI.
 
 ### Phase 3: Python dependencies at runtime
 - On first launch, create the venv at `~/.local/share/papertalk/venv` and install
@@ -176,6 +194,10 @@ isn't there yet, add it to `Presentation/` with a test, and the macOS view shoul
 
 ## Risks
 
+- **Timers under GTK (Phase 4):** `PlayerController` drives progress with `Timer` on the main
+  run loop. Under SwiftCrossUI's GTK main loop, Foundation run-loop timers may not fire. Check
+  this first in Phase 4, and if needed drive them from the GTK loop or `DispatchSourceTimer`.
+
 - SwiftCrossUI is pre-1.0. API churn and missing pieces may need workarounds or upstream PRs.
   Spike S1 is there to find these early.
 - Kokoro on CPU is much slower than on the Neural Engine, so long in-depth episodes may take a
@@ -203,6 +225,7 @@ arm64 under OrbStack). Code: `linux/spikes/`.
 - Gotcha: a package folder named like a dependency (`pythonkit` vs `PythonKit`) makes SwiftPM
   silently skip that dependency, because identities ignore case.
 - Embedding was stable in these runs, so the subprocess fallback isn't needed for now.
+- (Later, Phase 1) Playback moved from Python's sounddevice to Swift; see Phase 1 notes.
 
 **S1: SwiftCrossUI 0.9.0 with GTK 4: go.**
 - These worked: `NavigationSplitView`, `List(selection:)` with a search field, a detail pane

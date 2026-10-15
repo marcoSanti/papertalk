@@ -30,6 +30,9 @@ file covers how to work on it and the traps that have already bitten.
 - `shared/`: app icon.
 - `docs/LINUX_PORT.md`: the plan for the Linux port (in progress). The macOS app must stay
   identical; Linux gets its own UI over the shared logic.
+- Linux port pieces: `client/Sources/Papertalk/Platform/Linux/` (compat shims, `#if os(Linux)`),
+  `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
+  `linux/` (dev container `Dockerfile`, `dev.sh`, spikes, `e2e/import.sh`).
 - `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
 - `client/UI_ISSUES.md`: running list of UI/UX issues and fix notes. Update it when you fix or
   find one.
@@ -86,6 +89,22 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
   env overrides the file for that build only). It keeps the newest 10 dev builds and deletes
   older ones with their tags. Never create `-dev.` tags by hand, and never push tags or bump the
   version unless the user asks.
+
+## Linux port
+
+- The `Papertalk` target builds on macOS and Linux. macOS-only files are wrapped in
+  `#if os(macOS)` (App, Views, Components, Theme, Clipboard, Notifier, PDFViewerWindow,
+  KokoroEngine). Linux supplies same-named compat shims in `Platform/Linux/`, so shared code
+  compiles unchanged. Prefer extending a shim to adding `#if` in shared code. Never change how
+  the macOS app looks or behaves for the port's sake.
+- Build and test Linux with Docker (OrbStack here): `linux/dev.sh build` once, then
+  `linux/dev.sh test` (Swift suite + pytest) and `linux/dev.sh linux/e2e/import.sh`. Run
+  `swift build` and `app.sh test` on macOS too, after every change to shared code.
+- Python is called only through `PythonRuntime` (one thread). Nothing time-critical goes through
+  it (playback stays in Swift), because it can be busy with Kokoro for seconds.
+- Linux traps: `Timer.scheduledTimer` is unavailable in async code; `URLProtocol`s are consulted
+  in registration order; sync test methods in `@MainActor` test classes crash test discovery
+  (make them `async`); files using URLSession types need `FoundationNetworking`.
 
 ## Tests (`client/Tests/PapertalkTests`)
 

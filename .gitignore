@@ -28,3 +28,5 @@ DerivedData/
 coverage/
 
 .vscode
+# Linux port: build products from the dev container (client/linux-dev/dev.sh)
+.build-linux/

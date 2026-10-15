@@ -1,3 +1,7 @@
+import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import XCTest
 @testable import Papertalk
 
@@ -9,7 +13,7 @@ final class PlayerControllerTests: PapertalkTestCase {
         seconds.map { BakedTurn(wav: Fixtures.silentWAV(seconds: $0), duration: $0) }
     }
 
-    func testPrepareBakedBuildsTimelineWithGaps() {
+    func testPrepareBakedBuildsTimelineWithGaps() async {
         let p = PlayerController()
         p.prepare(baked: baked([1.0, 0.5, 2.0]))
         XCTAssertEqual(p.turnCount, 3)
@@ -19,14 +23,14 @@ final class PlayerControllerTests: PapertalkTestCase {
         XCTAssertEqual(p.duration, 4.2, accuracy: 0.0001)
     }
 
-    func testPrepareEmptyBakedLeavesPlayerEmpty() {
+    func testPrepareEmptyBakedLeavesPlayerEmpty() async {
         let p = PlayerController()
         p.prepare(baked: [])
         XCTAssertEqual(p.turnCount, 0)
         XCTAssertEqual(p.duration, 0)
     }
 
-    func testSkipMovesByWholeTurnsAndClamps() {
+    func testSkipMovesByWholeTurnsAndClamps() async {
         let p = PlayerController()
         p.prepare(baked: baked([1.0, 0.5, 2.0]))
         p.skip(by: 1)
@@ -39,7 +43,7 @@ final class PlayerControllerTests: PapertalkTestCase {
         XCTAssertEqual(p.currentTime, 0)
     }
 
-    func testSeekLandsInTheRightTurnAndClampsToItsEnd() {
+    func testSeekLandsInTheRightTurnAndClampsToItsEnd() async {
         let p = PlayerController()
         p.prepare(baked: baked([1.0, 0.5, 2.0]))
         p.seek(toTime: 1.5)                       // 0.15 s into turn 1
@@ -50,7 +54,7 @@ final class PlayerControllerTests: PapertalkTestCase {
         XCTAssertEqual(p.currentTime, 2.2 + 2.0, accuracy: 0.0001)   // turn 2 starts at 2.2 s
     }
 
-    func testStopAllResetsState() {
+    func testStopAllResetsState() async {
         let p = PlayerController()
         p.prepare(baked: baked([1.0, 1.0]))
         p.skip(by: 1)
@@ -63,14 +67,14 @@ final class PlayerControllerTests: PapertalkTestCase {
         XCTAssertNil(p.renderError)
     }
 
-    func testStopPreviewClearsPreviewState() {
+    func testStopPreviewClearsPreviewState() async {
         let p = PlayerController()
         p.stopPreview()
         XCTAssertNil(p.preview)
         XCTAssertEqual(p.previewProgress, 0)
     }
 
-    func testVoiceSpeedPersistsAndRejectsOutOfRangeValues() {
+    func testVoiceSpeedPersistsAndRejectsOutOfRangeValues() async {
         let key = PlayerController.speedKey
         let saved = UserDefaults.standard.object(forKey: key)
         defer { UserDefaults.standard.set(saved, forKey: key) }
@@ -141,7 +145,7 @@ final class CastSheetVoiceTests: PapertalkTestCase {
 /// Notifications must be a silent no-op outside an app bundle (tests, `swift run`).
 @MainActor
 final class NotifierTests: PapertalkTestCase {
-    func testPostingWithoutAnAppBundleDoesNothing() {
+    func testPostingWithoutAnAppBundleDoesNothing() async {
         let n = Notifier()
         n.requestPermissionIfNeeded()
         n.post(.ready, paperId: "p", title: "T")

@@ -13,6 +13,48 @@ final class LibraryPresentationTests: PapertalkTestCase {
         XCTAssertEqual(LibraryPresentation.title(view: .author, tag: nil, author: "Ada Lovelace"), "Ada Lovelace")
     }
 
+    func testEmptyStateText() {
+        XCTAssertEqual(LibraryPresentation.emptyStateText(.emptyLibrary).title, "Your library is empty")
+        XCTAssertTrue(LibraryPresentation.emptyStateText(.emptyLibrary).message.hasSuffix("right on \(Device.this)."))
+        XCTAssertEqual(LibraryPresentation.emptyStateText(.noSearchResults(" attention ")).title, "No results for “attention”")
+        XCTAssertEqual(LibraryPresentation.emptyStateText(.filteredOut).message, "No papers match the current filters.")
+    }
+
+    func testSettingsSheetCopy() {
+        XCTAssertEqual(SettingsSheetPresentation.title(isSetup: true), "Welcome to Papertalk")
+        XCTAssertEqual(SettingsSheetPresentation.title(isSetup: false), "Settings")
+        XCTAssertEqual(SettingsSheetPresentation.saveTitle(isSetup: true), "Finish setup")
+        XCTAssertEqual(SettingsSheetPresentation.saveTitle(isSetup: false), "Save")
+        XCTAssertTrue(SettingsSheetPresentation.intro.contains(Device.this))
+        XCTAssertTrue(SettingsSheetPresentation.serverHelp.contains(Device.this))
+    }
+
+    func testImportFormFileLabels() {
+        var form = ImportForm()
+        XCTAssertEqual(form.chooseButtonTitle, "Choose PDF…")
+        XCTAssertEqual(form.fileLabel, "No file chosen")
+        form.setFile(name: "a.pdf", data: Data([1]))
+        XCTAssertEqual(form.chooseButtonTitle, "Change…")
+        XCTAssertEqual(form.fileLabel, "a.pdf")
+    }
+
+    func testConfirmationTextCombined() {
+        let text = ConfirmationText.duplicate(of: Fixtures.paper(title: "T"))
+        XCTAssertEqual(text.combined, "Already in library\n“T” already exists with the same title or DOI. Import it anyway?")
+    }
+
+    func testImportSheetCopyNamesThisMachine() {
+        XCTAssertEqual(ImportForm.heading, "New episode")
+        XCTAssertTrue(ImportForm.subheading.hasSuffix("converted on \(Device.this)."))
+    }
+
+    func testSidebarTitles() {
+        XCTAssertEqual(LibraryPresentation.sidebarTitle(.all), "All Papers")
+        XCTAssertEqual(LibraryPresentation.sidebarTitle(.favorites), "Favorites")
+        XCTAssertEqual(LibraryPresentation.sidebarTitle(.authors), "Authors")
+        XCTAssertEqual(LibraryPresentation.sidebarTitle(.tag("nlp")), "nlp")
+    }
+
     func testCountsAndBadges() {
         XCTAssertEqual(LibraryPresentation.paperCount(1), "1 paper")
         XCTAssertEqual(LibraryPresentation.paperCount(0), "0 papers")
@@ -24,7 +66,7 @@ final class LibraryPresentationTests: PapertalkTestCase {
     }
 
     func testStorageLocation() {
-        XCTAssertEqual(LibraryPresentation.storageLocation(isStandalone: true).title, "On this Mac")
+        XCTAssertEqual(LibraryPresentation.storageLocation(isStandalone: true).title, "On \(Device.this)")
         XCTAssertEqual(LibraryPresentation.storageLocation(isStandalone: false).icon, "server.rack")
     }
 

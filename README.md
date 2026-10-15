@@ -68,6 +68,27 @@ You can skip the setup and change all of this later in **Settings** (⌘,).
 
 The first episode takes a little longer, because it downloads the voice models (about 120 MB).
 
+### Linux (preview)
+
+A Linux version is in progress. Each release also has `Papertalk-<version>-x86_64.AppImage`:
+make it executable and run it (or open a PDF with it). It needs a desktop with GTK 4 (Ubuntu
+22.04+, Fedora 36+ and alike) and brings everything else with it, Python included. The voices
+are generated on the CPU with the same Kokoro voices as on the Mac, and the library format is
+the same, so a library folder can move between the two. Not everything from the Mac app is
+there yet (no authors or transcript views, no metadata editing).
+
+To build it yourself you need Docker; the build runs in a container:
+
+```bash
+client/linux-dev/dev.sh build
+```
+
+```bash
+client/linux-dev/dev.sh appimage
+```
+
+That writes `client/dist/Papertalk-<version>-<arch>.AppImage` for your machine's architecture.
+
 ## Using it
 
 Import a paper with **File → Import PDF…** (⌘O), the **+** button, or by dropping a PDF onto the
@@ -148,7 +169,7 @@ calling one.
 
 The SwiftUI views contain only layout: every rule they display (labels, validation, which
 controls are enabled, how authors are grouped, what the player shows) lives in plain Swift types
-under `client/Sources/Papertalk/Presentation/`, so it can be tested without running the UI.
+under `client/Sources/Papertalk/Shared/Presentation/`, so it can be tested without running the UI.
 
 It covers the presentation layer, the library (filtering, search, sorting, authors, tags, edits
 and how they're saved, deleting), the storage backends, the LLM steps (metadata, casting, outline, dialogue and

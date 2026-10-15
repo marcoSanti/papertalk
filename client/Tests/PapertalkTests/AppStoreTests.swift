@@ -378,6 +378,16 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertNil(store.activeTag)
     }
 
+    func testSidebarItemsAndCounts() async {
+        let store = await makeStore([
+            Fixtures.paper(id: "a", tags: ["nlp", "vision"], favorite: true, authors: ["Ada Lovelace"]),
+            Fixtures.paper(id: "b", tags: ["nlp"], authors: ["Ada Lovelace", "Grace Hopper"]),
+        ])
+        XCTAssertEqual(store.sidebarItems, [.all, .favorites, .authors, .tag("nlp"), .tag("vision")])
+        XCTAssertEqual(store.sidebarItems.map(store.sidebarCount), [2, 1, 2, 2, 1])
+        XCTAssertEqual(store.sidebarCount(.tag("missing")), 0)
+    }
+
     func testSidebarKeepsOrDropsTheSelectedPaper() async {
         let store = await makeStore(library)
         store.selectedId = "1"                            // favourite, tagged ml

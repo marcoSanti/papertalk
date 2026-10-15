@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 # SwiftUI view code: excluded from the "logic" number.
-UI_PREFIXES = ("Views/", "Components/", "App/", "Support/Theme.swift")
+UI_PREFIXES = ("macOS/Views/", "macOS/Components/", "macOS/App/", "macOS/Support/Theme.swift")
 
 
 def relative(path: str) -> str:

@@ -5,29 +5,35 @@ file covers how to work on it and the traps that have already bitten.
 
 ## Repo map
 
-- `client/`: the macOS app, a Swift package (`Package.swift`, target `Papertalk`). The UI and
+- `client/`: the Swift package (`Package.swift`, target `Papertalk`). It is the macOS app and
+  also builds the Linux binary (tooling in `client/linux-dev/`). `Sources/Papertalk/` is split by
+  platform: `Shared/` (both), `macOS/` (macOS only) and `Linux/` (Linux only). The UI and
   the whole pipeline (PDF → metadata → cast → script → audio) run in-process.
-  - `Controllers/AppStore.swift`: the single `@MainActor` `ObservableObject` holding all app
+  - `Shared/Controllers/AppStore.swift`: the single `@MainActor` `ObservableObject` holding all app
     state, the import pipeline orchestration, and every mutation. Start here.
-  - `Controllers/Pipeline.swift`: LLM calls (`LocalPipeline`): metadata, cast proposal, plan,
+  - `Shared/Controllers/Pipeline.swift`: LLM calls (`LocalPipeline`): metadata, cast proposal, plan,
     dialogue/monologue writing, JSON parsing.
-  - `Controllers/KokoroEngine.swift`: the only Kokoro TTS instance. `Kokoro.swift` holds voice
-    lists, labels and pools.
-  - `Controllers/PlayerController.swift`: episode playback and voice-sample previews.
-  - `Controllers/Storage.swift`: `LocalStorage` (Application Support) and `HttpStorage`
+  - `macOS/Controllers/KokoroEngine.swift`: the only Kokoro TTS instance (on Linux,
+    `Linux/KokoroCompat.swift`). `Shared/Controllers/Kokoro.swift` holds voice lists, labels
+    and pools.
+  - `Shared/Controllers/PlayerController.swift`: episode playback and voice-sample previews.
+  - `Shared/Controllers/Storage.swift`: `LocalStorage` (Application Support) and `HttpStorage`
     (`server/storage_server.py`), plus the `K` key layout.
-  - `Presentation/`: everything the views show or decide, as pure Swift with no SwiftUI:
+  - `Shared/Presentation/`: everything the views show or decide, as pure Swift with no SwiftUI:
     wording and labels, form state and validation (`ImportForm`, `MetadataForm`,
     `LLMSettingsForm`, `ServerSettingsForm`, `CastForm`), grouping/sorting (`AuthorsPresentation`),
     and display decisions (`EpisodeProgress`, `BottomBarContent`, `PlayerPane`, `PlaybackStatus`).
-  - `Views/`, `Components/`: SwiftUI layout only (see "Views hold no logic" below).
-    `Support/Theme.swift` has shared styling (`glassCard`, `StatusBadge`, `FlowLayout`,
-    `Color.stable(for:)`); `Support/Clipboard.swift` copies text.
+  - `macOS/Views/`, `macOS/Components/`: SwiftUI layout only (see "Views hold no logic" below).
+    `macOS/Support/Theme.swift` has shared styling (`glassCard`, `StatusBadge`, `FlowLayout`,
+    `Color.stable(for:)`); `macOS/Support/Clipboard.swift` copies text.
 - `server/storage_server.py`: optional stdlib-only HTTP key/value file store. No compute.
 - `VERSION`, `scripts/version.sh`: the app version and the tool that bumps/checks it.
 - `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
 - `.github/workflows/`: `tests.yml` (PRs and `main`) and `release.yml` (dev + stable releases).
 - `shared/`: app icon.
+- Linux port pieces: `client/Sources/Papertalk/Linux/` (compat shims, `#if os(Linux)`),
+  `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
+  `client/linux-dev/` (dev container `Dockerfile`, `dev.sh`).
 - `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
 - `client/UI_ISSUES.md`: running list of UI/UX issues and fix notes. Update it when you fix or
   find one.
@@ -66,7 +72,8 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
 - Coverage needs no external service: `tests.yml` runs `app.sh coverage` and appends
   `coverage/summary.md` to the job summary (and uploads `coverage/` as a run artifact). Nothing is
   published elsewhere. `scripts/coverage.sh` and `scripts/coverage_summary.py` produce the files;
-  the "logic" figure excludes `Views/`, `Components/`, `App/` and `Support/Theme.swift`.
+  the "logic" figure excludes `macOS/Views/`, `macOS/Components/`, `macOS/App/` and
+  `macOS/Support/Theme.swift`.
 - Bump with `app.sh bump-patch|bump-minor|bump-major` (or `scripts/version.sh set X.Y.Z`)
   as part of a PR. Patch for fixes, minor for features, major for breaking changes (e.g. a
   library format that older builds can't read).
@@ -84,6 +91,70 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
   env overrides the file for that build only). It keeps the newest 10 dev builds and deletes
   older ones with their tags. Never create `-dev.` tags by hand, and never push tags or bump the
   version unless the user asks.
+
+## Linux port
+
+- The `Papertalk` target builds on macOS and Linux. macOS-only files are wrapped in
+  `#if os(macOS)` (App, Views, Components, Theme, Clipboard, Notifier, PDFViewerWindow,
+  KokoroEngine), which live under `macOS/`. Linux supplies same-named compat shims in `Linux/`,
+  so shared code compiles unchanged. Prefer extending a shim to adding `#if` in shared code.
+  Never change how the macOS app looks or behaves for the port's sake.
+- A new file goes in `Shared/`, `macOS/` or `Linux/` by where it compiles, and files in `macOS/`
+  and `Linux/` keep their whole-file `#if os(...)` guard (one target compiles every folder;
+  SwiftPM can't exclude files per platform).
+- Build and test Linux with Docker (OrbStack here): `client/linux-dev/dev.sh build` once, then
+  `client/linux-dev/dev.sh test` (Swift suite + pytest) and `client/linux-dev/dev.sh e2e` (the opt-in
+  `EndToEndImportTests`: a real import with Kokoro, LLM mocked). Run `swift build` and
+  `app.sh test` on macOS too, after every change to shared code.
+- Python is called only through `PythonRuntime` (one thread). Nothing time-critical goes through
+  it (playback stays in Swift), because it can be busy with Kokoro for seconds.
+- Linux traps: `Timer.scheduledTimer` is unavailable in async code; `URLProtocol`s are consulted
+  in registration order; sync test methods in `@MainActor` test classes crash test discovery
+  (make them `async`); files using URLSession types need `FoundationNetworking`.
+- The Linux UI (`Linux/UI/`) is SwiftCrossUI 0.9.0 on GTK 4 (`GtkBackend`; `DefaultBackend`
+  fails to build on Linux) over the shared `AppStore`. `StoreBridge` forwards `AppStore`'s and
+  `PlayerController`'s `objectWillChange` to SwiftCrossUI's own `ObservableObject` and is the
+  only UI file that imports OpenCombine. Views follow the same "no logic" rule as macOS:
+  wording and decisions come from `Shared/Presentation/` (with tests); Linux-only store
+  helpers go in `Linux/UI/AppStore+Linux.swift`.
+- SwiftCrossUI 0.9 traps (each one cost a debugging session):
+  - Write every `body` in view-builder style. `let` is fine; an explicit `return` skips the
+    builder's tuple wrapping, and views inserted later (a selected paper) never appear.
+  - The `NavigationSplitView` must be the window's root, with no modifiers on it, and a pane's
+    root view takes no modifiers either (with a `List` inside, the pane is then laid out at its
+    minimum size, centred and clipped). Pad rows instead; `PaneWidth` widens a column.
+    Alerts and sheets go on an inner view (the player bar).
+  - Sheets asked for before the window has appeared, or during the first layout, are dropped:
+    launch-time sheets wait for `StoreBridge.windowReady`.
+  - `Picker` shows `"\(option)"`: wrap values in `PickerOption` for readable labels. Menu items
+    have no keyboard shortcuts.
+- Look at the UI headless: `client/linux-dev/dev.sh screenshot` runs it under Xvfb and openbox on
+  a demo library and saves PNGs to `client/.build-linux/shots/`; `PAPERTALK_UI_SCRIPT` drives it
+  with xdotool and `PAPERTALK_UI_ARGS` passes a PDF to import. xdotool can't type into GTK 4's
+  file dialog, so pass the PDF as an argument. `PAPERTALK_AUDIO_SINK` replaces the sound
+  server's player (e.g. `cat > /dev/null` where there is no sound card).
+
+Done in the Linux UI: library (sidebar, search, covers), detail pane, player bar (playback,
+scrubber, import progress), import sheet (and `Papertalk paper.pdf`), cast and duplicate
+prompts, delete/rerun confirmation, settings and first-run setup.
+
+Packaging: `client/linux-dev/dev.sh appimage` (with `VERSION`, `CHANNEL`) builds
+`client/dist/Papertalk-<version>-<arch>.AppImage`: release binary with the Swift runtime
+static, a bundled Python 3.12 with the packages (so nothing is installed at first launch), every
+other library except the GTK / graphics / glibc stack, and a `.desktop` file with `%f`.
+`client/linux-dev/appimage_smoke.sh` checks it on plain Ubuntu. CI packs and smoke-tests it on
+every PR (run artifact), and `release.yml`'s `linux` job uploads it to each release (x86_64).
+If you add a Python package or a native dependency, run the smoke test: a library missing from
+the bundle only shows up on a clean system.
+
+Still to do, in order:
+1. **Rest of the Linux UI:** authors view, transcript view, metadata editing, tag editing,
+   clipboard copy, and `Notifier.isAppActive` from the window's focus (notifications are off
+   until then). Then a pass on looks (spacing, a grid layout option).
+2. **Updates on Linux:** the update check (menu on macOS) and `UpdateCheck` picking the
+   AppImage asset; the Linux build has no version stamped in yet (macOS uses Info.plist).
+3. Later: an arm64 AppImage (an `ubuntu-24.04-arm` runner), an in-app PDF viewer from
+   pypdfium2 renders, and a re-check of OpenSwiftUI for a Linux renderer.
 
 ## Tests (`client/Tests/PapertalkTests`)
 

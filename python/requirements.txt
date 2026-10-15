@@ -1,0 +1,7 @@
+# Python side of Papertalk's Linux platform services (AGENTS.md, "Linux port").
+pypdfium2>=4.30
+Pillow>=10
+kokoro-onnx>=0.4
+soundfile>=0.12
+numpy>=1.26
+keyring>=25

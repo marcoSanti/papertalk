@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run things in the Linux dev container (AGENTS.md, "Linux port"). Needs Docker.
-#   linux/dev.sh build | shell | test | app | <command...>
+#   client-linux/dev.sh build | shell | test | app | <command...>
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE=papertalk-linux-dev
@@ -9,7 +9,7 @@ RUN=(docker run --rm -v "$ROOT:/src" -v papertalk-linux-build:/src/client/.build
      -v papertalk-linux-cache:/root/.cache -w /src "$IMAGE")
 
 case "${1:-}" in
-    build) docker build -t "$IMAGE" -f "$ROOT/linux/Dockerfile" "$ROOT" ;;
+    build) docker build -t "$IMAGE" -f "$ROOT/client-linux/Dockerfile" "$ROOT" ;;
     shell) docker run --rm -it -v "$ROOT:/src" -v papertalk-linux-build:/src/client/.build-linux \
                -v papertalk-linux-cache:/root/.cache -w /src "$IMAGE" bash ;;
     # The Swift suite and the Python services' tests, on Linux.

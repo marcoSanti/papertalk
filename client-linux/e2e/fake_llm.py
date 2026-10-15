@@ -1,5 +1,5 @@
 """A stand-in OpenAI-compatible LLM for the Linux end-to-end import
-(linux/e2e/import.sh). It answers each pipeline prompt with a canned reply,
+(client-linux/e2e/import.sh). It answers each pipeline prompt with a canned reply,
 matched on the same markers the Swift test suite's MockLLM uses."""
 import json
 import sys

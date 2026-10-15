@@ -2,7 +2,7 @@
 # Run the spike under Xvfb and screenshot it as the demo steps run.
 set -e
 OUT=/src/client/.build-linux/spike-gtk/shots; mkdir -p "$OUT"
-python3 -c "import sys; sys.path.insert(0,'/src/python'); from papertalk_platform import pdf; open('/tmp/cover.png','wb').write(pdf.cover_png(open('/src/linux/spikes/python-services/hello.pdf','rb').read(), 140))"
+python3 -c "import sys; sys.path.insert(0,'/src/python'); from papertalk_platform import pdf; open('/tmp/cover.png','wb').write(pdf.cover_png(open('/src/client-linux/spikes/python-services/hello.pdf','rb').read(), 140))"
 Xvfb :99 -screen 0 1000x640x24 & XV=$!
 export DISPLAY=:99 GDK_BACKEND=x11 SPIKE_DEMO=1 SPIKE_COVER=/tmp/cover.png NO_AT_BRIDGE=1
 sleep 1

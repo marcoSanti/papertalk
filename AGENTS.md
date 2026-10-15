@@ -30,7 +30,7 @@ file covers how to work on it and the traps that have already bitten.
 - `shared/`: app icon.
 - Linux port pieces: `client/Sources/Papertalk/Platform/Linux/` (compat shims, `#if os(Linux)`),
   `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
-  `linux/` (dev container `Dockerfile`, `dev.sh`, spikes, `e2e/import.sh`).
+  `client-linux/` (dev container `Dockerfile`, `dev.sh`, spikes, `e2e/import.sh`).
 - `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
 - `client/UI_ISSUES.md`: running list of UI/UX issues and fix notes. Update it when you fix or
   find one.
@@ -95,9 +95,10 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
   KokoroEngine). Linux supplies same-named compat shims in `Platform/Linux/`, so shared code
   compiles unchanged. Prefer extending a shim to adding `#if` in shared code. Never change how
   the macOS app looks or behaves for the port's sake.
-- Build and test Linux with Docker (OrbStack here): `linux/dev.sh build` once, then
-  `linux/dev.sh test` (Swift suite + pytest) and `linux/dev.sh linux/e2e/import.sh`. Run
-  `swift build` and `app.sh test` on macOS too, after every change to shared code.
+- Build and test Linux with Docker (OrbStack here): `client-linux/dev.sh build` once, then
+  `client-linux/dev.sh test` (Swift suite + pytest) and
+  `client-linux/dev.sh client-linux/e2e/import.sh`. Run `swift build` and `app.sh test` on macOS
+  too, after every change to shared code.
 - Python is called only through `PythonRuntime` (one thread). Nothing time-critical goes through
   it (playback stays in Swift), because it can be busy with Kokoro for seconds.
 - Linux traps: `Timer.scheduledTimer` is unavailable in async code; `URLProtocol`s are consulted
@@ -105,7 +106,7 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
   (make them `async`); files using URLSession types need `FoundationNetworking`.
 - The Linux UI will use SwiftCrossUI 0.9.0 (`GtkBackend`, not `DefaultBackend`, which fails to
   build on Linux). It has its own `ObservableObject`, so a bridge forwards `AppStore`'s
-  `objectWillChange`; see `linux/spikes/gtk-ui`. Menu items have no keyboard shortcuts there.
+  `objectWillChange`; see `client-linux/spikes/gtk-ui`. Menu items have no keyboard shortcuts there.
 
 Still to do, in order:
 1. **Python at runtime:** on first launch create `~/.local/share/papertalk/venv`, install

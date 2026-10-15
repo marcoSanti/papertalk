@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # End-to-end import on Linux (AGENTS.md, "Linux port"): a sample PDF goes
 # through the real pipeline (pypdfium2 → LLM → Kokoro → WAV) with a fake LLM,
-# into a throwaway library. Run inside the dev container: linux/dev.sh linux/e2e/import.sh
+# into a throwaway library. Run inside the dev container: client-linux/dev.sh client-linux/e2e/import.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'kill $LLM 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
 (cd "$ROOT/client" && swift build --scratch-path .build-linux/main 2>&1 | grep -E "error|Build complete")
-python3 "$ROOT/linux/e2e/sample_pdf.py" "$WORK/paper.pdf"
-python3 "$ROOT/linux/e2e/fake_llm.py" 8765 & LLM=$!
+python3 "$ROOT/client-linux/e2e/sample_pdf.py" "$WORK/paper.pdf"
+python3 "$ROOT/client-linux/e2e/fake_llm.py" 8765 & LLM=$!
 sleep 1
 
 # A throwaway HOME keeps the run away from real settings; the Kokoro model cache is shared.

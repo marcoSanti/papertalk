@@ -87,10 +87,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the dev image
-        run: linux/dev.sh build
+        run: client-linux/dev.sh build
 
       - name: Test (Swift suite and Python services)
-        run: linux/dev.sh test
+        run: client-linux/dev.sh test
 
       - name: Build the Linux app
-        run: linux/dev.sh app
+        run: client-linux/dev.sh app

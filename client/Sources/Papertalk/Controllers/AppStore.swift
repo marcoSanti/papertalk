@@ -1270,6 +1270,42 @@ final class AppStore: ObservableObject {
         return s
     }
 
+    // MARK: Updates
+
+    /// This copy's version and commit; tests replace it.
+    var build = AppBuild.current
+    @Published private(set) var isCheckingForUpdates = false
+    /// Result of the last update check, shown as an alert.
+    @Published var updateAlert: UpdateAlert?
+
+    /// Menu entry point: check GitHub for a newer release on `channel`.
+    func requestUpdateCheck(_ channel: ReleaseChannel) {
+        Task { await checkForUpdates(channel) }
+    }
+
+    func checkForUpdates(_ channel: ReleaseChannel, checker: UpdateChecker = UpdateChecker()) async {
+        guard !isCheckingForUpdates else { return }
+        isCheckingForUpdates = true
+        defer { isCheckingForUpdates = false }
+        let outcome: UpdateCheck.Outcome
+        do {
+            let newest = UpdateCheck.newest(in: try await checker.releases(), channel: channel)
+            var ahead: Bool?
+            if let pair = UpdateCheck.commitsToCompare(build: build, newest: newest, channel: channel) {
+                ahead = await checker.isAhead(base: pair.base, head: pair.head)
+            }
+            outcome = UpdateCheck.outcome(build: build, newest: newest, channel: channel, devIsAhead: ahead)
+        } catch {
+            outcome = .failed(error.message)
+        }
+        updateAlert = UpdateAlert(outcome, channel: channel, build: build)
+    }
+
+    func openUpdateLink(_ alert: UpdateAlert) {
+        updateAlert = nil
+        if let link = alert.link { NSWorkspace.shared.open(link) }
+    }
+
     func show(_ message: String) {
         toastTask?.cancel()
         toast = message

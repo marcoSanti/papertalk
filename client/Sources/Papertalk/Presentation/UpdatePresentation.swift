@@ -1,0 +1,240 @@
+import Foundation
+
+/// Which kind of release "Check for Updates" looks at.
+enum ReleaseChannel: Equatable {
+    /// Tagged releases (`v1.2.3`), marked Latest on GitHub.
+    case stable
+    /// Pre-releases built from every merge to `main` (`v1.2.3-dev.<commit>`).
+    case dev
+}
+
+/// A release version as the release workflow writes it: `1.2.3` for stable
+/// builds, `1.2.3-dev.<short commit>` for dev builds. A leading `v` is accepted.
+struct ReleaseVersion: Equatable {
+    let major: Int, minor: Int, patch: Int
+    let devCommit: String?
+
+    init?(_ text: String) {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.hasPrefix("v") { s.removeFirst() }
+        let parts = s.split(separator: "-", maxSplits: 1).map(String.init)
+        let core = parts.first?.split(separator: ".").compactMap { Int($0) } ?? []
+        guard core.count == 3, parts.first?.split(separator: ".").count == 3 else { return nil }
+        (major, minor, patch) = (core[0], core[1], core[2])
+        if parts.count == 2 {
+            guard parts[1].hasPrefix("dev."), parts[1].count > 4 else { return nil }
+            devCommit = String(parts[1].dropFirst(4))
+        } else {
+            devCommit = nil
+        }
+    }
+
+    var text: String { "\(major).\(minor).\(patch)" + (devCommit.map { "-dev.\($0)" } ?? "") }
+
+    /// Compares MAJOR.MINOR.PATCH only.
+    func compareCore(_ other: ReleaseVersion) -> ComparisonResult {
+        let a = [major, minor, patch], b = [other.major, other.minor, other.patch]
+        for (x, y) in zip(a, b) where x != y { return x < y ? .orderedAscending : .orderedDescending }
+        return .orderedSame
+    }
+
+    /// Semver order, as far as the versions alone can tell: a dev build comes
+    /// before the release of the same number. Two dev builds of the same number
+    /// can't be ordered without git history, so they compare as the same.
+    func compare(_ other: ReleaseVersion) -> ComparisonResult {
+        let core = compareCore(other)
+        guard core == .orderedSame else { return core }
+        switch (devCommit == nil, other.devCommit == nil) {
+        case (false, true): return .orderedAscending
+        case (true, false): return .orderedDescending
+        default: return .orderedSame
+        }
+    }
+}
+
+/// The running app's version and commit, read from its Info.plist (the
+/// Makefile stamps both; the build number is the short commit hash).
+struct AppBuild: Equatable {
+    var version: String?
+    var commit: String?
+
+    static func from(info: [String: Any]?) -> AppBuild {
+        let commit = (info?["CFBundleVersion"] as? String).flatMap { isCommitHash($0) ? $0 : nil }
+        return AppBuild(version: info?["CFBundleShortVersionString"] as? String, commit: commit)
+    }
+    static var current: AppBuild { from(info: Bundle.main.infoDictionary) }
+
+    var release: ReleaseVersion? { version.flatMap(ReleaseVersion.init) }
+
+    /// "0.0.1 (a1b2c3d)", as About Papertalk shows it.
+    var display: String {
+        guard let version else { return "an unknown version" }
+        guard let commit, release?.devCommit == nil else { return version }
+        return "\(version) (\(commit))"
+    }
+
+    private static func isCommitHash(_ s: String) -> Bool {
+        s.count >= 4 && s.allSatisfy(\.isHexDigit)
+    }
+}
+
+/// One entry of GitHub's release list.
+struct GitHubRelease: Decodable, Equatable {
+    let tagName: String
+    let htmlURL: URL
+    let prerelease: Bool
+    let draft: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case tagName = "tag_name", htmlURL = "html_url", prerelease, draft
+    }
+}
+
+/// Deciding whether a newer release exists. The network part lives in `UpdateChecker`.
+enum UpdateCheck {
+    static let repository = "marcoSanti/papertalk"
+    static let releasesURL = URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=100")!
+    static let releasesPage = URL(string: "https://github.com/\(repository)/releases")!
+
+    /// GitHub's "compare two commits" endpoint, used to order dev builds.
+    static func compareURL(base: String, head: String) -> URL {
+        URL(string: "https://api.github.com/repos/\(repository)/compare/\(base)...\(head)")!
+    }
+
+    struct Candidate: Equatable {
+        let release: GitHubRelease
+        let version: ReleaseVersion
+    }
+
+    enum Outcome: Equatable {
+        case available(Candidate)
+        case upToDate(Candidate)
+        case noRelease
+        /// The running copy has no version (e.g. `swift run`), so nothing to compare with.
+        case unknownBuild(Candidate)
+        case failed(String)
+    }
+
+    /// The newest published release on `channel`. Stable: the highest
+    /// non-pre-release version. Dev: the first dev pre-release, since GitHub
+    /// lists releases newest first and dev numbers alone don't order them.
+    static func newest(in releases: [GitHubRelease], channel: ReleaseChannel) -> Candidate? {
+        let parsed = releases.filter { !$0.draft }.compactMap { r in
+            ReleaseVersion(r.tagName).map { Candidate(release: r, version: $0) }
+        }
+        switch channel {
+        case .stable:
+            return parsed.filter { !$0.release.prerelease && $0.version.devCommit == nil }
+                .max { $0.version.compare($1.version) == .orderedAscending }
+        case .dev:
+            return parsed.first { $0.version.devCommit != nil }
+        }
+    }
+
+    /// When the dev build and the running app share a version number but not a
+    /// commit, only git history can tell which is newer: the commits to ask
+    /// GitHub about, as (base: ours, head: theirs).
+    static func commitsToCompare(build: AppBuild, newest: Candidate?, channel: ReleaseChannel) -> (base: String, head: String)? {
+        guard channel == .dev, let newest, let theirs = newest.version.devCommit,
+              let ours = build.commit, let current = build.release,
+              !sameCommit(ours, theirs), newest.version.compareCore(current) == .orderedSame else { return nil }
+        return (ours, theirs)
+    }
+
+    /// `devIsAhead`: GitHub's answer for `commitsToCompare` (nil when it wasn't
+    /// asked or couldn't say). Unknown counts as newer, so a dev build is offered
+    /// rather than silently hidden.
+    static func outcome(build: AppBuild, newest: Candidate?, channel: ReleaseChannel, devIsAhead: Bool? = nil) -> Outcome {
+        guard let newest else { return .noRelease }
+        if channel == .dev, let ours = build.commit, let theirs = newest.version.devCommit, sameCommit(ours, theirs) {
+            return .upToDate(newest)
+        }
+        guard let current = build.release else { return .unknownBuild(newest) }
+        switch channel {
+        case .stable:
+            return newest.version.compare(current) == .orderedDescending ? .available(newest) : .upToDate(newest)
+        case .dev:
+            switch newest.version.compareCore(current) {
+            case .orderedDescending: return .available(newest)
+            case .orderedAscending: return .upToDate(newest)
+            case .orderedSame: return devIsAhead == false ? .upToDate(newest) : .available(newest)
+            }
+        }
+    }
+
+    /// Short hashes can differ in length (git lengthens them when ambiguous).
+    static func sameCommit(_ a: String, _ b: String) -> Bool {
+        let a = a.lowercased(), b = b.lowercased()
+        return a.hasPrefix(b) || b.hasPrefix(a)
+    }
+
+    /// Whether GitHub's compare `status` means `head` has commits `base` lacks.
+    static func headIsAhead(compareStatus: String) -> Bool? {
+        switch compareStatus {
+        case "ahead", "diverged": return true
+        case "identical", "behind": return false
+        default: return nil
+        }
+    }
+
+    static func failureMessage(httpStatus: Int?) -> String {
+        switch httpStatus {
+        case nil:
+            return "Papertalk couldn’t reach GitHub. Check your internet connection and try again."
+        case 403, 429:
+            return "GitHub is limiting requests from this network for now. Try again in an hour."
+        case let code?:
+            return "GitHub answered with an error (HTTP \(code)). Try again later."
+        }
+    }
+    static let unreadableMessage = "GitHub’s answer couldn’t be read. Try again later, or look at the releases page."
+}
+
+/// What the update alert says, and where its button leads.
+struct UpdateAlert: Identifiable, Equatable {
+    let title: String
+    let message: String
+    /// The button that opens `link`; nil for an alert with only OK.
+    let actionLabel: String?
+    let link: URL?
+    var id: String { title + message }
+
+    init(_ outcome: UpdateCheck.Outcome, channel: ReleaseChannel, build: AppBuild) {
+        let kind = channel == .stable ? "release" : "dev build"
+        switch outcome {
+        case .available(let c):
+            title = channel == .stable
+                ? "Papertalk \(c.version.text) is available"
+                : "A newer dev build is available"
+            message = channel == .stable
+                ? "You have \(build.display). Download the new version from its release page, unzip it and replace Papertalk in Applications."
+                : "Dev build \(c.version.text) has the newest changes from main; you have \(build.display). Dev builds may have rough edges."
+            actionLabel = "View Release"
+            link = c.release.htmlURL
+        case .upToDate(let c):
+            title = "Papertalk is up to date"
+            message = channel == .stable
+                ? "\(c.version.text) is the latest release. You have \(build.display)."
+                : "Dev build \(c.version.text) is the newest; you have \(build.display)."
+            actionLabel = nil
+            link = nil
+        case .noRelease:
+            title = channel == .stable ? "No releases yet" : "No dev builds yet"
+            message = channel == .stable
+                ? "There is no stable release of Papertalk yet. Dev builds of main may be available: use Check for Dev Builds."
+                : "There are no dev builds of Papertalk on GitHub right now."
+            actionLabel = "Open Releases"
+            link = UpdateCheck.releasesPage
+        case .unknownBuild(let c):
+            title = "Can’t tell which version this is"
+            message = "This copy of Papertalk wasn’t built as an app, so it has no version to compare. The newest \(kind) is \(c.version.text)."
+            actionLabel = "View Release"
+            link = c.release.htmlURL
+        case .failed(let reason):
+            title = "Couldn’t check for updates"
+            message = reason
+            actionLabel = nil
+            link = nil
+        }
+    }
+}

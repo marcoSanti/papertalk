@@ -1,11 +1,16 @@
 #if os(Linux)
 import Foundation
 
-/// Linux entry point until the GTK UI lands (docs/LINUX_PORT.md, Phase 4).
+/// Linux entry point. Until the GTK UI lands (docs/LINUX_PORT.md, Phase 4) it
+/// only runs headless imports.
 @main
 enum PapertalkLinux {
-    static func main() {
-        print("Papertalk for Linux: the UI isn't ported yet.")
+    static func main() async {
+        let arguments = CommandLine.arguments
+        if arguments.contains("--import") {
+            exit(await HeadlessImport.run(arguments))
+        }
+        print("Papertalk for Linux: the window isn't ported yet. Try --import paper.pdf.")
     }
 }
 #endif

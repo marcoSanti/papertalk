@@ -31,7 +31,7 @@ file covers how to work on it and the traps that have already bitten.
 - `shared/`: app icon.
 - Linux port pieces: `client-macos/Sources/Papertalk/Platform/Linux/` (compat shims, `#if os(Linux)`),
   `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
-  `client-linux/` (dev container `Dockerfile`, `dev.sh`, spikes, `e2e/import.sh`).
+  `client-linux/` (dev container `Dockerfile`, `dev.sh`, spikes).
 - `client-macos/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
 - `client-macos/UI_ISSUES.md`: running list of UI/UX issues and fix notes. Update it when you fix or
   find one.
@@ -97,9 +97,9 @@ and the `bump-*` targets. It's run from anywhere; from `client-macos/` prefix it
   compiles unchanged. Prefer extending a shim to adding `#if` in shared code. Never change how
   the macOS app looks or behaves for the port's sake.
 - Build and test Linux with Docker (OrbStack here): `client-linux/dev.sh build` once, then
-  `client-linux/dev.sh test` (Swift suite + pytest) and
-  `client-linux/dev.sh client-linux/e2e/import.sh`. Run `swift build` and `app.sh test` on macOS
-  too, after every change to shared code.
+  `client-linux/dev.sh test` (Swift suite + pytest) and `client-linux/dev.sh e2e` (the opt-in
+  `EndToEndImportTests`: a real import with Kokoro, LLM mocked). Run `swift build` and
+  `app.sh test` on macOS too, after every change to shared code.
 - Python is called only through `PythonRuntime` (one thread). Nothing time-critical goes through
   it (playback stays in Swift), because it can be busy with Kokoro for seconds.
 - Linux traps: `Timer.scheduledTimer` is unavailable in async code; `URLProtocol`s are consulted

@@ -111,22 +111,42 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
 - Linux traps: `Timer.scheduledTimer` is unavailable in async code; `URLProtocol`s are consulted
   in registration order; sync test methods in `@MainActor` test classes crash test discovery
   (make them `async`); files using URLSession types need `FoundationNetworking`.
-- The Linux UI will use SwiftCrossUI 0.9.0 (`GtkBackend`, not `DefaultBackend`, which fails to
-  build on Linux). It has its own `ObservableObject`, so a bridge forwards `AppStore`'s
-  `objectWillChange` (give the store an `onChange(_:)` hook so UI code never imports
-  OpenCombine; the first version is in commit db6ef42). Menu items have no keyboard shortcuts.
+- The Linux UI (`Linux/UI/`) is SwiftCrossUI 0.9.0 on GTK 4 (`GtkBackend`; `DefaultBackend`
+  fails to build on Linux) over the shared `AppStore`. `StoreBridge` forwards `AppStore`'s and
+  `PlayerController`'s `objectWillChange` to SwiftCrossUI's own `ObservableObject` and is the
+  only UI file that imports OpenCombine. Views follow the same "no logic" rule as macOS:
+  wording and decisions come from `Shared/Presentation/` (with tests); Linux-only store
+  helpers go in `Linux/UI/AppStore+Linux.swift`.
+- SwiftCrossUI 0.9 traps (each one cost a debugging session):
+  - Write every `body` in view-builder style. `let` is fine; an explicit `return` skips the
+    builder's tuple wrapping, and views inserted later (a selected paper) never appear.
+  - The `NavigationSplitView` must be the window's root, with no modifiers on it, and a pane's
+    root view takes no modifiers either (with a `List` inside, the pane is then laid out at its
+    minimum size, centred and clipped). Pad rows instead; `PaneWidth` widens a column.
+    Alerts and sheets go on an inner view (the player bar).
+  - Sheets asked for before the window has appeared, or during the first layout, are dropped:
+    launch-time sheets wait for `StoreBridge.windowReady`.
+  - `Picker` shows `"\(option)"`: wrap values in `PickerOption` for readable labels. Menu items
+    have no keyboard shortcuts.
+- Look at the UI headless: `client/linux-dev/dev.sh screenshot` runs it under Xvfb and openbox on
+  a demo library and saves PNGs to `client/.build-linux/shots/`; `PAPERTALK_UI_SCRIPT` drives it
+  with xdotool and `PAPERTALK_UI_ARGS` passes a PDF to import. xdotool can't type into GTK 4's
+  file dialog, so pass the PDF as an argument. `PAPERTALK_AUDIO_SINK` replaces the sound
+  server's player (e.g. `cat > /dev/null` where there is no sound card).
+
+Done in the Linux UI: library (sidebar, search, covers), detail pane, player bar (playback,
+scrubber, import progress), import sheet (and `Papertalk paper.pdf`), cast and duplicate
+prompts, delete/rerun confirmation, settings and first-run setup.
 
 Still to do, in order:
-1. **Python at runtime:** on first launch create `~/.local/share/papertalk/venv`, install
+1. **Rest of the Linux UI:** authors view, transcript view, metadata editing, tag editing,
+   clipboard copy, and `Notifier.isAppActive` from the window's focus (notifications are off
+   until then). Then a pass on looks (spacing, a grid layout option).
+2. **Python at runtime:** on first launch create `~/.local/share/papertalk/venv`, install
    `python/requirements.txt` with progress in the setup UI, and locate `libpython`.
-2. **Linux UI** (`Sources/Papertalk/Linux/UI/`, `#if os(Linux)`), screen by screen: library →
-   detail → player bar → import → settings and setup → cast → authors → transcript. Wording
-   and decisions come from `Presentation/`. Anything new goes there with a test, and the macOS
-   view uses it too. Check first that `PlayerController`'s `Timer`s fire under the GTK main loop;
-   if they don't, use `DispatchSourceTimer`.
-3. **Packaging:** `.desktop` file and PNG icons from `shared/icon.icns` (DEV stripe for dev
-   builds), an AppImage with the venv, a Linux job in `release.yml`, and `UpdateCheck` picking
-   the asset for the platform.
+3. **Packaging:** `.desktop` file (with `%f`, so "Open with" passes the PDF) and PNG icons from
+   `shared/icon.icns` (DEV stripe for dev builds), an AppImage with the venv, a Linux job in
+   `release.yml`, and `UpdateCheck` picking the asset for the platform.
 4. Later: an in-app PDF viewer from pypdfium2 renders; re-check OpenSwiftUI for a Linux renderer.
 
 Open questions for the maintainer: x86_64 only or arm64 too; whether to download the Python

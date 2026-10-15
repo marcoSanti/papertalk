@@ -77,3 +77,20 @@ jobs:
         working-directory: .
         run: python3 -m py_compile server/storage_server.py
 
+  linux:
+    name: Build and test (Linux)
+    # The Linux port (docs/LINUX_PORT.md): the same suite in the dev container
+    # (Swift 6.2, Python services, GTK 4), plus the Python services' own tests.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the dev image
+        run: linux/dev.sh build
+
+      - name: Test (Swift suite and Python services)
+        run: linux/dev.sh test
+
+      - name: Build the Linux app
+        run: linux/dev.sh app

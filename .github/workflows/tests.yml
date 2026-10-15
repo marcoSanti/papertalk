@@ -82,7 +82,7 @@ jobs:
     # The Linux port (AGENTS.md, "Linux port"): the same suite in the dev container
     # (Swift 6.2, Python services, GTK 4), plus the Python services' own tests.
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -94,3 +94,18 @@ jobs:
 
       - name: Build the Linux app
         run: client/linux-dev/dev.sh app
+
+      - name: Pack the AppImage
+        run: client/linux-dev/dev.sh appimage
+
+      - name: Smoke test the AppImage on plain Ubuntu
+        run: client/linux-dev/appimage_smoke.sh
+
+      - name: Upload the AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: papertalk-linux-appimage
+          path: |
+            client/dist/Papertalk-*.AppImage
+            client/dist/appimage-smoke.png
+          retention-days: 14

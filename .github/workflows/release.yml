@@ -2,7 +2,8 @@ name: Release
 
 # Two kinds of release, both: test, build the optimized app, publish a GitHub
 # release with the zipped Papertalk.app, the source it was built from
-# (Papertalk-<version>-source.tar.gz) and a SHA-256 for each.
+# (Papertalk-<version>-source.tar.gz) and a SHA-256 for each. A second job
+# adds the Linux AppImage (Papertalk-<version>-x86_64.AppImage) to it.
 #
 #  - Stable: every push to main that bumps the VERSION file publishes a full
 #    release, marked Latest, tagged v<VERSION>. Versioning is CI-driven: bump
@@ -31,6 +32,10 @@ jobs:
     name: Release
     runs-on: macos-26
     timeout-minutes: 45
+    outputs:   # for the Linux job, which adds its AppImage to this release
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      kind: ${{ steps.version.outputs.kind }}
     defaults:
       run:
         working-directory: client
@@ -129,6 +134,9 @@ jobs:
             echo "The app is only ad-hoc signed, so the first time macOS may refuse to open it:"
             echo "right-click the app and choose **Open**."
             echo
+            echo "On Linux, download \`Papertalk-${VERSION}-x86_64.AppImage\`, make it executable"
+            echo "(\`chmod +x\`) and run it. It needs a desktop with GTK 4 (Ubuntu 22.04+, Fedora 36+ and alike)."
+            echo
             echo "\`Papertalk-${VERSION}-source.tar.gz\` is the source code this build was made from."
             echo
             echo "> This app is vibecoded. I had the need not the time. bugs are expected and help is appreciated"
@@ -165,3 +173,40 @@ jobs:
                 echo "Deleting old dev build ${old}"
                 gh release delete "$old" --yes --cleanup-tag
               done
+
+  linux:
+    name: Linux AppImage
+    # Adds Papertalk-<version>-x86_64.AppImage to the release the job above
+    # made: the Linux tests, the AppImage (official icon for stable releases,
+    # DEV ribbon for dev builds), a smoke test on plain Ubuntu, then upload.
+    needs: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the dev image
+        run: client/linux-dev/dev.sh build
+
+      - name: Test
+        run: client/linux-dev/dev.sh test
+
+      - name: Pack the AppImage
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          CHANNEL: ${{ needs.release.outputs.kind }}
+        run: client/linux-dev/dev.sh appimage
+
+      - name: Smoke test on plain Ubuntu
+        run: client/linux-dev/appimage_smoke.sh
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          APPIMAGE="client/dist/Papertalk-${VERSION}-x86_64.AppImage"
+          sha256sum "$APPIMAGE" | sed 's#  client/dist/#  #' | tee "${APPIMAGE}.sha256"
+          gh release upload "$TAG" "$APPIMAGE" "${APPIMAGE}.sha256"
+

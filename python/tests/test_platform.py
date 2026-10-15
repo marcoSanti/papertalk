@@ -29,7 +29,12 @@ def test_pdf_cover_is_png_of_requested_width():
     assert Image.open(io.BytesIO(png)).width == 200
 
 
+def test_pdf_pages():
+    assert pdf.pages(make_pdf("Page one")) == ["Page one"]
+
+
 def test_unreadable_pdf_gives_empty_results():
+    assert pdf.pages(b"not a pdf") is None
     assert pdf.text(b"not a pdf") == ""
     assert pdf.cover_png(b"not a pdf") == b""
 

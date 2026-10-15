@@ -4,23 +4,28 @@ import io
 import pypdfium2 as pdfium
 
 
-def text(pdf: bytes) -> str:
-    """All page text, pages separated by newlines. Empty for unreadable files,
-    like PDFDocument returning nil on macOS."""
+def pages(pdf: bytes):
+    """The text of each page, or None for an unreadable file (like PDFDocument
+    returning nil on macOS)."""
     try:
         doc = pdfium.PdfDocument(pdf)
     except pdfium.PdfiumError:
-        return ""
+        return None
     try:
-        pages = []
+        out = []
         for page in doc:
             tp = page.get_textpage()
-            pages.append(tp.get_text_range())
+            out.append(tp.get_text_range())
             tp.close()
             page.close()
-        return "\n".join(pages)
+        return out
     finally:
         doc.close()
+
+
+def text(pdf: bytes) -> str:
+    """All page text, pages separated by newlines. Empty for unreadable files."""
+    return "\n".join(pages(pdf) or [])
 
 
 def cover_png(pdf: bytes, width: float = 280) -> bytes:

@@ -276,6 +276,9 @@ final class AppStore: ObservableObject {
     }
 
     private static func thumbnail(of data: Data, width: CGFloat = 280) -> NSImage? {
+        #if os(Linux)
+        return PDFDocument.coverPNG(of: data, width: width * 2).map(NSImage.init(png:))
+        #else
         guard let doc = PDFDocument(data: data), let page = doc.page(at: 0) else { return nil }
         let bounds = page.bounds(for: .mediaBox)
         guard bounds.width > 0, bounds.height > 0 else { return nil }
@@ -290,6 +293,7 @@ final class AppStore: ObservableObject {
         page.draw(with: .mediaBox, to: ctx)
         guard let cg = ctx.makeImage() else { return nil }
         return NSImage(cgImage: cg, size: NSSize(width: width, height: width * bounds.height / bounds.width))
+        #endif
     }
 
     /// The raw bytes of a paper's stored PDF, or nil.

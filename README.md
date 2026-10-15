@@ -49,7 +49,10 @@ the app with:
 `app.sh` lives at the repo root and is run from anywhere (from `client/` use
 `../app.sh`). It handles the whole build/run/test/release lifecycle. This puts a debug build in
 `client/dist/Papertalk.app`. Use `app.sh release` for an optimized build zipped to
-`dist/Papertalk-<version>.zip`. Ready-made builds are on the
+`dist/Papertalk-<version>.zip`, with the committed source next to it as
+`dist/Papertalk-<version>-source.tar.gz`. Builds you make yourself, like the development builds
+below, show a yellow "DEV" stripe on the app icon; only official releases use the plain icon
+(`CHANNEL=stable ./app.sh release`). Ready-made builds are on the
 [Releases](https://github.com/marcoSanti/paper2pod/releases) page. The app is only ad-hoc signed, so if macOS refuses to
 open a copy you've moved to another Mac, right-click it and choose **Open**.
 
@@ -177,9 +180,11 @@ root (starting at `0.0.1`); the build stamps it into the app. To cut a release:
 
 Merging the bumped `VERSION` to `main` runs `.github/workflows/release.yml`: it sees the version
 changed, builds the optimized app and publishes a GitHub release, marked Latest, tagged
-`v<VERSION>`, with `Papertalk-<version>.zip` and its SHA-256 checksum.
+`v<VERSION>`, with `Papertalk-<version>.zip`, the source it was built from
+(`Papertalk-<version>-source.tar.gz`) and a SHA-256 checksum for each. Only these releases get the
+official app icon.
 
 Every other merge to `main` publishes a **development build** as a pre-release, tagged
 `v<VERSION>-dev.<commit>` (for example `v0.0.1-dev.f961491`), so the newest merged code is always
 downloadable from [Releases](https://github.com/marcoSanti/paper2pod/releases). Only the ten newest
-development builds are kept.
+development builds are kept. Their app icon carries the "DEV" stripe.

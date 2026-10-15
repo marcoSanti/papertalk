@@ -72,6 +72,13 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
   library format that older builds can't read).
 - Stable releases are CI-driven: merge the bumped `VERSION` to `main` and
   `.github/workflows/release.yml` publishes a full release tagged `v<VERSION>`, marked Latest.
+- Icons: the `CHANNEL` env var of `app.sh` (default `dev`) picks the app icon. Only the stable
+  release (a `VERSION` bump merged to `main`) builds with `CHANNEL=stable` and gets the official
+  `shared/icon.icns`; every other build (local, CI, dev pre-releases) gets a "DEV" stripe version
+  generated into `client/.build/icons/` by `scripts/dev_icon.swift`. Don't ship the official icon
+  from anything but a stable release.
+- `app.sh release` also writes `dist/Papertalk-<version>-source.tar.gz` (`git archive` of HEAD);
+  the release workflow publishes it, with checksums, beside the app zip.
 - Dev builds: every push to `main` that didn't bump the version publishes a **pre-release**
   `v<VERSION>-dev.<short commit>`, built with `app.sh release VERSION=<that>` (the `VERSION`
   env overrides the file for that build only). It keeps the newest 10 dev builds and deletes

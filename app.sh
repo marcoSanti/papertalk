@@ -3,22 +3,44 @@
 # Run from anywhere; things that need the Swift package run from client/.
 #
 #   ./app.sh [build|app|run|release|test|coverage|clean|version]
-#   ./app.sh bump-patch|bump-minor|bump-major
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLIENT="$ROOT/client"
 
-# Version comes from VERSION (see scripts/version.sh); override it for a one-off
-# build with VERSION=... (CI uses this for dev builds). The build "number"
-# (shown in parentheses in About Papertalk) is the short commit hash the app was
-# built from, so any build can be traced to its exact source; override with BUILD_NUMBER=...
 VERSION="${VERSION:-$(cat "$ROOT/VERSION")}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+
+# Which icon the app gets. Only official releases (the release workflow passes
+# CHANNEL=stable for a version bump) use the official icon; every other build,
+# local debug builds and the dev pre-releases of main included, gets the
+# "DEV" stripe version so the two are easy to tell apart.
+CHANNEL="${CHANNEL:-dev}"
+case "$CHANNEL" in
+    stable|dev) ;;
+    *) echo "CHANNEL must be stable or dev, not '$CHANNEL'" >&2; exit 2 ;;
+esac
+OFFICIAL_ICON="$ROOT/shared/icon.icns"
+DEV_ICON="$CLIENT/.build/icons/Papertalk-dev.icns"
 
 usage() {
     echo "usage: $0 [build|app|run|release|test|coverage|clean|version|bump-patch|bump-minor|bump-major]" >&2
     exit 2
+}
+
+# The icon for this CHANNEL. The dev icon is generated from the official one,
+# and regenerated when either it or the script is newer.
+icon() {
+    if [ "$CHANNEL" = stable ]; then
+        echo "$OFFICIAL_ICON"
+        return
+    fi
+    local script="$ROOT/scripts/dev_icon.swift"
+    if [ ! -f "$DEV_ICON" ] || [ "$OFFICIAL_ICON" -nt "$DEV_ICON" ] || [ "$script" -nt "$DEV_ICON" ]; then
+        mkdir -p "$(dirname "$DEV_ICON")"
+        swift "$script" "$OFFICIAL_ICON" "$DEV_ICON" >&2
+    fi
+    echo "$DEV_ICON"
 }
 
 build() {
@@ -34,22 +56,24 @@ app() {
     build "$config"
     cd "$CLIENT"
     local app="dist/Papertalk.app" zip_file="dist/Papertalk-$VERSION.zip"
+    local source_file="dist/Papertalk-$VERSION-source.tar.gz" icon_file
+    icon_file="$(icon)"
     rm -rf "$app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cp ".build/$config/Papertalk" "$app/Contents/MacOS/Papertalk"
     cp Sources/Papertalk/Info.plist "$app/Contents/Info.plist"
     plutil -replace CFBundleShortVersionString -string "$VERSION" "$app/Contents/Info.plist"
     plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$app/Contents/Info.plist"
-    if [ -f "$ROOT/shared/icon.icns" ]; then
-        cp "$ROOT/shared/icon.icns" "$app/Contents/Resources/Papertalk.icns"
-        plutil -replace CFBundleIconFile -string Papertalk "$app/Contents/Info.plist"
-    fi
+    cp "$icon_file" "$app/Contents/Resources/Papertalk.icns"
+    plutil -replace CFBundleIconFile -string Papertalk "$app/Contents/Info.plist"
     codesign --force --sign - "$app" >/dev/null 2>&1 || true
-    echo "Built $app (version $VERSION, build $BUILD_NUMBER)"
+    echo "Built $app (version $VERSION, build $BUILD_NUMBER, $CHANNEL icon)"
     if [ "${2:-}" = zip ]; then
-        rm -f dist/Papertalk-*.zip
+        rm -f dist/Papertalk-*.zip dist/Papertalk-*-source.tar.gz
         ditto -c -k --keepParent "$app" "$zip_file"
-        echo "Bundled $zip_file"
+        # The committed source the app was built from (uncommitted changes aren't included).
+        git -C "$ROOT" archive --format=tar.gz --prefix="Papertalk-$VERSION/" -o "$CLIENT/$source_file" HEAD
+        echo "Bundled $zip_file and $source_file"
     fi
 }
 
@@ -65,7 +89,8 @@ run() {
     open dist/Papertalk.app
 }
 
-# Build a release-optimized .app bundle and zip it into dist/Papertalk-<version>.zip
+# Build a release-optimized .app bundle, zip it into dist/Papertalk-<version>.zip and
+# archive its source into dist/Papertalk-<version>-source.tar.gz.
 release() {
     app release zip
 }
@@ -92,7 +117,7 @@ case "${1:-}" in
     build)   build debug ;;
     app)     app "${2:-debug}" ;;
     run)     run ;;
-    release) release ;;  # VERSION=... overrides the file for this build only
+    release) release ;;  # VERSION=... overrides the file for this build only; CHANNEL=stable for the official icon
     test)    test ;;
     coverage) coverage ;;
     clean)   clean ;;

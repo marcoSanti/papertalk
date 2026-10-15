@@ -1,8 +1,21 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(AppKit)
 import AppKit
+#endif
+#if canImport(Combine)
 import Combine
+#else
+import OpenCombine
+#endif
+#if canImport(FluidAudio)
 import FluidAudio
+#endif
+#if canImport(PDFKit)
 import PDFKit
+#endif
 
 @MainActor
 final class AppStore: ObservableObject {

@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Security)
 import Security
+#endif
 
 /// Minimal Keychain string store (system framework — no dependencies) for LLM
 /// API keys: one typed into Settings, or one sourced from an env var (so

@@ -1,7 +1,15 @@
 import Foundation
+#if canImport(AVFoundation)
 import AVFoundation
+#endif
+#if canImport(Combine)
 import Combine
+#else
+import OpenCombine
+#endif
+#if canImport(FluidAudio)
 import FluidAudio
+#endif
 
 /// Speaks a paper's transcript using Kokoro neural voices (on-device Core ML /
 /// Neural Engine via FluidAudio). Each turn is synthesized to a 24 kHz WAV and

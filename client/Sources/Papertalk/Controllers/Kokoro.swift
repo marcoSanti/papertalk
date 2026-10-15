@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(FluidAudio)
 import FluidAudio
+#endif
 
 /// Shared Kokoro voice selection + WAV helpers used by both live synthesis
 /// (PlayerController) and import-time baking (AppStore), so baked audio and

@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Reads Papertalk's releases from the public GitHub API (no token, so
 /// GitHub's unauthenticated rate limit applies). Decisions are in `UpdateCheck`.

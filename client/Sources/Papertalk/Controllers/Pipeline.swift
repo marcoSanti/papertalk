@@ -1,6 +1,13 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(PDFKit)
 import PDFKit
+#endif
+#if canImport(AppKit)
 import AppKit
+#endif
 
 // MARK: - Local generation pipeline (self-hosted, no external compute server).
 //

@@ -130,15 +130,21 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
                 previewProgress = 0
                 p.play()
                 preview = .playing(voice)
-                previewTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-                    Task { @MainActor in
-                        guard let self, let pp = self.previewPlayer, pp.duration > 0 else { return }
-                        self.previewProgress = min(1, pp.currentTime / pp.duration)
-                    }
-                }
+                startPreviewTimer()
             } catch {
                 guard gen == previewGeneration else { return }
                 preview = .failed(voice, error.localizedDescription)
+            }
+        }
+    }
+
+    /// Tracks the sample's progress. Kept out of the async preview task:
+    /// corelibs Foundation (Linux) doesn't allow scheduling timers there.
+    private func startPreviewTimer() {
+        previewTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let pp = self.previewPlayer, pp.duration > 0 else { return }
+                self.previewProgress = min(1, pp.currentTime / pp.duration)
             }
         }
     }

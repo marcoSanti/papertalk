@@ -1,6 +1,6 @@
 # Porting Papertalk to Linux: plan
 
-Status: **planning** (branch `port/linux-plan`). Nothing here is implemented yet.
+Status: **Phase 0 done** (spikes, below); Phase 1 in progress on branch `port/linux-plan`.
 
 The goal is a Linux build of Papertalk that does what the macOS app does: import a PDF, write the
 episode with an LLM, bake the audio with Kokoro, and play it, all with the same library format.
@@ -58,7 +58,7 @@ Other options, in the order I'd recommend them:
    SwiftUI-*inspired* framework, not a source-compatible one. Its views share much of SwiftUI's
    API, it's still in active development, and GTK 4 is its default Linux backend.
    Plan: keep `Views/` for macOS untouched and add a **separate, thin Linux view layer**
-   (`PapertalkLinux` target) that uses the same `AppStore` and `Presentation/` types. AGENTS.md
+   (`LinuxUI/`) that uses the same `AppStore` and `Presentation/` types. AGENTS.md
    already requires views to hold no logic, so this layer is layout only. That's the payoff of the
    "views hold no logic" rule. A first full port is a few thousand lines of layout, and we expect
    less because there's no glass styling to reproduce.
@@ -72,35 +72,30 @@ Spike S1 below decides between 1 and 3 before any UI work starts.
 
 ## Target architecture
 
-```
-client/
-  Package.swift              platforms: macOS 26 + Linux
-  Sources/
-    PapertalkCore/           library: Models/, Presentation/, AppStore, Pipeline, Storage,
-                             PlayerController, KokoroEngine *protocols*. No UI imports.
-    PapertalkMac/            platform services for macOS (PDFKit, FluidAudio, AVAudioPlayer,
-                             Keychain, UserNotifications, NSWorkspace). Moved, not rewritten.
-    PapertalkLinux/          platform services for Linux (PythonKit + Process)
-    Papertalk/               the macOS app: today's App/, Views/, Components/ (unchanged)
-    PapertalkGTK/            the Linux app: SwiftCrossUI views (new)
-  Tests/PapertalkTests/      depends on PapertalkCore only, so it runs on both OSes
-python/papertalk_platform/   the Python side: pdf.py, tts.py, audio.py, secrets.py
-python/requirements.txt      pypdfium2, kokoro-onnx, onnxruntime, sounddevice, numpy, keyring
-```
+_Revised after the spikes (see [Spike findings](#spike-findings)): one target, compat shims._
 
-The seams are a handful of small protocols in `PapertalkCore`, injected into `AppStore`, with
-the current code as the macOS implementation:
+Splitting the package into a `PapertalkCore` library would mean marking hundreds of
+declarations `public`, which goes against "change as little as possible". Instead:
 
-```swift
-protocol PDFService      { func text(of pdf: Data) -> String; func coverPNG(of pdf: Data, width: Double) -> Data? }
-protocol SpeechEngine    { func prepare(progress: ...) async throws; func synthesize(text:, voice:, speed:) async throws -> Data /* WAV */ }
-protocol AudioOutput     { /* load WAV, play, pause, seek, currentTime, duration, onFinish */ }
-protocol SecretStore     { func read() -> String?; func write(_:); func delete() }
-protocol SystemShell     { func open(_ url: URL); func reveal(_ file: URL); func copy(_ text: String); func notify(...) }
-```
-
-The only change macOS code really needs is that covers become PNG `Data` instead of `NSImage`,
-with the view turning them into an image. That's one line in `PaperComponents`.
+- **One `Papertalk` target builds on both OSes.** Files that are macOS UI or macOS services
+  (`App/`, `Views/`, `Components/`, `Support/Theme.swift`, `Support/Clipboard.swift`,
+  `Controllers/Notifier.swift`, `Controllers/PDFViewerWindow.swift`, `Controllers/KokoroEngine.swift`)
+  are wrapped in `#if os(macOS)`. Their contents don't change.
+- **Linux gets compat shims with the same API subset the shared code uses**, in
+  `Sources/Papertalk/Platform/Linux/` (every file wrapped in `#if os(Linux)`): `PDFDocument`/`PDFPage`,
+  `AVAudioPlayer`/`AVAudioPlayerDelegate`, `NSWorkspace`, `KokoroEngine`,
+  `KokoroAneResourceDownloader`/`KokoroAneConstants`. They're backed by `python/papertalk_platform`
+  through PythonKit, or by `Process` (`xdg-open`). Shared code like `PlayerController` and
+  `Pipeline` then compiles on Linux unchanged.
+- The few spots that can't be shimmed get a small in-place `#if`: imports (Combine → OpenCombine,
+  `FoundationNetworking`), the CoreGraphics thumbnail (PNG `Data` on Linux), the Kokoro model
+  folder, and `KeychainStore` (Python `keyring` on Linux).
+- **Dependencies are per platform:** FluidAudio for macOS only; PythonKit, OpenCombine and
+  SwiftCrossUI (`GtkBackend`) for Linux only.
+- **The Linux UI** lives in `Sources/Papertalk/LinuxUI/` (`#if os(Linux)`), using SwiftCrossUI
+  over the same `AppStore` and `Presentation/` types, through a small bridge. SwiftCrossUI has its
+  own `ObservableObject`, so the bridge forwards `AppStore`'s changes to it.
+- The tests keep `@testable import Papertalk` and run on both OSes.
 
 ### Python from Swift
 
@@ -115,8 +110,8 @@ with the view turning them into an image. That's one line in `PaperComponents`.
   shows progress in the existing setup UI. Packaged builds can ship the venv instead (see
   Phase 5). `PYTHON_LIBRARY` points PythonKit at the matching `libpython3.x.so`.
 - **Fallback if embedding misbehaves** (crashes inside ONNX Runtime take the whole app down): the
-  same Python modules run as a child process speaking JSON lines over stdin/stdout. The protocols
-  above don't change, so the switch is local to `PapertalkLinux`.
+  same Python modules run as a child process speaking JSON lines over stdin/stdout. The shims
+  above don't change, so the switch is local to `Platform/Linux`.
 
 ## Phases
 
@@ -136,30 +131,24 @@ Linux too.
   pause/seek. Also measure kokoro-onnx speed on CPU for a 30-minute episode, so the import
   progress estimates can be adjusted.
 
-### Phase 1: split the package (macOS only, no behaviour change)
-- Create the `PapertalkCore` library from `Models/`, `Presentation/` and the controllers. The tests
-  depend on it. Move the Apple-specific code behind the protocols above into `PapertalkMac`.
-- `Image(nsImage:)` → PNG `Data` for covers. `AppStore` gets its services injected, and tests
-  inject fakes (Kokoro and the Keychain stay untested, as today).
-- Done when the macOS app looks and behaves identically and the suite passes. Before merging,
-  compare screenshots of every screen (library, detail, player, import, settings, cast,
-  authors) before and after the split.
+### Phase 1: one target, both OSes (macOS unchanged)
+- Make dependencies per platform and guard the macOS-only files with `#if os(macOS)`.
+- Add `PythonRuntime` and the Linux compat shims one service at a time: PDF, Kokoro, audio,
+  keychain, workspace. Swap Combine for OpenCombine and add `FoundationNetworking` on Linux.
+- Done when `swift build` and the test suite pass on macOS (unchanged app) **and** on Linux
+  (`linux/dev.sh`), with a Linux CI job. The macOS sources change only by `#if` lines, so check
+  that the macOS diff is just those.
 
-### Phase 2: `PapertalkCore` builds and tests on Linux
-- `#if canImport(FoundationNetworking)`, `#if canImport(Combine)` → OpenCombine, and
-  guard the remaining Apple-only APIs.
-- `NetworkGuard`/`MockLLM` rely on `URLProtocol`, which works on Linux. Verify.
-- Done when the Linux CI job is green and required.
+### Phase 2: Linux services end to end
+- A headless debug command (`Papertalk --import paper.pdf` on Linux) produces a complete episode
+  folder that the macOS app can play. This proves the PDF → LLM → Kokoro → WAV pipeline on Linux.
+- Shell: notifications (`notify-send`), clipboard, and reveal-in-file-manager over D-Bus.
 
-### Phase 3: Linux platform services
-- `PythonRuntime`, then PDF, TTS (with model download into `~/.cache/papertalk/kokoro`), audio
-  output, secrets, and shell (xdg-open, D-Bus reveal, notify-send, clipboard).
-- Swift-side tests use fakes. Python modules get their own small pytest suite, which runs in CI on
-  Linux.
-- Done when a headless `papertalk-cli import paper.pdf` (a tiny debug executable) produces a
-  complete episode folder on Linux that the macOS app can play.
+### Phase 3: Python dependencies at runtime
+- On first launch, create the venv at `~/.local/share/papertalk/venv` and install
+  `python/requirements.txt`, with progress shown in the setup UI. Locate `libpython` for PythonKit.
 
-### Phase 4: the Linux UI (`PapertalkGTK`)
+### Phase 4: the Linux UI (`LinuxUI/`)
 Port screen by screen, in this order: library grid and list → detail pane → bottom player bar
 → import sheet → settings and setup wizard → cast sheet → authors view → transcript view. Every
 string, count and enablement comes from `Presentation/`. If a Linux view needs a decision that
@@ -175,7 +164,7 @@ isn't there yet, add it to `Presentation/` with a test, and the macOS view shoul
 
 ### Later
 - Re-check OpenSwiftUI. If it gains a Linux renderer, try compiling the macOS `Views/` against it
-  and retire `PapertalkGTK`.
+  and retire `LinuxUI/`.
 - An in-app PDF viewer on Linux, built from pypdfium2 page renders.
 
 ## Decisions needed from you
@@ -195,3 +184,34 @@ isn't there yet, add it to `Presentation/` with a test, and the macOS view shoul
   Phase 2 surfaces them through the tests.
 - Embedding Python means a crash in a native extension kills the app. The subprocess fallback
   is designed in from the start.
+
+## Spike findings
+
+Run on 2026-10-15 in `linux/Dockerfile` (Ubuntu 24.04, Swift 6.2.4, Python 3.12, GTK 4.14,
+arm64 under OrbStack). Code: `linux/spikes/`.
+
+**S2: Python services through PythonKit: go.**
+- pypdfium2 5.14 text and cover PNG, kokoro-onnx 0.6.1 (ONNX Runtime 1.31), sounddevice and keyring
+  all work from Swift through PythonKit (`main` branch; there's no `master`). It took 3.6 s
+  for three short voices requested concurrently, all funneled onto one Python thread.
+- Kokoro v1.0 on ONNX has the same 54 voices as FluidAudio's English list, so casts carry
+  over unchanged. Output is 24 kHz mono, the same as the baked WAVs.
+- Speed: **~4.9× realtime** on 12 arm64 CPU cores (362 words → 118 s of audio in 24 s). A
+  30-minute summary bakes in about 6 minutes.
+- Setup: `PYTHON_LIBRARY` must point at `libpython3.12.so`, and the venv's site-packages are added
+  with `site.addsitedir` at start-up.
+- Gotcha: a package folder named like a dependency (`pythonkit` vs `PythonKit`) makes SwiftPM
+  silently skip that dependency, because identities ignore case.
+- Embedding was stable in these runs, so the subprocess fallback isn't needed for now.
+
+**S1: SwiftCrossUI 0.9.0 with GTK 4: go.**
+- These worked: `NavigationSplitView`, `List(selection:)` with a search field, a detail pane
+  showing a PNG cover (decoded with `ImageFormats`), `.alert`, `.sheet`, the native file-open
+  dialog (`@Environment(\.chooseFile)`), and an app menu (`CommandMenu`). Headless screenshots
+  under Xvfb showed store changes reaching the views.
+- SwiftCrossUI's `ObservableObject` is its own (`didChange`), so a `StoreBridge` forwards the store's
+  `objectWillChange`. The store exposes an `onChange(_:)` hook, so UI code never imports OpenCombine.
+- Depend on `GtkBackend`, not `DefaultBackend`: on Linux, `DefaultBackend` compiles the Windows
+  and Android C targets and fails.
+- Gaps: no keyboard shortcuts on menu items, and no Liquid Glass (expected). Upstream notes a
+  bug with `List` inside `NavigationSplitView` (#556), but it didn't show up in the spike.

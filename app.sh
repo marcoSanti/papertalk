@@ -61,7 +61,7 @@ app() {
     rm -rf "$app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cp ".build/$config/Papertalk" "$app/Contents/MacOS/Papertalk"
-    cp Sources/Papertalk/Info.plist "$app/Contents/Info.plist"
+    cp Sources/Papertalk/macOS/Info.plist "$app/Contents/Info.plist"
     plutil -replace CFBundleShortVersionString -string "$VERSION" "$app/Contents/Info.plist"
     plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$app/Contents/Info.plist"
     cp "$icon_file" "$app/Contents/Resources/Papertalk.icns"

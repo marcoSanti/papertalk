@@ -148,7 +148,7 @@ calling one.
 
 The SwiftUI views contain only layout: every rule they display (labels, validation, which
 controls are enabled, how authors are grouped, what the player shows) lives in plain Swift types
-under `client/Sources/Papertalk/Presentation/`, so it can be tested without running the UI.
+under `client/Sources/Papertalk/Shared/Presentation/`, so it can be tested without running the UI.
 
 It covers the presentation layer, the library (filtering, search, sorting, authors, tags, edits
 and how they're saved, deleting), the storage backends, the LLM steps (metadata, casting, outline, dialogue and

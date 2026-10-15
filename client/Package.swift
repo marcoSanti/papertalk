@@ -2,7 +2,7 @@
 import PackageDescription
 
 // One target for both platforms (AGENTS.md, "Linux port"). macOS builds exactly what it
-// always has; Linux swaps the Apple frameworks for compat shims in Platform/Linux,
+// always has; Linux swaps the Apple frameworks for compat shims in Linux/,
 // backed by Python through PythonKit, and adds its own UI on SwiftCrossUI (GTK 4).
 let package = Package(
     name: "Papertalk",
@@ -26,7 +26,7 @@ let package = Package(
                 .product(name: "GtkBackend", package: "swift-cross-ui", condition: .when(platforms: [.linux])),
             ],
             path: "Sources/Papertalk",
-            exclude: ["Info.plist"],
+            exclude: ["macOS/Info.plist"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(

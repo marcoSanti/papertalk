@@ -1,14 +1,17 @@
 name: Release
 
 # Two kinds of release, both: test, build the optimized app, publish a GitHub
-# release with the zipped Papertalk.app and its SHA-256.
+# release with the zipped Papertalk.app, the source it was built from
+# (Papertalk-<version>-source.tar.gz) and a SHA-256 for each.
 #
 #  - Stable: every push to main that bumps the VERSION file publishes a full
 #    release, marked Latest, tagged v<VERSION>. Versioning is CI-driven: bump
 #    the file, merge to main, and the release appears. No local tag tooling.
+#    Only these builds get the official icon (CHANNEL=stable).
 #  - Dev: every other push to main (i.e. a merged PR that didn't bump VERSION)
 #    publishes a pre-release v<VERSION>-dev.<short commit>, so the newest merged
-#    code is always downloadable. Only the newest few dev builds are kept.
+#    code is always downloadable. Only the newest few dev builds are kept. They
+#    carry the "DEV" stripe icon, like local builds.
 on:
   push:
     branches: [main]
@@ -84,9 +87,11 @@ jobs:
 
       - name: Build release
         # VERSION env overrides the file, so a dev build carries its -dev.<commit>
-        # version in the app and the zip name.
+        # version in the app and the zip name. CHANNEL picks the icon: official
+        # for stable, "DEV" stripe for dev.
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          CHANNEL: ${{ steps.version.outputs.kind }}
         run: ../app.sh release
 
       - name: Checksum
@@ -95,8 +100,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           ZIP="dist/Papertalk-${VERSION}.zip"
+          SRC="dist/Papertalk-${VERSION}-source.tar.gz"
           shasum -a 256 "$ZIP" | tee "${ZIP}.sha256"
+          shasum -a 256 "$SRC" | tee "${SRC}.sha256"
           echo "zip=client/${ZIP}" >> "$GITHUB_OUTPUT"
+          echo "src=client/${SRC}" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
         working-directory: .
@@ -107,6 +115,7 @@ jobs:
           KIND: ${{ steps.version.outputs.kind }}
           SHORT: ${{ steps.version.outputs.short }}
           ZIP: ${{ steps.artifact.outputs.zip }}
+          SRC: ${{ steps.artifact.outputs.src }}
         run: |
           {
             if [ "$KIND" = "dev" ]; then
@@ -120,6 +129,8 @@ jobs:
             echo "The app is only ad-hoc signed, so the first time macOS may refuse to open it:"
             echo "right-click the app and choose **Open**."
             echo
+            echo "\`Papertalk-${VERSION}-source.tar.gz\` is the source code this build was made from."
+            echo
             echo "> This app is vibecoded. I had the need not the time. bugs are expected and help is appreciated"
           } > notes.md
 
@@ -127,13 +138,13 @@ jobs:
           # stable bump needs no local tag command; the tag just never re-triggers
           # this workflow because tags aren't in the trigger list.
           if [ "$KIND" = "dev" ]; then
-            gh release create "$TAG" "$ZIP" "${ZIP}.sha256" \
+            gh release create "$TAG" "$ZIP" "${ZIP}.sha256" "$SRC" "${SRC}.sha256" \
               --target "$GITHUB_SHA" \
               --title "Papertalk ${VERSION}" \
               --notes-file notes.md \
               --prerelease
           else
-            gh release create "$TAG" "$ZIP" "${ZIP}.sha256" \
+            gh release create "$TAG" "$ZIP" "${ZIP}.sha256" "$SRC" "${SRC}.sha256" \
               --title "Papertalk ${VERSION}" \
               --notes-file notes.md \
               --generate-notes \

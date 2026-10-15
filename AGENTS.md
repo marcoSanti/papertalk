@@ -138,19 +138,23 @@ Done in the Linux UI: library (sidebar, search, covers), detail pane, player bar
 scrubber, import progress), import sheet (and `Papertalk paper.pdf`), cast and duplicate
 prompts, delete/rerun confirmation, settings and first-run setup.
 
+Packaging: `client/linux-dev/dev.sh appimage` (with `VERSION`, `CHANNEL`) builds
+`client/dist/Papertalk-<version>-<arch>.AppImage`: release binary with the Swift runtime
+static, a bundled Python 3.12 with the packages (so nothing is installed at first launch), every
+other library except the GTK / graphics / glibc stack, and a `.desktop` file with `%f`.
+`client/linux-dev/appimage_smoke.sh` checks it on plain Ubuntu. CI packs and smoke-tests it on
+every PR (run artifact), and `release.yml`'s `linux` job uploads it to each release (x86_64).
+If you add a Python package or a native dependency, run the smoke test: a library missing from
+the bundle only shows up on a clean system.
+
 Still to do, in order:
 1. **Rest of the Linux UI:** authors view, transcript view, metadata editing, tag editing,
    clipboard copy, and `Notifier.isAppActive` from the window's focus (notifications are off
    until then). Then a pass on looks (spacing, a grid layout option).
-2. **Python at runtime:** on first launch create `~/.local/share/papertalk/venv`, install
-   `python/requirements.txt` with progress in the setup UI, and locate `libpython`.
-3. **Packaging:** `.desktop` file (with `%f`, so "Open with" passes the PDF) and PNG icons from
-   `shared/icon.icns` (DEV stripe for dev builds), an AppImage with the venv, a Linux job in
-   `release.yml`, and `UpdateCheck` picking the asset for the platform.
-4. Later: an in-app PDF viewer from pypdfium2 renders; re-check OpenSwiftUI for a Linux renderer.
-
-Open questions for the maintainer: x86_64 only or arm64 too; whether to download the Python
-dependencies on first launch or bundle them (≈400 MB with ONNX Runtime).
+2. **Updates on Linux:** the update check (menu on macOS) and `UpdateCheck` picking the
+   AppImage asset; the Linux build has no version stamped in yet (macOS uses Info.plist).
+3. Later: an arm64 AppImage (an `ubuntu-24.04-arm` runner), an in-app PDF viewer from
+   pypdfium2 renders, and a re-check of OpenSwiftUI for a Linux renderer.
 
 ## Tests (`client/Tests/PapertalkTests`)
 

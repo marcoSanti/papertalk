@@ -11,7 +11,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         python3 python3-venv python3-dev libpython3-dev \
         libgtk-4-dev pkg-config \
         libsndfile1 pipewire-bin pulseaudio-utils alsa-utils libnotify-bin \
-        xvfb xauth imagemagick dbus-x11 \
+        xvfb xauth imagemagick dbus-x11 xdotool \
     && rm -rf /var/lib/apt/lists/*
 
 # The Python side of the platform services lives in a venv, like it will on users' machines.

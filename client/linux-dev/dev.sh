@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run things in the Linux dev container (AGENTS.md, "Linux port"). Needs Docker.
-#   client/linux-dev/dev.sh build | shell | test | e2e | app | <command...>
+#   client/linux-dev/dev.sh build | shell | test | e2e | app | screenshot | <command...>
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE=papertalk-linux-dev
@@ -18,6 +18,8 @@ case "${1:-}" in
     e2e)   "${RUN[@]}" bash -lc 'cd client && PAPERTALK_E2E=1 LLM_BASE_URL=http://llm.mock/v1 PAPERTALK_MODEL=m swift test --disable-swift-testing --scratch-path .build-linux/main --filter EndToEndImportTests' ;;
     # Build the Linux app (client/.build-linux/main/debug/Papertalk).
     app)   "${RUN[@]}" bash -lc 'cd client && swift build --scratch-path .build-linux/main' ;;
-    '') echo "usage: $0 build | shell | test | e2e | app | <command...>" >&2; exit 2 ;;
+    # Run the UI headless on a demo library and save screenshots (client/.build-linux/shots).
+    screenshot) "${RUN[@]}" bash -lc 'client/linux-dev/screenshot.sh' ;;
+    '') echo "usage: $0 build | shell | test | e2e | app | screenshot | <command...>" >&2; exit 2 ;;
     *) "${RUN[@]}" bash -lc "$*" ;;
 esac

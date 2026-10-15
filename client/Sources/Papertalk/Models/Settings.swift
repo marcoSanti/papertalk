@@ -3,6 +3,7 @@ import Foundation
 import Security
 #endif
 
+#if os(macOS)
 /// Minimal Keychain string store (system framework — no dependencies) for LLM
 /// API keys: one typed into Settings, or one sourced from an env var (so
 /// GUI-launched apps, which don't inherit shell env vars, can still resolve it).
@@ -42,6 +43,7 @@ enum KeychainStore {
         SecItemDelete(query as CFDictionary)
     }
 }
+#endif
 
 // MARK: - Server configuration (persisted in the app)
 struct ServerConfig: Codable, Equatable {

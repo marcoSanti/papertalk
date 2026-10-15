@@ -2,7 +2,7 @@
 import Foundation
 import PythonKit
 
-/// The embedded Python interpreter behind the Linux compat shims (docs/LINUX_PORT.md).
+/// The embedded Python interpreter behind the Linux compat shims (AGENTS.md, "Linux port").
 ///
 /// Every Python call runs on one dedicated thread: CPython's thread state and the
 /// GIL then never see two Swift threads, and calls into one module (Kokoro) are

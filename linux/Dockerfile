@@ -1,4 +1,4 @@
-# Linux development image for the Papertalk port (see docs/LINUX_PORT.md).
+# Linux development image for the Papertalk port (see AGENTS.md, "Linux port").
 # Swift toolchain + Python (for the platform services) + GTK 4 (for the UI),
 # plus Xvfb so the UI can run and be screenshotted headless.
 #

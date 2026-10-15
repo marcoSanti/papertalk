@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end import on Linux (docs/LINUX_PORT.md, Phase 2): a sample PDF goes
+# End-to-end import on Linux (AGENTS.md, "Linux port"): a sample PDF goes
 # through the real pipeline (pypdfium2 → LLM → Kokoro → WAV) with a fake LLM,
 # into a throwaway library. Run inside the dev container: linux/dev.sh linux/e2e/import.sh
 set -euo pipefail

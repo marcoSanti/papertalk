@@ -1,5 +1,5 @@
 // swift-tools-version:6.0
-// Spike S1 (docs/LINUX_PORT.md): can SwiftCrossUI (GTK 4) drive Papertalk's kind of UI
+// Spike S1 (AGENTS.md, "Linux port"): can SwiftCrossUI (GTK 4) drive Papertalk's kind of UI
 // from an AppStore-like ObservableObject that uses OpenCombine, as AppStore would on Linux?
 import PackageDescription
 

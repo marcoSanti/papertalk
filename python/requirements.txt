@@ -1,4 +1,4 @@
-# Python side of Papertalk's Linux platform services (docs/LINUX_PORT.md).
+# Python side of Papertalk's Linux platform services (AGENTS.md, "Linux port").
 pypdfium2>=4.30
 Pillow>=10
 kokoro-onnx>=0.4

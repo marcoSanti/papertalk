@@ -79,7 +79,7 @@ jobs:
 
   linux:
     name: Build and test (Linux)
-    # The Linux port (docs/LINUX_PORT.md): the same suite in the dev container
+    # The Linux port (AGENTS.md, "Linux port"): the same suite in the dev container
     # (Swift 6.2, Python services, GTK 4), plus the Python services' own tests.
     runs-on: ubuntu-24.04
     timeout-minutes: 45

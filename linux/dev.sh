@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run things in the Linux dev container (docs/LINUX_PORT.md). Needs Docker.
+# Run things in the Linux dev container (AGENTS.md, "Linux port"). Needs Docker.
 #   linux/dev.sh build | shell | test | app | <command...>
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

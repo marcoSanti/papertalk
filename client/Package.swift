@@ -1,7 +1,7 @@
 // swift-tools-version:6.2
 import PackageDescription
 
-// One target for both platforms (docs/LINUX_PORT.md). macOS builds exactly what it
+// One target for both platforms (AGENTS.md, "Linux port"). macOS builds exactly what it
 // always has; Linux swaps the Apple frameworks for compat shims in Platform/Linux,
 // backed by Python through PythonKit, and adds its own UI on SwiftCrossUI (GTK 4).
 let package = Package(

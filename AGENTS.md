@@ -28,8 +28,6 @@ file covers how to work on it and the traps that have already bitten.
 - `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
 - `.github/workflows/`: `tests.yml` (PRs and `main`) and `release.yml` (dev + stable releases).
 - `shared/`: app icon.
-- `docs/LINUX_PORT.md`: the plan for the Linux port (in progress). The macOS app must stay
-  identical; Linux gets its own UI over the shared logic.
 - Linux port pieces: `client/Sources/Papertalk/Platform/Linux/` (compat shims, `#if os(Linux)`),
   `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
   `linux/` (dev container `Dockerfile`, `dev.sh`, spikes, `e2e/import.sh`).
@@ -105,6 +103,25 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
 - Linux traps: `Timer.scheduledTimer` is unavailable in async code; `URLProtocol`s are consulted
   in registration order; sync test methods in `@MainActor` test classes crash test discovery
   (make them `async`); files using URLSession types need `FoundationNetworking`.
+- The Linux UI will use SwiftCrossUI 0.9.0 (`GtkBackend`, not `DefaultBackend`, which fails to
+  build on Linux). It has its own `ObservableObject`, so a bridge forwards `AppStore`'s
+  `objectWillChange`; see `linux/spikes/gtk-ui`. Menu items have no keyboard shortcuts there.
+
+Still to do, in order:
+1. **Python at runtime:** on first launch create `~/.local/share/papertalk/venv`, install
+   `python/requirements.txt` with progress in the setup UI, and locate `libpython`.
+2. **Linux UI** (`Sources/Papertalk/LinuxUI/`, `#if os(Linux)`), screen by screen: library →
+   detail → player bar → import → settings and setup → cast → authors → transcript. Wording
+   and decisions come from `Presentation/`. Anything new goes there with a test, and the macOS
+   view uses it too. Check first that `PlayerController`'s `Timer`s fire under the GTK main loop;
+   if they don't, use `DispatchSourceTimer`.
+3. **Packaging:** `.desktop` file and PNG icons from `shared/icon.icns` (DEV stripe for dev
+   builds), an AppImage with the venv, a Linux job in `release.yml`, and `UpdateCheck` picking
+   the asset for the platform.
+4. Later: an in-app PDF viewer from pypdfium2 renders; re-check OpenSwiftUI for a Linux renderer.
+
+Open questions for the maintainer: x86_64 only or arm64 too; whether to download the Python
+dependencies on first launch or bundle them (≈400 MB with ONNX Runtime).
 
 ## Tests (`client/Tests/PapertalkTests`)
 

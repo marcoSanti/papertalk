@@ -2,7 +2,7 @@
 import Foundation
 
 // The few AppKit pieces the shared code uses, with the same names and
-// signatures, so AppStore compiles unchanged on Linux (docs/LINUX_PORT.md).
+// signatures, so AppStore compiles unchanged on Linux (AGENTS.md, "Linux port").
 
 /// A cover image, kept as PNG bytes (rendered by python/papertalk_platform/pdf.py).
 /// Stands in for NSImage in AppStore's thumbnail cache; the GTK UI decodes it.

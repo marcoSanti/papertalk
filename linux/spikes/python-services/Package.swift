@@ -1,5 +1,5 @@
 // swift-tools-version:6.0
-// Spike S2 (docs/LINUX_PORT.md): Swift driving python/papertalk_platform through PythonKit.
+// Spike S2 (AGENTS.md, "Linux port"): Swift driving python/papertalk_platform through PythonKit.
 import PackageDescription
 
 let package = Package(

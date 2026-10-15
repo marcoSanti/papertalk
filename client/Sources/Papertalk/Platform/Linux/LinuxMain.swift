@@ -1,7 +1,7 @@
 #if os(Linux)
 import Foundation
 
-/// Linux entry point. Until the GTK UI lands (docs/LINUX_PORT.md, Phase 4) it
+/// Linux entry point. Until the GTK UI lands (AGENTS.md, "Linux port") it
 /// only runs headless imports.
 @main
 enum PapertalkLinux {

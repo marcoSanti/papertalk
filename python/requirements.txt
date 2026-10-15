@@ -3,6 +3,5 @@ pypdfium2>=4.30
 Pillow>=10
 kokoro-onnx>=0.4
 soundfile>=0.12
-sounddevice>=0.5
 numpy>=1.26
 keyring>=25

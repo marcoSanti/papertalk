@@ -10,7 +10,7 @@ FROM swift:6.2-noble
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         python3 python3-venv python3-dev libpython3-dev \
         libgtk-4-dev pkg-config \
-        libportaudio2 libsndfile1 \
+        libsndfile1 pipewire-bin pulseaudio-utils alsa-utils libnotify-bin \
         xvfb xauth imagemagick dbus-x11 \
     && rm -rf /var/lib/apt/lists/*
 

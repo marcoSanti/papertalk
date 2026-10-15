@@ -8,7 +8,7 @@ import pytest
 import soundfile as sf
 
 from conftest import make_pdf
-from papertalk_platform import audio, keychain, pdf, tts
+from papertalk_platform import keychain, pdf, tts
 
 
 def wav(seconds: float, rate: int = 24_000) -> bytes:
@@ -37,20 +37,6 @@ def test_unreadable_pdf_gives_empty_results():
     assert pdf.pages(b"not a pdf") is None
     assert pdf.text(b"not a pdf") == ""
     assert pdf.cover_png(b"not a pdf") == b""
-
-
-def test_player_clock_seek_and_end():
-    p = audio.Player(wav(2.0))
-    assert p.duration == pytest.approx(2.0)
-    p.seek(1.5)
-    assert p.current_time == pytest.approx(1.5)
-    chunk = p.read(24_000)  # 1 s requested, 0.5 s left: zero-padded
-    assert chunk.shape == (24_000, 1)
-    assert p.finished
-    p.seek(99)
-    assert p.current_time == pytest.approx(2.0)
-    p.seek(0)
-    assert not p.finished
 
 
 def test_keychain_roundtrip(monkeypatch):

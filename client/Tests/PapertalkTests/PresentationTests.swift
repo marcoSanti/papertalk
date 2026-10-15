@@ -20,6 +20,15 @@ final class LibraryPresentationTests: PapertalkTestCase {
         XCTAssertEqual(LibraryPresentation.emptyStateText(.filteredOut).message, "No papers match the current filters.")
     }
 
+    func testSettingsSheetCopy() {
+        XCTAssertEqual(SettingsSheetPresentation.title(isSetup: true), "Welcome to Papertalk")
+        XCTAssertEqual(SettingsSheetPresentation.title(isSetup: false), "Settings")
+        XCTAssertEqual(SettingsSheetPresentation.saveTitle(isSetup: true), "Finish setup")
+        XCTAssertEqual(SettingsSheetPresentation.saveTitle(isSetup: false), "Save")
+        XCTAssertTrue(SettingsSheetPresentation.intro.contains(Device.this))
+        XCTAssertTrue(SettingsSheetPresentation.serverHelp.contains(Device.this))
+    }
+
     func testImportFormFileLabels() {
         var form = ImportForm()
         XCTAssertEqual(form.chooseButtonTitle, "Choose PDF…")

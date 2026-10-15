@@ -61,6 +61,9 @@ struct RootView: View {
                             CastSheet(bridge: bridge, prompt: prompt)
                         }
                     }
+                    .sheet(isPresented: settingsShown) {
+                        SettingsSheet(bridge: bridge, isSetup: bridge.store.showOnboarding)
+                    }
             }
         }
     }
@@ -76,6 +79,11 @@ struct RootView: View {
     private var duplicateShown: Binding<Bool> {
         Binding(get: { bridge.store.pendingDuplicate != nil },
                 set: { if !$0 { bridge.store.resolveDuplicate(false) } })
+    }
+    /// Settings, or the first-launch setup (the same page).
+    private var settingsShown: Binding<Bool> {
+        Binding(get: { bridge.windowReady && (bridge.store.showSettings || bridge.store.showOnboarding) },
+                set: { if !$0 { bridge.store.closeSettings() } })
     }
     private var castShown: Binding<Bool> {
         Binding(get: { bridge.store.pendingCast != nil },

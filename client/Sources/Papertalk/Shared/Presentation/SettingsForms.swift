@@ -112,6 +112,16 @@ struct ServerSettingsForm: Equatable {
     }
 }
 
+/// Wording for the single-page settings sheet (Linux), which doubles as
+/// first-run setup.
+enum SettingsSheetPresentation {
+    static func title(isSetup: Bool) -> String { isSetup ? "Welcome to Papertalk" : "Settings" }
+    static func saveTitle(isSetup: Bool) -> String { isSetup ? "Finish setup" : "Save" }
+    static let intro = "Papertalk writes each episode with an OpenAI-compatible LLM, then synthesizes the voices on \(Device.this) with Kokoro."
+    static let noEnvVars = "No API-key environment variables are set. Add one (e.g. OPENWEBUI_API_KEY) and reopen this window."
+    static let serverHelp = "Optional storage_server.py for sharing the library. Leave empty to keep papers on \(Device.this)."
+}
+
 /// The first-run setup wizard's steps.
 enum SetupStep: Equatable {
     case storage, llm, review

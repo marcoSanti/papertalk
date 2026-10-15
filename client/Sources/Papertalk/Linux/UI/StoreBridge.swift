@@ -12,6 +12,10 @@ import SwiftCrossUI
 final class StoreBridge: SwiftCrossUI.ObservableObject {
     let store: AppStore
     @SwiftCrossUI.Published private(set) var revision = 0
+    /// True shortly after the window first appears. Sheets wanted at launch
+    /// (first-run setup, a PDF from the command line) wait for it: SwiftCrossUI
+    /// drops presentations asked for before then or during the first layout.
+    @SwiftCrossUI.Published private(set) var windowReady = false
     private var subscriptions: Set<OpenCombine.AnyCancellable> = []
 
     /// Decoded covers by paper id, kept per artwork revision.
@@ -29,18 +33,17 @@ final class StoreBridge: SwiftCrossUI.ObservableObject {
         store.trackPlayback()
     }
 
-    /// `Papertalk paper.pdf` (and "Open with" from a file manager) opens the
-    /// import sheet with that PDF. Called once the window is up: a sheet asked
-    /// for before then (or during the first layout) isn't presented.
-    private var handledLaunchFile = false
-    func importLaunchFile() {
-        guard !handledLaunchFile else { return }
-        handledLaunchFile = true
-        let arguments = CommandLine.arguments.dropFirst().map { URL(fileURLWithPath: $0) }
-        guard let pdf = ImportPresentation.firstPDF(in: arguments) else { return }
-        // Not during the first layout pass either: the presentation would be dropped.
+    /// Called when the window appears: marks it ready (on the next turn, after
+    /// the first layout), then `Papertalk paper.pdf` (and "Open with" from a
+    /// file manager) opens the import sheet with that PDF.
+    func windowAppeared() {
+        guard !windowReady else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            MainActor.assumeIsolated { self.store.beginImport(pdf) }
+            MainActor.assumeIsolated {
+                self.windowReady = true
+                let arguments = CommandLine.arguments.dropFirst().map { URL(fileURLWithPath: $0) }
+                if let pdf = ImportPresentation.firstPDF(in: arguments) { self.store.beginImport(pdf) }
+            }
         }
     }
 

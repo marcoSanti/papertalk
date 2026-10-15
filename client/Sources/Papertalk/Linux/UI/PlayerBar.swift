@@ -29,7 +29,7 @@ struct PlayerBar: View {
             }
         }
         .padding(16)
-        .onAppear { bridge.importLaunchFile() }
+        .onAppear { bridge.windowAppeared() }
     }
 }
 

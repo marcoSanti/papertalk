@@ -392,6 +392,21 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// The sidebar's rows in order: the library sections, then each tag.
+    var sidebarItems: [SidebarItem] {
+        [.all, .favorites, .authors] + tagCounts.map { .tag($0.0) }
+    }
+
+    /// The count shown beside a sidebar row.
+    func sidebarCount(_ item: SidebarItem) -> Int {
+        switch item {
+        case .all: return papers.count
+        case .favorites: return favoritesCount
+        case .authors: return authorCounts.count
+        case .tag(let tag): return tagCounts.first { $0.0 == tag }?.1 ?? 0
+        }
+    }
+
     /// Open a tag's papers (e.g. from a tag chip).
     func showTag(_ tag: String) { selectSidebar(.tag(tag)) }
 

@@ -42,3 +42,11 @@ func formatDate(_ iso: String) -> String {
     guard let d = parse.date(from: iso) else { return "" }
     return out.string(from: d)
 }
+/// How the app refers to the machine it runs on, in user-facing copy.
+enum Device {
+    #if os(Linux)
+    static let this = "this computer"
+    #else
+    static let this = "this Mac"
+    #endif
+}

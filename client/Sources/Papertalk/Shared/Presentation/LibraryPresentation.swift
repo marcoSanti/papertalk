@@ -18,6 +18,16 @@ enum LibraryPresentation {
         }
     }
 
+    /// A sidebar row's name (tags without the "#" the library title adds).
+    static func sidebarTitle(_ item: SidebarItem) -> String {
+        switch item {
+        case .all: return "All Papers"
+        case .favorites: return "Favorites"
+        case .authors: return "Authors"
+        case .tag(let tag): return tag
+        }
+    }
+
     static func count(_ n: Int, _ singular: String, _ plural: String) -> String {
         n == 1 ? "1 \(singular)" : "\(n) \(plural)"
     }
@@ -32,7 +42,7 @@ enum LibraryPresentation {
 
     /// The sidebar footer: where the library lives.
     static func storageLocation(isStandalone: Bool) -> (icon: String, title: String) {
-        isStandalone ? ("desktopcomputer", "On this Mac") : ("server.rack", "Library server")
+        isStandalone ? ("desktopcomputer", "On \(Device.this)") : ("server.rack", "Library server")
     }
 
     /// The status filter capsules above the library. `value` is the store's
@@ -54,6 +64,21 @@ enum LibraryPresentation {
         case noSearchResults(String)
         case filteredOut
     }
+    /// Heading and explanation for an empty library view.
+    static func emptyStateText(_ state: EmptyState) -> (title: String, message: String) {
+        switch state {
+        case .emptyLibrary:
+            return ("Your library is empty",
+                    "Import a PDF and Papertalk will turn it into a podcast episode, right on \(Device.this).")
+        case .noSearchResults(let text):
+            return ("No results for “\(text.trimmingCharacters(in: .whitespaces))”", "Check the spelling or try a new search.")
+        case .filteredOut:
+            return ("Nothing here", "No papers match the current filters.")
+        }
+    }
+
+    static let noSelection = (title: "No paper selected", message: "Select a paper to see its details and episode.")
+
     static func emptyState(libraryIsEmpty: Bool, search: String) -> EmptyState {
         if libraryIsEmpty { return .emptyLibrary }
         if !search.trimmingCharacters(in: .whitespaces).isEmpty { return .noSearchResults(search) }

@@ -13,6 +13,20 @@ final class LibraryPresentationTests: PapertalkTestCase {
         XCTAssertEqual(LibraryPresentation.title(view: .author, tag: nil, author: "Ada Lovelace"), "Ada Lovelace")
     }
 
+    func testEmptyStateText() {
+        XCTAssertEqual(LibraryPresentation.emptyStateText(.emptyLibrary).title, "Your library is empty")
+        XCTAssertTrue(LibraryPresentation.emptyStateText(.emptyLibrary).message.hasSuffix("right on \(Device.this)."))
+        XCTAssertEqual(LibraryPresentation.emptyStateText(.noSearchResults(" attention ")).title, "No results for “attention”")
+        XCTAssertEqual(LibraryPresentation.emptyStateText(.filteredOut).message, "No papers match the current filters.")
+    }
+
+    func testSidebarTitles() {
+        XCTAssertEqual(LibraryPresentation.sidebarTitle(.all), "All Papers")
+        XCTAssertEqual(LibraryPresentation.sidebarTitle(.favorites), "Favorites")
+        XCTAssertEqual(LibraryPresentation.sidebarTitle(.authors), "Authors")
+        XCTAssertEqual(LibraryPresentation.sidebarTitle(.tag("nlp")), "nlp")
+    }
+
     func testCountsAndBadges() {
         XCTAssertEqual(LibraryPresentation.paperCount(1), "1 paper")
         XCTAssertEqual(LibraryPresentation.paperCount(0), "0 papers")
@@ -24,7 +38,7 @@ final class LibraryPresentationTests: PapertalkTestCase {
     }
 
     func testStorageLocation() {
-        XCTAssertEqual(LibraryPresentation.storageLocation(isStandalone: true).title, "On this Mac")
+        XCTAssertEqual(LibraryPresentation.storageLocation(isStandalone: true).title, "On \(Device.this)")
         XCTAssertEqual(LibraryPresentation.storageLocation(isStandalone: false).icon, "server.rack")
     }
 

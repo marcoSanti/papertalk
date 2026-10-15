@@ -28,6 +28,8 @@ file covers how to work on it and the traps that have already bitten.
 - `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
 - `.github/workflows/`: `tests.yml` (PRs and `main`) and `release.yml` (dev + stable releases).
 - `shared/`: app icon.
+- `docs/LINUX_PORT.md`: the plan for the Linux port (in progress). The macOS app must stay
+  identical; Linux gets its own UI over the shared logic.
 - `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
 - `client/UI_ISSUES.md`: running list of UI/UX issues and fix notes. Update it when you fix or
   find one.

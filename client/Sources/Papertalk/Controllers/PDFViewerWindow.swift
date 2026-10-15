@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 /// Self-contained, resizable PDF viewer presented in its own window.
@@ -141,3 +142,4 @@ final class PDFViewerWindow: NSObject {
 private final class FlippedView: NSView {
     override var isFlipped: Bool { true }
 }
+#endif

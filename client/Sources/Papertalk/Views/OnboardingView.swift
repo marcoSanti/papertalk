@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 // MARK: - First-run setup wizard: storage backend + LLM endpoint.
@@ -217,3 +218,5 @@ struct OnboardingView: View {
         }
     }
 }
+
+#endif

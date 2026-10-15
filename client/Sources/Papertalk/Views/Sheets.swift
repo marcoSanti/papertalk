@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -1016,3 +1017,4 @@ extension Notification.Name {
     static let papertalkSaveSettings = Notification.Name("papertalkSaveSettings")
     static let papertalkRestorePrompts = Notification.Name("papertalkRestorePrompts")
 }
+#endif

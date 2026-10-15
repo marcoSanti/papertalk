@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 // MARK: - Player bar (transport + scrubber + now-playing info)
@@ -285,3 +286,5 @@ struct BottomBar: View {
         .help(delta < 0 ? "Previous import" : "Next import")
     }
 }
+
+#endif

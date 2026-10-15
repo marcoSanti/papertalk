@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import AppKit
 
@@ -772,3 +773,5 @@ private struct AuthorRow: View {
         }
     }
 }
+
+#endif

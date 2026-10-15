@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import AppKit
 
@@ -117,3 +118,5 @@ struct TranscriptView: View {
         }
     }
 }
+
+#endif

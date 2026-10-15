@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 // MARK: - Design tokens
@@ -179,3 +180,5 @@ extension Color {
         return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
 }
+
+#endif

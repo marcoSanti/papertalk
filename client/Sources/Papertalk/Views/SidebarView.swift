@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 struct SidebarView: View {
@@ -75,3 +76,5 @@ struct SidebarView: View {
         .padding(.vertical, 10)
     }
 }
+
+#endif

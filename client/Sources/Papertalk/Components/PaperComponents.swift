@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 // MARK: - Grid card
@@ -251,3 +252,5 @@ struct PaperListRow: View {
         .padding(.vertical, 4)
     }
 }
+
+#endif

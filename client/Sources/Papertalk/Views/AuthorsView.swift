@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 /// Contact-book style browsing of the library by author: an A–Z index keyed
@@ -214,3 +215,5 @@ struct AuthorAvatar: View {
             .accessibilityHidden(true)
     }
 }
+
+#endif

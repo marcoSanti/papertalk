@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 struct ContentView: View {
@@ -207,3 +208,5 @@ private struct InspectorResizeHandle: View {
             .help("Drag to resize")
     }
 }
+
+#endif

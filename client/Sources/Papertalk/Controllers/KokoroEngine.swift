@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import FluidAudio
 
@@ -69,3 +70,5 @@ actor KokoroEngine {
         throw lastError ?? CancellationError()
     }
 }
+
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 struct LibraryView: View {
@@ -194,3 +195,5 @@ struct LibraryView: View {
         }
     }
 }
+
+#endif

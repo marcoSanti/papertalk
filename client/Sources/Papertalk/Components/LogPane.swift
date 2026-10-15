@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 // MARK: - Collapsible activity log card (bottom of the inspector)
@@ -47,3 +48,5 @@ struct LogPane: View {
         .glassCard()
     }
 }
+
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 // MARK: - Flow tags (wrapping chip layout, removable)
@@ -63,3 +64,5 @@ struct TagChip: View {
         .transition(.scale.combined(with: .opacity))
     }
 }
+
+#endif

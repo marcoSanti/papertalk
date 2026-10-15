@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 /// Copying text to the system clipboard, in one place.
@@ -7,3 +8,5 @@ enum Clipboard {
         NSPasteboard.general.setString(text, forType: .string)
     }
 }
+
+#endif

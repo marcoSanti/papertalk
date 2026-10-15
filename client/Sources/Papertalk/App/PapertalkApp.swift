@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 extension Color {
@@ -35,3 +36,4 @@ struct PapertalkApp: App {
         }
     }
 }
+#endif

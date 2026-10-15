@@ -7,7 +7,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/coverage"
-cd "$ROOT/client-macos"
+cd "$ROOT/client"
 
 swift test --disable-swift-testing --enable-code-coverage
 

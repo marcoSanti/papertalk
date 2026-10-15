@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 45
     defaults:
       run:
-        working-directory: client-macos
+        working-directory: client
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,9 +77,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            client-macos/.build
+            client/.build
             ~/Library/Caches/org.swift.swiftpm
-          key: spm-release-${{ runner.os }}-${{ hashFiles('client-macos/Package.resolved', 'client-macos/Package.swift') }}
+          key: spm-release-${{ runner.os }}-${{ hashFiles('client/Package.resolved', 'client/Package.swift') }}
           restore-keys: spm-release-${{ runner.os }}-
 
       - name: Test
@@ -103,8 +103,8 @@ jobs:
           SRC="dist/Papertalk-${VERSION}-source.tar.gz"
           shasum -a 256 "$ZIP" | tee "${ZIP}.sha256"
           shasum -a 256 "$SRC" | tee "${SRC}.sha256"
-          echo "zip=client-macos/${ZIP}" >> "$GITHUB_OUTPUT"
-          echo "src=client-macos/${SRC}" >> "$GITHUB_OUTPUT"
+          echo "zip=client/${ZIP}" >> "$GITHUB_OUTPUT"
+          echo "src=client/${SRC}" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
         working-directory: .

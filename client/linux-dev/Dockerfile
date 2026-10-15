@@ -2,9 +2,9 @@
 # Swift toolchain + Python (for the platform services) + GTK 4 (for the UI),
 # plus Xvfb so the UI can run and be screenshotted headless.
 #
-#   client-linux/dev.sh build      build this image (papertalk-linux-dev)
-#   client-linux/dev.sh shell      a shell in it, repo mounted at /src
-#   client-linux/dev.sh <cmd...>   run a command in it from /src
+#   client/linux-dev/dev.sh build      build this image (papertalk-linux-dev)
+#   client/linux-dev/dev.sh shell      a shell in it, repo mounted at /src
+#   client/linux-dev/dev.sh <cmd...>   run a command in it from /src
 FROM swift:6.2-noble
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

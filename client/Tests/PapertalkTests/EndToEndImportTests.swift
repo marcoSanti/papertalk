@@ -6,7 +6,7 @@ import XCTest
 /// by MockLLM), Kokoro synthesis and the baked library folder. Opt-in, since it
 /// runs real Kokoro (slow, needs the model): PAPERTALK_E2E=1, plus the LLM
 /// settings from the environment (LLM_BASE_URL, PAPERTALK_MODEL) so no real
-/// settings are touched. Meant for Linux: `client-linux/dev.sh e2e`.
+/// settings are touched. Meant for Linux: `client/linux-dev/dev.sh e2e`.
 @MainActor
 final class EndToEndImportTests: PapertalkTestCase {
     private static let paperLines = [
@@ -24,7 +24,7 @@ final class EndToEndImportTests: PapertalkTestCase {
 
     func testImportBakesACompleteEpisode() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["PAPERTALK_E2E"] == "1",
-                          "End-to-end import is opt-in: PAPERTALK_E2E=1 (client-linux/dev.sh e2e)")
+                          "End-to-end import is opt-in: PAPERTALK_E2E=1 (client/linux-dev/dev.sh e2e)")
         installLLM()
         let root = Fixtures.tempDir()
         let storage = LocalStorage(root: root)

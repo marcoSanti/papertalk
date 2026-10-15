@@ -18,7 +18,7 @@ __pycache__/
 library/
 
 # swift/sourcekit build
-client-macos/.build/
+client/.build/
 .xcodebuild/
 DerivedData/
 
@@ -28,5 +28,5 @@ DerivedData/
 coverage/
 
 .vscode
-# Linux port: build products from the dev container (client-linux/dev.sh)
+# Linux port: build products from the dev container (client/linux-dev/dev.sh)
 .build-linux/

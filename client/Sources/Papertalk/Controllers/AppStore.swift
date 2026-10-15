@@ -771,10 +771,15 @@ final class AppStore: ObservableObject {
     }
     // MARK: Voice models
 
-    /// Kokoro model folders FluidAudio downloads to `~/.cache/fluidaudio/Models/`.
+    /// Kokoro model folders FluidAudio downloads to `~/.cache/fluidaudio/Models/`
+    /// (on Linux, tts.py's `~/.cache/papertalk/kokoro`).
     private var voiceModelDirs: [URL] {
+        #if os(Linux)
+        let models = KokoroAneResourceDownloader.modelsRoot
+        #else
         let models = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".cache/fluidaudio/Models", isDirectory: true)
+        #endif
         let names = (try? FileManager.default.contentsOfDirectory(atPath: models.path)) ?? []
         return names.filter { $0.lowercased().hasPrefix("kokoro") }
             .map { models.appendingPathComponent($0, isDirectory: true) }

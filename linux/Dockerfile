@@ -16,9 +16,9 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 
 # The Python side of the platform services lives in a venv, like it will on users' machines.
 ENV PAPERTALK_VENV=/opt/papertalk-venv
-COPY python/requirements.txt /tmp/requirements.txt
+COPY python/requirements.txt python/requirements-dev.txt /tmp/
 RUN python3 -m venv "$PAPERTALK_VENV" \
-    && "$PAPERTALK_VENV/bin/pip" install --no-cache-dir -r /tmp/requirements.txt
+    && "$PAPERTALK_VENV/bin/pip" install --no-cache-dir -r /tmp/requirements-dev.txt
 ENV PATH="$PAPERTALK_VENV/bin:$PATH"
 
 WORKDIR /src

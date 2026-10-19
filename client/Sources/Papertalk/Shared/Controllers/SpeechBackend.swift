@@ -59,6 +59,13 @@ struct LocalSpeechBackend: SpeechBackend {
 /// OpenAI). Nothing is loaded locally, which spares the memory Core ML needs.
 struct RemoteSpeechBackend: SpeechBackend {
     let settings: SpeechSettings
+    /// Resolved once, so an env-sourced key isn't looked up for every piece.
+    let apiKey: String
+
+    init(settings: SpeechSettings, apiKey: String? = nil) {
+        self.settings = settings
+        self.apiKey = apiKey ?? settings.resolvedKey()
+    }
 
     var preparingMessage: String { "Connecting to the speech server…" }
     var preparationShare: Double { 0 }
@@ -67,11 +74,11 @@ struct RemoteSpeechBackend: SpeechBackend {
     var maxPieceLength: Int { 1000 }
 
     func prepare(progress: @escaping @Sendable (Double, String) -> Void) async throws {
-        _ = try RemoteSpeechClient(settings: settings).endpoint("audio/speech")
+        _ = try RemoteSpeechClient(settings: settings, apiKey: apiKey).endpoint("audio/speech")
     }
 
     func synthesize(text: String, voice: String, speed: Float) async throws -> Data {
-        let client = RemoteSpeechClient(settings: settings)
+        let client = RemoteSpeechClient(settings: settings, apiKey: apiKey)
         return try SpeechAudio.normalizedWAV(try await client.speech(text: text, voice: settings.serverVoice(for: voice), speed: speed))
     }
 }
@@ -101,7 +108,14 @@ enum RemoteSpeechError: Error, LocalizedError, Equatable {
 /// the model and voice lists, which servers expose under different paths (or not at all).
 struct RemoteSpeechClient {
     let settings: SpeechSettings
+    let apiKey: String
     var attempts = 3
+
+    init(settings: SpeechSettings, apiKey: String? = nil, attempts: Int = 3) {
+        self.settings = settings
+        self.apiKey = apiKey ?? settings.resolvedKey()
+        self.attempts = attempts
+    }
 
     var base: String {
         settings.baseUrl.trimmingCharacters(in: .whitespaces)
@@ -118,7 +132,7 @@ struct RemoteSpeechClient {
     private func request(_ path: String) throws -> URLRequest {
         var req = URLRequest(url: try endpoint(path))
         req.timeoutInterval = 120
-        let key = settings.apiKey.trimmingCharacters(in: .whitespaces)
+        let key = apiKey.trimmingCharacters(in: .whitespaces)
         if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         return req
     }

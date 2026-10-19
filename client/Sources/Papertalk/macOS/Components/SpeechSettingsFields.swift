@@ -23,6 +23,7 @@ struct SpeechSettingsFields: View {
         }
         .onAppear { if form.canFetchCatalog { loadCatalog() } }
         .onChange(of: form.engine) { _, _ in if form.canFetchCatalog { loadCatalog() } }
+        .onChange(of: form.keySource) { _, _ in form.keySourceChanged() }
     }
 
     @ViewBuilder private var remoteFields: some View {
@@ -30,9 +31,14 @@ struct SpeechSettingsFields: View {
             TextField(SpeechSettingsForm.urlPlaceholder, text: $form.baseUrl).textFieldStyle(.roundedBorder)
             Text(SpeechSettingsForm.urlHelp).font(.caption2).foregroundStyle(.secondary)
         }
-        field("API key") {
-            SecureField("optional", text: $form.apiKey).textFieldStyle(.roundedBorder)
+        field("API key source") {
+            Picker("", selection: $form.keySource) {
+                ForEach(LLMKeySource.allCases) { s in Text(s.rawValue).tag(s) }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
         }
+        KeySourceFields(form: $form)
         field("Model") {
             if form.showsModelPicker {
                 Picker("", selection: $form.model) {

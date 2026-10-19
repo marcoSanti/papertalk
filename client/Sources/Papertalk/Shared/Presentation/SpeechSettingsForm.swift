@@ -14,20 +14,26 @@ struct FormNote: Equatable {
 }
 
 /// Where voices are synthesized, as edited in Settings and in the setup wizard.
-struct SpeechSettingsForm: Equatable {
+struct SpeechSettingsForm: Equatable, KeySourceEditing {
     var engine: SpeechSettings.Engine
     var baseUrl: String
-    var apiKey: String
+    var keySource: LLMKeySource
+    var selectedEnv: String
+    var manualKey = ""
+    let setEnvVars: [String]
     var model: String
     var voices: SpeechVoiceRoles
     /// What the server listed on the last fetch (empty until then, or if it lists none).
     private(set) var models: [String] = []
     private(set) var serverVoices: [String] = []
 
-    init(_ s: SpeechSettings) {
+    init(_ s: SpeechSettings, setEnvVars: [String] = candidateKeyEnvs()) {
+        self.setEnvVars = setEnvVars
         engine = s.engine
         baseUrl = s.baseUrl
-        apiKey = s.apiKey
+        selectedEnv = s.keyEnv
+        keySource = LLMKeySource(keyEnv: s.keyEnv, apiKey: s.apiKey)
+        if keySource == .manual { manualKey = s.apiKey }
         model = s.model
         voices = s.voices
     }
@@ -45,14 +51,15 @@ struct SpeechSettingsForm: Equatable {
     /// machine, so switching back doesn't mean typing them again.
     var settings: SpeechSettings {
         func trim(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
-        return SpeechSettings(engine: engine, baseUrl: trimmedBaseURL, apiKey: trim(apiKey), model: trim(model),
+        return SpeechSettings(engine: engine, baseUrl: trimmedBaseURL, apiKey: keyFields.apiKey, keyEnv: keyFields.keyEnv,
+                              model: trim(model),
                               voices: SpeechVoiceRoles(hostFemale: trim(voices.hostFemale), hostMale: trim(voices.hostMale),
                                                        guestFemale: trim(voices.guestFemale), guestMale: trim(voices.guestMale)))
     }
 
     /// Ask the server for its models and voices.
     func fetchCatalog() async -> SpeechCatalog {
-        let client = RemoteSpeechClient(settings: settings, attempts: 1)
+        let client = RemoteSpeechClient(settings: settings, apiKey: effectiveKey(), attempts: 1)
         do {
             let models = try await client.listModels()
             let voices = try await client.listVoices()

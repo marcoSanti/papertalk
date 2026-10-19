@@ -105,6 +105,16 @@ final class SpeechSettingsTests: PapertalkTestCase {
         XCTAssertEqual(future.engine, .local)
         XCTAssertEqual(future.baseUrl, "http://x")
         XCTAssertEqual(future.voices, SpeechVoiceRoles(hostMale: "onyx"))
+        XCTAssertEqual(future.keyEnv, "")
+    }
+
+    func testResolvedKey() {
+        XCTAssertEqual(remote.resolvedKey(environment: ["SOME_KEY": "env"]), "sk-tts")
+        let env = SpeechSettings(engine: .remote, apiKey: "ignored", keyEnv: "SOME_KEY")
+        XCTAssertEqual(env.resolvedKey(environment: ["SOME_KEY": "from-env"]), "from-env")
+        XCTAssertEqual(LLMKeySource(keyEnv: "K", apiKey: "a"), .env)
+        XCTAssertEqual(LLMKeySource(keyEnv: "", apiKey: "a"), .manual)
+        XCTAssertEqual(LLMKeySource(keyEnv: "", apiKey: ""), .none)
     }
 
     func testTheKeyIsNeverPersisted() throws {
@@ -152,6 +162,11 @@ final class RemoteSpeechClientTests: PapertalkTestCase {
         XCTAssertEqual(b["voice"] as? String, "af_heart")
         XCTAssertEqual(b["response_format"] as? String, "wav")
         XCTAssertEqual(b["speed"] as? Double, 1.25)
+
+        let fromEnv = try RemoteSpeechClient(settings: SpeechSettings(engine: .remote, baseUrl: "https://tts.test", keyEnv: "K"),
+                                             apiKey: "env-key").speechRequest(text: "x", voice: "v", speed: 1)
+        XCTAssertEqual(fromEnv.value(forHTTPHeaderField: "Authorization"), "Bearer env-key")
+        XCTAssertEqual(RemoteSpeechBackend(settings: remote).apiKey, "sk-tts")
 
         let bare = SpeechSettings(engine: .remote, baseUrl: "https://tts.test")
         let plain = try RemoteSpeechClient(settings: bare).speechRequest(text: "x", voice: "v", speed: 1)
@@ -288,7 +303,8 @@ final class SpeechSettingsFormTests: PapertalkTestCase {
         f.engine = .remote
         XCTAssertFalse(f.canFetchCatalog)
         f.baseUrl = " http://tts.test/api/v1// "
-        f.apiKey = " sk "
+        f.keySource = .manual
+        f.manualKey = " sk "
         f.model = " tts-1 "
         f.voices.guestMale = " onyx "
         XCTAssertTrue(f.canFetchCatalog)
@@ -299,6 +315,42 @@ final class SpeechSettingsFormTests: PapertalkTestCase {
         XCTAssertEqual(f.settings.baseUrl, "http://tts.test/api/v1")
         XCTAssertFalse(f.canFetchCatalog)
         XCTAssertEqual(SpeechSettingsForm(remote).settings.apiKey, "sk-tts")
+    }
+
+    func testTheKeyCanComeFromTheEnvironment() {
+        var f = SpeechSettingsForm(SpeechSettings(engine: .remote, baseUrl: "http://tts.test", apiKey: "typed"),
+                                   setEnvVars: ["OPENWEBUI_API_KEY"])
+        XCTAssertEqual(f.keySource, .manual)
+        XCTAssertEqual(f.manualKey, "typed")
+        f.keySource = .env
+        f.keySourceChanged()
+        XCTAssertEqual(f.selectedEnv, "OPENWEBUI_API_KEY")
+        XCTAssertEqual(f.effectiveKey(environment: ["OPENWEBUI_API_KEY": "from-env"]), "from-env")
+        // Only the chosen source is saved.
+        XCTAssertEqual(f.settings.keyEnv, "OPENWEBUI_API_KEY")
+        XCTAssertEqual(f.settings.apiKey, "")
+        f.keySource = .none
+        XCTAssertEqual(f.settings.keyEnv, "")
+        XCTAssertEqual(f.settings.apiKey, "")
+        XCTAssertEqual(f.effectiveKey(environment: ["OPENWEBUI_API_KEY": "from-env"]), "")
+
+        let saved = SpeechSettingsForm(SpeechSettings(engine: .remote, keyEnv: "MY_KEY"), setEnvVars: [])
+        XCTAssertEqual(saved.keySource, .env)
+        XCTAssertEqual(saved.envOptions, ["MY_KEY"])   // kept even though it isn't set now
+        XCTAssertEqual(SpeechSettingsForm(SpeechSettings(), setEnvVars: []).keySource, .none)
+    }
+
+    func testFetchCatalogSendsTheFormsKey() async {
+        var auth: [String?] = []
+        MockLLM.install { req in
+            auth.append(req.value(forHTTPHeaderField: "Authorization"))
+            return (404, Data())
+        }
+        var f = SpeechSettingsForm(SpeechSettings(engine: .remote, baseUrl: "http://tts.test"), setEnvVars: [])
+        f.keySource = .manual
+        f.manualKey = "sk-typed"
+        _ = await f.fetchCatalog()
+        XCTAssertEqual(Set(auth), ["Bearer sk-typed"])
     }
 
     func testKokoroServerKeepsTheCastsVoices() {

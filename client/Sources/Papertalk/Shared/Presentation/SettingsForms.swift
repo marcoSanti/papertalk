@@ -1,32 +1,29 @@
 import Foundation
 
-/// Where the LLM API key comes from.
+/// Where an API key (the LLM's or the speech server's) comes from.
 enum LLMKeySource: String, CaseIterable, Identifiable {
     case none = "No key"
     case env = "From environment"
     case manual = "Type a key"
     var id: String { rawValue }
+
+    /// The source a saved key implies: an env var name wins, then a typed key.
+    init(keyEnv: String, apiKey: String) {
+        self = !keyEnv.isEmpty ? .env : !apiKey.isEmpty ? .manual : .none
+    }
 }
 
-/// The LLM settings as edited in Settings and in the setup wizard.
-struct LLMSettingsForm: Equatable {
-    var baseUrl = ""
-    var model = ""
-    var keySource: LLMKeySource = .none
-    var selectedEnv = ""
-    var manualKey = ""
+/// A form with an API key that is typed, read from an environment variable, or
+/// absent. `KeySourceFields` edits any of them the same way.
+protocol KeySourceEditing {
+    var keySource: LLMKeySource { get set }
+    var selectedEnv: String { get set }
+    var manualKey: String { get set }
     /// Key environment variables that are set (`candidateKeyEnvs()`).
-    let setEnvVars: [String]
+    var setEnvVars: [String] { get }
+}
 
-    init(_ s: LLMSettings, setEnvVars: [String] = candidateKeyEnvs()) {
-        self.setEnvVars = setEnvVars
-        baseUrl = s.baseUrl
-        model = s.model
-        selectedEnv = s.keyEnv
-        if !s.keyEnv.isEmpty { keySource = .env }
-        else if !s.apiKey.isEmpty { keySource = .manual; manualKey = s.apiKey }
-    }
-
+extension KeySourceEditing {
     /// Variables offered in the picker: the set ones, plus the saved choice
     /// even if it isn't set right now (so it isn't silently dropped).
     var envOptions: [String] {
@@ -41,10 +38,6 @@ struct LLMSettingsForm: Equatable {
         if keySource == .env, selectedEnv.isEmpty { selectedEnv = envOptions.first ?? "" }
     }
 
-    private var trimmedBaseURL: String { baseUrl.trimmingCharacters(in: .whitespaces) }
-
-    var canFetchModels: Bool { !trimmedBaseURL.isEmpty }
-
     /// The key to use right now (for listing models / testing the connection).
     func effectiveKey(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
         switch keySource {
@@ -54,12 +47,40 @@ struct LLMSettingsForm: Equatable {
         }
     }
 
+    /// The saved pair (typed key, env var name): only the chosen source's value is kept.
+    var keyFields: (apiKey: String, keyEnv: String) {
+        (keySource == .manual ? manualKey.trimmingCharacters(in: .whitespaces) : "",
+         keySource == .env ? selectedEnv : "")
+    }
+}
+
+/// The LLM settings as edited in Settings and in the setup wizard.
+struct LLMSettingsForm: Equatable, KeySourceEditing {
+    var baseUrl = ""
+    var model = ""
+    var keySource: LLMKeySource = .none
+    var selectedEnv = ""
+    var manualKey = ""
+    /// Key environment variables that are set (`candidateKeyEnvs()`).
+    let setEnvVars: [String]
+
+    init(_ s: LLMSettings, setEnvVars: [String] = candidateKeyEnvs()) {
+        self.setEnvVars = setEnvVars
+        baseUrl = s.baseUrl
+        model = s.model
+        selectedEnv = s.keyEnv
+        keySource = LLMKeySource(keyEnv: s.keyEnv, apiKey: s.apiKey)
+        if keySource == .manual { manualKey = s.apiKey }
+    }
+
+    private var trimmedBaseURL: String { baseUrl.trimmingCharacters(in: .whitespaces) }
+
+    var canFetchModels: Bool { !trimmedBaseURL.isEmpty }
+
     /// The settings to save. Only the chosen key source's value is kept.
     var settings: LLMSettings {
-        LLMSettings(baseUrl: trimmedBaseURL,
-                    apiKey: keySource == .manual ? manualKey.trimmingCharacters(in: .whitespaces) : "",
-                    model: model.trimmingCharacters(in: .whitespaces),
-                    keyEnv: keySource == .env ? selectedEnv : "")
+        LLMSettings(baseUrl: trimmedBaseURL, apiKey: keyFields.apiKey,
+                    model: model.trimmingCharacters(in: .whitespaces), keyEnv: keyFields.keyEnv)
     }
 
     /// After listing the server's models: keep the chosen model if it's

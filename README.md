@@ -156,7 +156,9 @@ Then nothing is loaded on the Mac.
 - **Server URL**: Papertalk calls `/audio/speech` under it. For Open WebUI that's its address
   followed by `/api/v1` (e.g. `http://localhost:3000/api/v1`); for Kokoro-FastAPI,
   `http://<host>:8880/v1`.
-- **API key**: optional, kept in the Keychain. Open WebUI needs one (Settings → Account → API keys).
+- **API key**: none, typed, or read from an environment variable (`OPENWEBUI_API_KEY`,
+  `LLM_API_KEY` or `PAPERTALK_API_KEY`), the same choices as for the LLM. Keys are kept in the
+  Keychain. Open WebUI needs one (Settings → Account → API keys).
 - **Model** and **voices**: Papertalk asks the server what it offers (`/audio/models` or `/models`,
   and `/audio/voices`) and fills the pickers. If it lists nothing, type the model name.
 

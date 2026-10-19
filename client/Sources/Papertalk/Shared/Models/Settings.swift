@@ -206,19 +206,22 @@ struct SpeechSettings: Codable, Equatable {
     var engine: Engine = .local
     /// OpenAI-compatible base URL; `/audio/speech` is appended.
     var baseUrl = ""
-    /// Kept in the Keychain only; never written to user defaults.
+    /// A typed key. Kept in the Keychain only; never written to user defaults.
     var apiKey = ""
+    /// Env var whose value is the key; when set, `apiKey` is ignored (as for the LLM).
+    var keyEnv = ""
     var model = ""
     var voices = SpeechVoiceRoles()
 
     /// Sent when no model is chosen: OpenAI, Kokoro-FastAPI and Open WebUI all accept it.
     static let fallbackModel = "tts-1"
 
-    init(engine: Engine = .local, baseUrl: String = "", apiKey: String = "", model: String = "",
+    init(engine: Engine = .local, baseUrl: String = "", apiKey: String = "", keyEnv: String = "", model: String = "",
          voices: SpeechVoiceRoles = SpeechVoiceRoles()) {
         self.engine = engine
         self.baseUrl = baseUrl
         self.apiKey = apiKey
+        self.keyEnv = keyEnv
         self.model = model
         self.voices = voices
     }
@@ -229,8 +232,24 @@ struct SpeechSettings: Codable, Equatable {
         engine = (try? c.decodeIfPresent(Engine.self, forKey: .engine)) ?? .local
         baseUrl = try c.decodeIfPresent(String.self, forKey: .baseUrl) ?? ""
         apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        keyEnv = try c.decodeIfPresent(String.self, forKey: .keyEnv) ?? ""
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? ""
         voices = try c.decodeIfPresent(SpeechVoiceRoles.self, forKey: .voices) ?? SpeechVoiceRoles()
+    }
+
+    /// The key to send: the env var's value when one is chosen (or the Keychain
+    /// copy saved for apps launched from Finder, which don't see shell env),
+    /// else the typed key.
+    func resolvedKey(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        guard !keyEnv.isEmpty else { return apiKey }
+        if let v = environment[keyEnv], !v.isEmpty { return v }
+        return KeychainStore.get(keyEnv) ?? ""
+    }
+
+    /// Copy an env-sourced key into the Keychain while the app can see it.
+    func saveResolvedKey() {
+        guard !keyEnv.isEmpty, let v = ProcessInfo.processInfo.environment[keyEnv], !v.isEmpty else { return }
+        KeychainStore.set(v, account: keyEnv)
     }
 
     /// The server voice for a cast's Kokoro voice.

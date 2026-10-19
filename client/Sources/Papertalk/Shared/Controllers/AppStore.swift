@@ -80,8 +80,11 @@ final class AppStore: ObservableObject {
     }
 
     /// Save where voices are synthesized (only when it changed).
+    /// An env-sourced key is copied to the Keychain for apps launched from Finder.
     func saveSpeechSettings(_ next: SpeechSettings) {
-        if next != speech { speech = next }
+        guard next != speech else { return }
+        next.saveResolvedKey()
+        speech = next
     }
 
     /// Save the edited LLM prompts (only when they changed).
@@ -793,7 +796,7 @@ final class AppStore: ObservableObject {
             //    Voice models are left alone: they have their own button.
             KeychainStore.delete(LLMSettings.typedKeyAccount)
             KeychainStore.delete(SpeechSettings.typedKeyAccount)
-            for env in ["OPENWEBUI_API_KEY", "LLM_API_KEY", "PAPERTALK_API_KEY", llm.keyEnv] where !env.isEmpty {
+            for env in ["OPENWEBUI_API_KEY", "LLM_API_KEY", "PAPERTALK_API_KEY", llm.keyEnv, speech.keyEnv] where !env.isEmpty {
                 KeychainStore.delete(env)
             }
             // 4. Back to a clean reactive state.

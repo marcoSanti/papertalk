@@ -499,8 +499,8 @@ struct VoicesSettingsPage: View {
 }
 
 /// The key fields under the key-source picker (shared by Settings and setup).
-struct KeySourceFields: View {
-    @Binding var form: LLMSettingsForm
+struct KeySourceFields<Form: KeySourceEditing>: View {
+    @Binding var form: Form
 
     var body: some View {
         switch form.keySource {

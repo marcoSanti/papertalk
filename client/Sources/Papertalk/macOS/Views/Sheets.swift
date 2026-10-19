@@ -57,8 +57,9 @@ struct ClearDataPage: View {
     private func section<Content: View>(title: String, detail: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline)
+            // No .fixedSize here: inside the split view it stretched the sidebar's
+            // table thousands of points tall, scrolled to the bottom and blank.
             Text(detail).font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
             HStack { content() }
         }
         .padding(14)

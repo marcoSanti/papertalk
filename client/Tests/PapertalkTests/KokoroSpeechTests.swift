@@ -77,6 +77,54 @@ final class KokoroSpeechTests: PapertalkTestCase {
         XCTAssertEqual(KokoroSpeech.wavDuration(Data(count: 44)), 0)
     }
 
+    func testShortTurnIsOnePiece() {
+        XCTAssertEqual(KokoroSpeech.pieces(of: "  Hello there. How are you?  "), ["Hello there. How are you?"])
+        XCTAssertEqual(KokoroSpeech.pieces(of: "   "), [])
+    }
+
+    func testLongTurnSplitsAtSentencesWithinTheLimit() {
+        let sentence = "Queries and keys are compared with a softmax over their similarities."
+        let text = Array(repeating: sentence, count: 40).joined(separator: " ")
+        let pieces = KokoroSpeech.pieces(of: text)
+        XCTAssertGreaterThan(pieces.count, 1)
+        XCTAssertTrue(pieces.allSatisfy { $0.count <= KokoroSpeech.maxPieceLength })
+        XCTAssertTrue(pieces.allSatisfy { $0.hasSuffix(".") }, "breaks fall between sentences")
+        // Nothing lost or reordered.
+        XCTAssertEqual(pieces.joined(separator: " "), text)
+    }
+
+    func testOverlongSentenceSplitsAtClausesFirst() {
+        let text = "First we project the queries, then the keys, and finally the values; "
+            + "after that a softmax weighs every position against every other one."
+        let pieces = KokoroSpeech.pieces(of: text, max: 80)
+        XCTAssertEqual(pieces, ["First we project the queries, then the keys, and finally the values;",
+                                "after that a softmax weighs every position against every other one."])
+    }
+
+    func testOverlongSentenceSplitsBetweenWords() {
+        let text = Array(repeating: "word", count: 300).joined(separator: " ")
+        let pieces = KokoroSpeech.pieces(of: text, max: 50)
+        XCTAssertTrue(pieces.allSatisfy { $0.count <= 50 && !$0.contains("  ") })
+        XCTAssertEqual(pieces.joined(separator: " "), text)
+    }
+
+    func testJoinWAVsConcatenatesPCM() {
+        func wav(seconds: Double, byte: UInt8) -> Data {
+            Data(count: 44) + Data(repeating: byte, count: Int(seconds * 48000))
+        }
+        let a = wav(seconds: 1.0, byte: 1), b = wav(seconds: 0.5, byte: 2)
+        let joined = KokoroSpeech.joinWAVs([a, b])
+        XCTAssertEqual(KokoroSpeech.wavDuration(joined), 1.5, accuracy: 0.0001)
+        XCTAssertEqual(joined.prefix(4), Data("RIFF".utf8))
+        XCTAssertEqual(joined.subdata(in: 36..<40), Data("data".utf8))
+        let size = joined.subdata(in: 40..<44).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
+        XCTAssertEqual(Int(UInt32(littleEndian: size)), 72000)
+        XCTAssertEqual(joined[44], 1)
+        XCTAssertEqual(joined.last, 2)
+        // A single piece passes through untouched.
+        XCTAssertEqual(KokoroSpeech.joinWAVs([a]), a)
+    }
+
     func testVoiceGroupsPartitionAllVoices() {
         let grouped = KokoroSpeech.voiceGroups.flatMap { $0.voices }
         XCTAssertEqual(Set(grouped).count, grouped.count, "no voice listed twice")

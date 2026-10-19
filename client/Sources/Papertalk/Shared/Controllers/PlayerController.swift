@@ -181,7 +181,13 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
             for (i, text) in turns.enumerated() {
                 if generation != gen { return }
                 do {
-                    let wav = try await KokoroEngine.shared.synthesize(text: text, voice: voices[i], speed: Float(voiceSpeed))
+                    // Short Kokoro calls keep memory flat on long turns (see `KokoroSpeech.pieces`).
+                    var parts: [Data] = []
+                    for piece in KokoroSpeech.pieces(of: text) {
+                        if generation != gen { return }
+                        parts.append(try await KokoroEngine.shared.synthesize(text: piece, voice: voices[i], speed: Float(voiceSpeed)))
+                    }
+                    let wav = KokoroSpeech.joinWAVs(parts)
                     if generation != gen { return }
                     let d = KokoroSpeech.wavDuration(wav)
                     rendered[i] = RenderedTurn(wav: wav, duration: d)

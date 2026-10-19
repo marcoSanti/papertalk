@@ -169,6 +169,8 @@ final class AppStore: ObservableObject {
     @Published var pendingCast: CastPrompt?
     /// System notifications while the app is in the background.
     let notifier = Notifier()
+    /// Papers are voiced one at a time: concurrent bakes ran small Macs out of memory.
+    let audioGate = SerialGate()
 
     // filtering
     @Published var view: ViewMode = .all
@@ -896,6 +898,11 @@ final class AppStore: ObservableObject {
         guard !flat.isEmpty else { return "The script has nothing to read." }
         let total = flat.count
         func map(_ f: Double) -> Double { start + (end - start) * f }
+        if audioGate.isBusy {
+            updateRec(id) { $0.stage = "audio"; $0.progress = map(0.0); $0.message = "Waiting for another paper's audio…" }
+        }
+        await audioGate.acquire()
+        defer { audioGate.release() }
         updateRec(id) { $0.stage = "audio"; $0.progress = map(0.0); $0.message = "Preparing Kokoro…" }
 
         var current = 0
@@ -932,7 +939,13 @@ final class AppStore: ObservableObject {
                 if let existing = try? await storage.read(K.turn(id, i)) {
                     wav = existing
                 } else {
-                    wav = try await KokoroEngine.shared.synthesize(text: turn.text, voice: voiceMap[turn.speaker] ?? KokoroSpeech.defaultVoice, speed: Float(player.voiceSpeed))
+                    let voice = voiceMap[turn.speaker] ?? KokoroSpeech.defaultVoice
+                    var parts: [Data] = []
+                    for piece in KokoroSpeech.pieces(of: turn.text) {
+                        if Task.isCancelled { return "Stopped." }
+                        parts.append(try await KokoroEngine.shared.synthesize(text: piece, voice: voice, speed: Float(player.voiceSpeed)))
+                    }
+                    wav = KokoroSpeech.joinWAVs(parts)
                     try await storage.write(K.turn(id, i), wav)
                 }
                 durations.append(KokoroSpeech.wavDuration(wav))

@@ -203,6 +203,10 @@ Still to do, in order:
 - **Audio is baked at import** and saved per turn; playback uses the baked audio. Live synthesis
   in `PlayerController.prepare(transcript:)` is only a fallback for papers without complete
   audio, and it plays progressively. Don't move the normal path to live synthesis.
+- Memory on 8 GB Macs: papers are voiced one at a time (`AppStore.audioGate`), and every turn
+  goes to Kokoro in pieces of at most 200 characters (`KokoroSpeech.pieces`, joined with
+  `joinWAVs`). One call holds all its samples and Core ML buffers until it returns, so a long
+  monologue in one call peaked at ~1.2 GB and got the app killed; pieces keep it near 0.45 GB.
 - `bakeAudio` reuses turns already on disk, so re-running it resumes. On failure it returns a
   message and the paper goes to an error state via `failAudio`, never to "done" without audio.
 - **Use `KokoroEngine.shared` for all synthesis.** Never create another `KokoroAneManager`: two

@@ -135,4 +135,66 @@ enum KokoroSpeech {
         guard bytes > 44 else { return 0 }
         return Double(bytes - 44) / Double(24000 * 2)
     }
+
+    /// Longest piece of text sent to Kokoro in one call.
+    /// Measured on a 150-turn bake: peak memory ~1.2 GB unsplit, ~0.9 GB at
+    /// 400 characters, ~0.45 GB at 200, at the same speed.
+    static let maxPieceLength = 200
+
+    /// Split a turn into pieces of at most `max` characters: between sentences,
+    /// else after a comma, semicolon or colon, else between words. Kokoro holds
+    /// every sample and Core ML buffer of a call until it returns, so a long
+    /// monologue pushed memory past 1 GB and got the app killed on 8 GB Macs;
+    /// short calls keep the peak flat whatever the turn's length.
+    static func pieces(of text: String, max: Int = maxPieceLength) -> [String] {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard clean.count > max else { return clean.isEmpty ? [] : [clean] }
+        var sentences: [String] = []
+        clean.enumerateSubstrings(in: clean.startIndex..., options: .bySentences) { s, _, _, _ in
+            if let s = s?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { sentences.append(s) }
+        }
+        let units = sentences.flatMap { sentence -> [String] in
+            guard sentence.count > max else { return [sentence] }
+            let clauses = pack(words(sentence, splitAfter: [",", ";", ":"]), max: max)
+            return clauses.flatMap { $0.count > max ? pack(words($0, splitAfter: nil), max: max) : [$0] }
+        }
+        return pack(units, max: max)
+    }
+
+    /// Words of `s`, or with `splitAfter`, runs of words ending at one of those marks.
+    private static func words(_ s: String, splitAfter marks: Set<Character>?) -> [String] {
+        let all = s.split(separator: " ").map(String.init)
+        guard let marks else { return all }
+        var out: [String] = [], run = ""
+        for w in all {
+            run = run.isEmpty ? w : run + " " + w
+            if let last = w.last, marks.contains(last) { out.append(run); run = "" }
+        }
+        if !run.isEmpty { out.append(run) }
+        return out
+    }
+
+    /// Join consecutive units with spaces into pieces of at most `max` characters
+    /// (a unit longer than `max` stays whole).
+    private static func pack(_ units: [String], max: Int) -> [String] {
+        var out: [String] = [], buf = ""
+        for u in units {
+            if !buf.isEmpty, buf.count + 1 + u.count > max { out.append(buf); buf = u } else { buf = buf.isEmpty ? u : buf + " " + u }
+        }
+        if !buf.isEmpty { out.append(buf) }
+        return out
+    }
+
+    /// One WAV from consecutive 24 kHz mono 16-bit pieces (their PCM joined).
+    static func joinWAVs(_ parts: [Data]) -> Data {
+        if parts.count == 1 { return parts[0] }
+        var pcm = Data()
+        for part in parts where part.count > 44 { pcm.append(part.subdata(in: part.startIndex + 44..<part.endIndex)) }
+        func le32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        func le16(_ v: UInt16) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        var wav = Data("RIFF".utf8) + le32(UInt32(36 + pcm.count)) + Data("WAVEfmt ".utf8)
+        wav += le32(16) + le16(1) + le16(1) + le32(24000) + le32(24000 * 2) + le16(2) + le16(16)
+        wav += Data("data".utf8) + le32(UInt32(pcm.count)) + pcm
+        return wav
+    }
 }

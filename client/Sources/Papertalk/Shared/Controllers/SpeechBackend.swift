@@ -14,6 +14,8 @@ protocol SpeechBackend: Sendable {
     var preparingMessage: String { get }
     /// Share of the audio progress band `prepare` reports on (model download).
     var preparationShare: Double { get }
+    /// Whether the first call loads a model here, which makes it slow.
+    var loadsModel: Bool { get }
     /// Longest piece of text sent in one call (see `KokoroSpeech.pieces`).
     var maxPieceLength: Int { get }
     /// Get ready for synthesis; reports (fraction 0…1, wording) while it works.
@@ -33,6 +35,7 @@ extension SpeechBackend {
 struct LocalSpeechBackend: SpeechBackend {
     var preparingMessage: String { "Preparing Kokoro…" }
     var preparationShare: Double { 0.5 }
+    var loadsModel: Bool { true }
     var maxPieceLength: Int { KokoroSpeech.maxPieceLength }
 
     func prepare(progress: @escaping @Sendable (Double, String) -> Void) async throws {
@@ -69,6 +72,7 @@ struct RemoteSpeechBackend: SpeechBackend {
 
     var preparingMessage: String { "Connecting to the speech server…" }
     var preparationShare: Double { 0 }
+    var loadsModel: Bool { false }
     /// Memory isn't ours to save here, and longer pieces mean fewer requests and
     /// smoother intonation; still well under OpenAI's 4,096-character limit.
     var maxPieceLength: Int { 1000 }
@@ -84,7 +88,7 @@ struct RemoteSpeechBackend: SpeechBackend {
 }
 
 enum RemoteSpeechError: Error, LocalizedError, Equatable {
-    case noURL, badURL, unreachable(String), unauthorized, http(Int, String?), notAudio(String?)
+    case noURL, badURL, unreachable(String), unauthorized, http(Int, String?), notAudio(String?), noSpeechEndpoint(String)
 
     var errorDescription: String? {
         switch self {
@@ -100,6 +104,9 @@ enum RemoteSpeechError: Error, LocalizedError, Equatable {
             return "The speech server answered HTTP \(code)" + (detail.map { ": \($0)" } ?? ".")
         case .notAudio(let detail):
             return "The speech server didn't send audio" + (detail.map { ": \($0)" } ?? ".")
+        case .noSpeechEndpoint(let base):
+            return "There's no /audio/speech under \(base). Check the speech server URL: "
+                + "for Open WebUI it's the server's address followed by /api/v1."
         }
     }
 }
@@ -122,15 +129,23 @@ struct RemoteSpeechClient {
             .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
     }
 
-    func endpoint(_ path: String) throws -> URL {
+    /// Where the audio endpoints may live, in the order tried. Open WebUI's chat
+    /// API is at `/api` but its audio at `/api/v1`, so a URL copied from the LLM
+    /// settings still works.
+    var audioRoots: [String] { base.hasSuffix("/api") ? [base + "/v1", base] : [base] }
+
+    /// Status codes meaning "no such endpoint here".
+    static let missing: Set<Int> = [404, 405, 501]
+
+    func endpoint(_ path: String, at root: String? = nil) throws -> URL {
         guard !base.isEmpty else { throw RemoteSpeechError.noURL }
-        guard let url = URL(string: base + "/" + path), let scheme = url.scheme?.lowercased(),
+        guard let url = URL(string: (root ?? base) + "/" + path), let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https", url.host != nil else { throw RemoteSpeechError.badURL }
         return url
     }
 
-    private func request(_ path: String) throws -> URLRequest {
-        var req = URLRequest(url: try endpoint(path))
+    private func request(_ path: String, at root: String? = nil) throws -> URLRequest {
+        var req = URLRequest(url: try endpoint(path, at: root))
         req.timeoutInterval = 120
         let key = apiKey.trimmingCharacters(in: .whitespaces)
         if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
@@ -138,8 +153,8 @@ struct RemoteSpeechClient {
     }
 
     /// The synthesis request. WAV is asked for so nothing needs decoding.
-    func speechRequest(text: String, voice: String, speed: Float) throws -> URLRequest {
-        var req = try request("audio/speech")
+    func speechRequest(text: String, voice: String, speed: Float, at root: String? = nil) throws -> URLRequest {
+        var req = try request("audio/speech", at: root)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("audio/wav, audio/*", forHTTPHeaderField: "Accept")
@@ -157,33 +172,42 @@ struct RemoteSpeechClient {
 
     /// The server's audio bytes for one piece of text (in whatever format it sent).
     func speech(text: String, voice: String, speed: Float) async throws -> Data {
-        let (data, http) = try await send(try speechRequest(text: text, voice: voice, speed: speed))
-        try check(http, data)
-        // Some servers report failures as JSON with a 200.
-        if let first = data.first(where: { !$0.isWhitespaceByte }), first == UInt8(ascii: "{") {
-            throw RemoteSpeechError.notAudio(Self.errorDetail(data))
+        for root in audioRoots {
+            let (data, http) = try await send(try speechRequest(text: text, voice: voice, speed: speed, at: root))
+            if Self.missing.contains(http.statusCode) { continue }
+            try check(http, data)
+            // Some servers report failures as JSON with a 200.
+            if let first = data.first(where: { !$0.isWhitespaceByte }), first == UInt8(ascii: "{") {
+                throw RemoteSpeechError.notAudio(Self.errorDetail(data))
+            }
+            return data
         }
-        return data
+        throw RemoteSpeechError.noSpeechEndpoint(base)
     }
 
     /// TTS models: Open WebUI lists them at `/audio/models`, OpenAI-style
-    /// servers at `/models`. Empty when the server lists neither.
+    /// servers at `/models`. Empty when the server lists neither. `/models` is
+    /// asked only at the URL as given: under Open WebUI's `/api` it lists LLMs.
     func listModels() async throws -> [String] {
-        for path in ["audio/models", "models"] {
-            if let ids = try await list(path, keys: ["models", "data"]), !ids.isEmpty { return ids }
+        for root in audioRoots {
+            if let ids = try await list("audio/models", at: root, keys: ["models", "data"]), !ids.isEmpty { return ids }
         }
-        return []
+        return try await list("models", at: base, keys: ["models", "data"]) ?? []
     }
 
     /// Voices at `/audio/voices` (Open WebUI, Kokoro-FastAPI). Empty when missing.
     func listVoices() async throws -> [String] {
-        try await list("audio/voices", keys: ["voices", "data"]) ?? []
+        for root in audioRoots {
+            if let ids = try await list("audio/voices", at: root, keys: ["voices", "data"]) { return ids }
+        }
+        return []
     }
 
-    /// The ids at `path`, or nil when the server doesn't have that endpoint.
-    private func list(_ path: String, keys: [String]) async throws -> [String]? {
-        let (data, http) = try await send(try request(path))
-        if [404, 405, 501].contains(http.statusCode) { return nil }
+    /// The ids at `path`, or nil when the server doesn't have that endpoint
+    /// (or answers it with something that isn't a list, like a web page).
+    private func list(_ path: String, at root: String, keys: [String]) async throws -> [String]? {
+        let (data, http) = try await send(try request(path, at: root))
+        if Self.missing.contains(http.statusCode) { return nil }
         try check(http, data)
         return Self.parseIDs(data, keys: keys)
     }

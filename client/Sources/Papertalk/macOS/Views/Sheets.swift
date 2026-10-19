@@ -1034,7 +1034,7 @@ private struct VoiceSampleButton: View {
         }
     }
 
-    private var label: String { VoiceSamplePresentation.label(phase, modelLoaded: player.modelLoaded) }
+    private var label: String { VoiceSamplePresentation.label(phase, loadingModel: player.sampleLoadsModel) }
     private var help: String { VoiceSamplePresentation.help(phase, voice: voice) }
 
     private func tap() {

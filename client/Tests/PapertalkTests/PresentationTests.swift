@@ -666,9 +666,9 @@ final class PaceAndSampleTests: PapertalkTestCase {
         let generating = PlayerController.PreviewPhase.generating("af_bella")
         XCTAssertEqual(VoiceSamplePresentation.phase(generating, for: "af_bella"), generating)
         XCTAssertNil(VoiceSamplePresentation.phase(generating, for: "am_puck"))   // another voice's sample
-        XCTAssertEqual(VoiceSamplePresentation.label(generating, modelLoaded: false), "Loading voices…")
-        XCTAssertEqual(VoiceSamplePresentation.label(generating, modelLoaded: true), "Generating…")
-        XCTAssertEqual(VoiceSamplePresentation.label(nil, modelLoaded: true), "Sample")
+        XCTAssertEqual(VoiceSamplePresentation.label(generating, loadingModel: true), "Loading voices…")
+        XCTAssertEqual(VoiceSamplePresentation.label(generating, loadingModel: false), "Generating…")
+        XCTAssertEqual(VoiceSamplePresentation.label(nil, loadingModel: false), "Sample")
         XCTAssertEqual(VoiceSamplePresentation.help(.failed("af_bella", "no model"), voice: "af_bella"),
                        "Couldn't play the sample: no model")
         XCTAssertTrue(VoiceSamplePresentation.tapStops(.playing("af_bella")))

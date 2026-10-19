@@ -50,6 +50,8 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     @Published private(set) var previewProgress: Double = 0
     /// False until the Kokoro model has been loaded once; the first sample is slow.
     @Published private(set) var modelLoaded = false
+    /// The next sample has to load the model first (never on a speech server).
+    var sampleLoadsModel: Bool { speechBackend.loadsModel && !modelLoaded }
     /// Speaking pace for synthesis (< 1 slower, > 1 faster), shared by voice
     /// samples, live rendering and import-time baking. `@Published` + defaults
     /// rather than `@AppStorage`, which doesn't notify views from an

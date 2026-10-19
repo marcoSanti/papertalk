@@ -16,6 +16,7 @@ final class FakeSpeechBackend: SpeechBackend, @unchecked Sendable {
 
     var preparingMessage: String { "Fake preparing" }
     var preparationShare: Double { 0 }
+    var loadsModel: Bool { false }
     var maxPieceLength: Int { 40 }
     func prepare(progress: @escaping @Sendable (Double, String) -> Void) async throws {}
     func synthesize(text: String, voice: String, speed: Float) async throws -> Data {
@@ -243,6 +244,44 @@ final class RemoteSpeechClientTests: PapertalkTestCase {
         XCTAssertEqual(models, ["kokoro"])
         XCTAssertEqual(voices, [])
         XCTAssertEqual(paths, ["/v1/audio/models", "/v1/models", "/v1/audio/voices"])
+    }
+
+    /// The URL copied from the LLM settings (Open WebUI's `/api`): audio is found under `/api/v1`.
+    func testOpenWebUIChatURLFindsTheAudioUnderV1() async throws {
+        var paths: [String] = []
+        MockLLM.install { req in
+            paths.append(req.url!.path)
+            switch req.url!.path {
+            case "/api/v1/audio/speech": return (200, Fixtures.silentWAV(seconds: 0.1))
+            case "/api/v1/audio/models": return (200, json(["models": [["id": "tts-1"]]]))
+            case "/api/v1/audio/voices": return (200, json(["voices": [["id": "af_heart", "name": "af_heart"]]]))
+            case "/api/models": return (200, json(["data": [["id": "an-llm"]]]))
+            default: return (405, json(["detail": "Method Not Allowed"]))
+            }
+        }
+        let settings = SpeechSettings(engine: .remote, baseUrl: "http://owui.test:3000/api", apiKey: "k")
+        let client = RemoteSpeechClient(settings: settings)
+        XCTAssertEqual(client.audioRoots, ["http://owui.test:3000/api/v1", "http://owui.test:3000/api"])
+        let audio = try await RemoteSpeechBackend(settings: settings).synthesize(text: "Hi.", voice: "af_heart", speed: 1)
+        let models = try await client.listModels()
+        let voices = try await client.listVoices()
+        XCTAssertEqual(KokoroSpeech.wavDuration(audio), 0.1, accuracy: 0.01)
+        XCTAssertEqual(models, ["tts-1"])   // not the LLMs at /api/models
+        XCTAssertEqual(voices, ["af_heart"])
+        XCTAssertEqual(paths, ["/api/v1/audio/speech", "/api/v1/audio/models", "/api/v1/audio/voices"])
+    }
+
+    func testNoSpeechEndpointSaysWhereItLooked() async {
+        var paths: [String] = []
+        MockLLM.install { req in paths.append(req.url!.path); return (405, json(["detail": "Method Not Allowed"])) }
+        let settings = SpeechSettings(engine: .remote, baseUrl: "http://owui.test:3000/api/")
+        do { _ = try await RemoteSpeechBackend(settings: settings).synthesize(text: "x", voice: "af_heart", speed: 1); XCTFail("expected an error") }
+        catch {
+            XCTAssertEqual(error as? RemoteSpeechError, .noSpeechEndpoint("http://owui.test:3000/api"))
+            XCTAssertEqual(error.localizedDescription, "There's no /audio/speech under http://owui.test:3000/api. "
+                + "Check the speech server URL: for Open WebUI it's the server's address followed by /api/v1.")
+        }
+        XCTAssertEqual(paths, ["/api/v1/audio/speech", "/api/audio/speech"])
     }
 
     func testEmptyAudioModelsFallsBackToo() async throws {
@@ -497,6 +536,12 @@ final class SpeechBackendStoreTests: PapertalkTestCase {
         await waitUntil { store.papers[id]?.state == "error" }
         XCTAssertEqual(store.papers[id]?.hasAudio, false)
         XCTAssertTrue(store.papers[id]?.statusError?.contains("rejected the API key") == true)
+    }
+
+    func testOnlyLocalSamplesWaitForAModel() async {
+        XCTAssertTrue(PlayerController(speechBackend: LocalSpeechBackend()).sampleLoadsModel)
+        XCTAssertFalse(PlayerController(speechBackend: remote.makeBackend()).sampleLoadsModel)
+        XCTAssertTrue(LocalSpeechBackend().loadsModel)
     }
 
     func testLivePlaybackRendersWithTheBackend() async {

@@ -154,8 +154,8 @@ to an OpenAI-compatible text-to-speech server instead, such as
 Then nothing is loaded on the Mac.
 
 - **Server URL**: Papertalk calls `/audio/speech` under it. For Open WebUI that's its address
-  followed by `/api/v1` (e.g. `http://localhost:3000/api/v1`); for Kokoro-FastAPI,
-  `http://<host>:8880/v1`.
+  followed by `/api/v1` (e.g. `http://localhost:3000/api/v1`; the `/api` URL from the LLM
+  settings works too); for Kokoro-FastAPI, `http://<host>:8880/v1`.
 - **API key**: none, typed, or read from an environment variable (`OPENWEBUI_API_KEY`,
   `LLM_API_KEY` or `PAPERTALK_API_KEY`), the same choices as for the LLM. Keys are kept in the
   Keychain. Open WebUI needs one (Settings → Account → API keys).
@@ -166,7 +166,7 @@ Papers always keep their Kokoro voices. A Kokoro server can speak them as they a
 server, pick a server voice for each part of the cast: the female host (Heart), the male host
 (Michael), female guests and male guests. Papertalk asks for WAV; MP3 and other formats are
 converted on the Mac. Every synthesis path uses the setting: importing, **Regenerate audio**,
-playing a paper that has no audio yet, and voice samples.
+playing a paper that has no audio yet, and the voice samples in the cast sheet.
 
 ## Settings, keys and data
 

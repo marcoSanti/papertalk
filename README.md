@@ -102,6 +102,10 @@ transcript, open the PDF, favourite it, tag it, or fix its metadata. Space plays
 arrow keys move around the grid, and Delete removes a paper (after asking). Episodes remember
 where you stopped.
 
+On macOS the playing episode also shows in Control Center's Now Playing, with its title, authors
+and cover. The keyboard's media keys and the Control Center buttons play and pause it, skip to the
+next or previous turn, jump 15 seconds, or move along it.
+
 The sidebar groups the library by favourites and tags, and **Authors** shows everyone in your
 library like a contact book: open an author to see their papers and jump to their co-authors.
 Search matches titles, authors and DOIs; start with `#` to search tags.

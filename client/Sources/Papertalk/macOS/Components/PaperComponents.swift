@@ -198,6 +198,13 @@ struct ContextMenuItems: View {
             }
         }
         Divider()
+        if PaperPresentation.canDeleteAudio(paper) {
+            Button(role: .destructive) {
+                store.pendingConfirmation = .deleteAudio(paper)
+            } label: {
+                Label("Delete audio…", systemImage: "waveform.slash")
+            }
+        }
         Button(role: .destructive) {
             store.pendingConfirmation = .delete(paper)
         } label: {

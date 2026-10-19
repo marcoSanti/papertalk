@@ -122,6 +122,12 @@ A conversion can be stopped while it runs, with **Stop conversion** in the paper
 right-click menu. The script and any sections already voiced are kept, and **Try again** carries
 on from there. Deleting a paper that's still converting stops it first.
 
+Episodes take disk space, so **Delete audio** (in the details' Manage list or the right-click menu)
+removes a paper's voiced audio and keeps its script and PDF. The paper still plays, with voices
+made live, and **Regenerate audio** voices it again. When you listen to an episode to the end,
+Papertalk asks whether to keep or delete its audio; **Keep, and don't ask again** turns that off,
+and **Settings → Clear Data** turns it back on.
+
 ## Sharing a library between Macs
 
 Papers normally live in `~/Library/Application Support/papertalk/`. To use one library from

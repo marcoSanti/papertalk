@@ -55,8 +55,12 @@ struct ContentView: View {
         .confirmationDialog(store.pendingConfirmation.map { ConfirmationText($0).title } ?? "",
                             isPresented: confirmationShown,
                             titleVisibility: .visible, presenting: store.pendingConfirmation) { pending in
-            Button(ConfirmationText(pending).confirmLabel, role: .destructive) { store.confirmPending(pending) }
-            Button("Cancel", role: .cancel) {}
+            let text = ConfirmationText(pending)
+            Button(text.confirmLabel, role: .destructive) { store.confirmPending(pending) }
+            if let secondary = text.secondaryLabel {
+                Button(secondary) { store.confirmSecondary(pending) }
+            }
+            Button(text.cancelLabel, role: .cancel) {}
         } message: { pending in
             Text(ConfirmationText(pending).message)
         }

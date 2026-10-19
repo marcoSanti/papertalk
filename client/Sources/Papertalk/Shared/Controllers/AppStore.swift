@@ -144,16 +144,54 @@ final class AppStore: ObservableObject {
         switch pending {
         case .delete(let p): delete(p.id)
         case .rerun(let p): rerun(p.id)
+        case .deleteAudio(let p), .finishedListening(let p): deleteAudio(p.id)
         }
     }
+
+    /// The dialog's third button, where it has one (`ConfirmationText.secondaryLabel`).
+    func confirmSecondary(_ pending: PendingConfirmation) {
+        pendingConfirmation = nil
+        if case .finishedListening = pending { askToDeleteListenedAudio = false }
+    }
+
     enum PendingConfirmation: Identifiable {
-        case delete(Paper), rerun(Paper)
+        case delete(Paper), rerun(Paper), deleteAudio(Paper)
+        /// An episode was listened to the end: keep its audio or free the space?
+        case finishedListening(Paper)
         var id: String {
             switch self {
             case .delete(let p): return "delete-\(p.id)"
             case .rerun(let p): return "rerun-\(p.id)"
+            case .deleteAudio(let p): return "deleteAudio-\(p.id)"
+            case .finishedListening(let p): return "finished-\(p.id)"
             }
         }
+    }
+
+    /// Whether finishing an episode asks to delete its audio.
+    @Published var askToDeleteListenedAudio = UserDefaults.standard.object(forKey: AppStore.askDeleteKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(askToDeleteListenedAudio, forKey: Self.askDeleteKey) }
+    }
+    nonisolated static let askDeleteKey = "papertalk.askDeleteListenedAudio"
+
+    /// Delete a paper's voiced audio, keeping its script: it can still be read,
+    /// played with live voices, or voiced again with Regenerate audio.
+    func deleteAudio(_ id: String) {
+        guard let p = papers[id], PaperPresentation.canDeleteAudio(p) else { return }
+        Task {
+            if playingPaperId == id { player.stopAll(); playingPaperId = nil }
+            await deleteBakedAudio(id)
+            optimistic(id, { $0.hasAudio = false })
+            appendLog("Deleted the audio.", paper: id)
+            show("Audio deleted")
+        }
+    }
+
+    /// An episode played to its end: offer to delete its audio.
+    func episodeFinished(_ id: String) {
+        guard askToDeleteListenedAudio, pendingConfirmation == nil,
+              let p = papers[id], PaperPresentation.canDeleteAudio(p) else { return }
+        pendingConfirmation = .finishedListening(p)
     }
     /// Pending "already in library" prompt whose answer is awaited by the
     /// import pipeline. Lives on the store so it survives sheet dismissal.
@@ -836,7 +874,7 @@ final class AppStore: ObservableObject {
             logEntries = []
             // 2. All settings + old (pre-rename) keys.
             let d = UserDefaults.standard
-            for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.prompts.json", "papertalk.customDepths.json", "papertalk.settingsPage", "papertalk.voiceSpeed", "papertalk.onboarded",
+            for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.prompts.json", "papertalk.customDepths.json", "papertalk.settingsPage", "papertalk.voiceSpeed", "papertalk.onboarded", AppStore.askDeleteKey, SpeechSettings.defaultsKey,
                         "paper2pod.server.json", "paper2pod.llm.json", "paper2pod.onboarded"] {
                 d.removeObject(forKey: key)
             }
@@ -851,6 +889,7 @@ final class AppStore: ObservableObject {
             config = ServerConfig.load()   // save() re-persists env defaults
             llm = LLMSettings.load()
             speech = SpeechSettings.load()
+            askToDeleteListenedAudio = true
             prompts = PromptSettings.defaults
             player.voiceSpeed = PlayerController.defaultSpeed
             customPresets = CustomDepthPresets(entries: [])
@@ -1129,6 +1168,7 @@ final class AppStore: ObservableObject {
                     guard let self, let id = self.playingPaperId else { return }
                     self.saveProgress(id, 0, self.player.duration)
                     if let p = self.papers[id], !p.read { self.toggleRead(id, force: true) }
+                    self.episodeFinished(id)
                 }
             }
             .store(in: &playbackCancelables)

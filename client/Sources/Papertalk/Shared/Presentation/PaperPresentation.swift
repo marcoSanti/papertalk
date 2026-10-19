@@ -101,6 +101,9 @@ enum PaperPresentation {
 
     static func canRerun(_ p: Paper) -> Bool { !p.isActive }
 
+    /// Baked audio can go once the paper isn't being converted; the script stays.
+    static func canDeleteAudio(_ p: Paper) -> Bool { p.hasAudio && !p.isActive }
+
     /// A converting paper can be stopped (and deleted) while it runs.
     static func canStop(_ p: Paper) -> Bool { p.isActive }
     static let stopTitle = "Stop conversion"

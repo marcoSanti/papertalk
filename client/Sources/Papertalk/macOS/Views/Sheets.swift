@@ -23,6 +23,12 @@ struct ClearDataPage: View {
                     .tint(.red)
             }
 
+            section(title: "Audio of finished episodes",
+                    detail: "When an episode has been listened to the end, ask whether to delete its audio. The script is always kept.") {
+                Toggle("Ask after listening", isOn: $store.askToDeleteListenedAudio)
+                Spacer()
+            }
+
             section(title: "Voice models",
                     detail: "The Kokoro voices used to speak episodes. Deleting them frees disk space; they download again the next time audio is generated.") {
                 Text(ClearDataPresentation.voiceModels(bytes: modelBytes))

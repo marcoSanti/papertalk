@@ -314,6 +314,12 @@ struct DetailView: View {
                         store.revealInFinder(paper.id)
                     }
                 }
+                if PaperPresentation.canDeleteAudio(paper) {
+                    ManageRow(title: "Delete audio", subtitle: "Free the space; keep the script",
+                              icon: "waveform.slash", tint: .orange) {
+                        store.pendingConfirmation = .deleteAudio(paper)
+                    }
+                }
                 ManageRow(title: "Delete paper", subtitle: nil, icon: "trash", tint: .red, destructive: true) {
                     store.pendingConfirmation = .delete(paper)
                 }

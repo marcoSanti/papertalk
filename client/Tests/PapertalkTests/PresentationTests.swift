@@ -546,6 +546,29 @@ final class FormTests: PapertalkTestCase {
         XCTAssertEqual(ServerSettingsForm(ServerConfig(apiBase: "http://x", token: "t")).mode, .remote)
     }
 
+    func testDeleteAudioWording() {
+        let p = Fixtures.paper(title: "Waves", hasAudio: true)
+        XCTAssertTrue(PaperPresentation.canDeleteAudio(p))
+        XCTAssertFalse(PaperPresentation.canDeleteAudio(Fixtures.paper(hasAudio: false)))
+        XCTAssertFalse(PaperPresentation.canDeleteAudio(Fixtures.paper(state: "running", hasAudio: true)))
+
+        let delete = ConfirmationText(.deleteAudio(p))
+        XCTAssertEqual(delete.title, "Delete the audio of “Waves”?")
+        XCTAssertEqual(delete.confirmLabel, "Delete audio")
+        XCTAssertEqual(delete.cancelLabel, "Cancel")
+        XCTAssertNil(delete.secondaryLabel)
+        XCTAssertTrue(delete.message.contains("Regenerate audio"))
+
+        let finished = ConfirmationText(.finishedListening(p))
+        XCTAssertEqual(finished.title, "You finished “Waves”")
+        XCTAssertEqual(finished.confirmLabel, "Delete audio")
+        XCTAssertEqual(finished.cancelLabel, "Keep audio")
+        XCTAssertEqual(finished.secondaryLabel, "Keep, and don’t ask again")
+        XCTAssertTrue(finished.message.hasPrefix("Delete its audio to free up space?"))
+        XCTAssertEqual(ConfirmationText(.rerun(p)).cancelLabel, "Cancel")
+        XCTAssertNotEqual(AppStore.PendingConfirmation.deleteAudio(p).id, AppStore.PendingConfirmation.finishedListening(p).id)
+    }
+
     func testStopAndDeleteWording() {
         let running = Fixtures.paper(state: "running")
         let done = Fixtures.paper(state: "done")

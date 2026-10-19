@@ -935,7 +935,6 @@ final class AppStore: ObservableObject {
         let share = backend.preparationShare
         updateRec(id) { $0.stage = "audio"; $0.progress = map(0.0); $0.message = backend.preparingMessage }
 
-        var current = 0
         do {
             // Local Kokoro downloads its model here, on the first part of the band.
             try await backend.prepare { [weak self] fraction, phase in
@@ -944,37 +943,59 @@ final class AppStore: ObservableObject {
                 }
             }
 
-            var durations: [Double] = []
             let voiceMap = castVoices(for: id, speakers: flat.map { $0.speaker })
-            for (i, turn) in flat.enumerated() {
-                current = i
-                if Task.isCancelled { return "Stopped." }
-                // Resume from the last successfully synthesized chunk: reuse any
-                // turn already baked on disk instead of re-synthesizing it.
-                let wav: Data
-                if let existing = try? await storage.read(K.turn(id, i)) {
-                    wav = existing
-                } else {
-                    let voice = voiceMap[turn.speaker] ?? KokoroSpeech.defaultVoice
-                    var parts: [Data] = []
-                    for piece in backend.pieces(of: turn.text) {
-                        if Task.isCancelled { return "Stopped." }
-                        parts.append(try await backend.synthesize(text: piece, voice: voice, speed: Float(player.voiceSpeed)))
-                    }
-                    wav = KokoroSpeech.joinWAVs(parts)
-                    try await storage.write(K.turn(id, i), wav)
-                }
-                durations.append(KokoroSpeech.wavDuration(wav))
-                let frac = share + (1 - share) * Double(i + 1) / Double(total)
-                updateRec(id) { $0.stage = "audio"; $0.progress = map(frac); $0.message = "Synthesizing section \(i + 1)/\(total)…" }
+            let speed = Float(player.voiceSpeed)
+            // Resume: reuse every turn already baked on disk instead of voicing it again.
+            var wavs: [Data?] = []
+            for i in 0..<total { wavs.append(try? await storage.read(K.turn(id, i))) }
+            let todo = (0..<total).filter { wavs[$0] == nil }
+            var done = total - todo.count
+            func report() {
+                let frac = share + (1 - share) * Double(done) / Double(total)
+                updateRec(id) { $0.stage = "audio"; $0.progress = map(frac); $0.message = "Synthesizing section \(done)/\(total)…" }
             }
+            if done > 0 { report() }
+
+            // A speech server takes several turns at once; local Kokoro one.
+            // Turns are saved as they finish, so a stop or failure resumes cleanly.
+            func job(_ i: Int) -> @Sendable () async throws -> (Int, Data) {
+                let text = flat[i].text
+                let voice = voiceMap[flat[i].speaker] ?? KokoroSpeech.defaultVoice
+                return {
+                    do { return (i, try await backend.speak(text, voice: voice, speed: speed)) }
+                    catch { throw TurnFailure(index: i, underlying: error) }
+                }
+            }
+            let width = max(1, backend.parallelRequests)
+            try await withThrowingTaskGroup(of: (Int, Data).self) { group in
+                for i in todo.prefix(width) { group.addTask(operation: job(i)) }
+                var queued = min(width, todo.count)
+                while let (i, wav) = try await group.next() {
+                    do { try await storage.write(K.turn(id, i), wav) } catch { throw TurnFailure(index: i, underlying: error) }
+                    wavs[i] = wav
+                    done += 1
+                    report()
+                    if queued < todo.count { group.addTask(operation: job(todo[queued])); queued += 1 }
+                }
+            }
+            let durations = wavs.map { KokoroSpeech.wavDuration($0 ?? Data()) }
             await storage.save(AudioManifest(durations: durations), K.audioManifest(id))
             return nil
         } catch {
-            appendLog("Audio synthesis failed at section \(current + 1)/\(total): \(error.localizedDescription)", paper: id)
-            return "Voicing stopped at section \(current + 1) of \(total) (\(error.localizedDescription)). "
+            let failure = error as? TurnFailure
+            let cause = failure?.underlying ?? error
+            if cause is CancellationError || Task.isCancelled { return "Stopped." }
+            let at = failure?.index ?? 0
+            appendLog("Audio synthesis failed at section \(at + 1)/\(total): \(cause.localizedDescription)", paper: id)
+            return "Voicing stopped at section \(at + 1) of \(total) (\(cause.localizedDescription)). "
                 + "Try again to continue from there."
         }
+    }
+
+    /// Which turn a bake failed on, around the error itself.
+    private struct TurnFailure: Error {
+        let index: Int
+        let underlying: Error
     }
 
     /// The script is fine but voicing failed: keep the script (it can still be

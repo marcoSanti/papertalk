@@ -159,13 +159,14 @@ Then nothing is loaded on the Mac.
 - **API key**: none, typed, or read from an environment variable (`OPENWEBUI_API_KEY`,
   `LLM_API_KEY` or `PAPERTALK_API_KEY`), the same choices as for the LLM. Keys are kept in the
   Keychain. Open WebUI needs one (Settings → Account → API keys).
-- **Model** and **voices**: Papertalk asks the server what it offers (`/audio/models` or `/models`,
-  and `/audio/voices`) and fills the pickers. If it lists nothing, type the model name.
+- **Model**: Papertalk asks the server what it offers (`/audio/models` or `/models`) and fills
+  the picker. If it lists nothing, type the model name.
+- **Requests at a time**: how many sections are voiced at once (1 to 16, default 4). More is
+  faster if the server keeps up. Voices on the Mac are always made one section at a time.
 
-Papers always keep their Kokoro voices. A Kokoro server can speak them as they are; for any other
-server, pick a server voice for each part of the cast: the female host (Heart), the male host
-(Michael), female guests and male guests. Papertalk asks for WAV; MP3 and other formats are
-converted on the Mac. Every synthesis path uses the setting: importing, **Regenerate audio**,
+The server should run Kokoro: each paper's cast, chosen when you import it, is sent by voice name
+(`af_heart`, `am_michael`, …). Papertalk checks the server's `/audio/voices` and warns if
+Kokoro's voices aren't there. It asks for WAV; MP3 and other formats are converted on the Mac. Every synthesis path uses the setting: importing, **Regenerate audio**,
 playing a paper that has no audio yet, and the voice samples in the cast sheet.
 
 ## Settings, keys and data

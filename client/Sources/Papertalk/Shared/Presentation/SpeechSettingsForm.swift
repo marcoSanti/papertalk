@@ -22,7 +22,7 @@ struct SpeechSettingsForm: Equatable, KeySourceEditing {
     var manualKey = ""
     let setEnvVars: [String]
     var model: String
-    var voices: SpeechVoiceRoles
+    var parallelRequests: Int
     /// What the server listed on the last fetch (empty until then, or if it lists none).
     private(set) var models: [String] = []
     private(set) var serverVoices: [String] = []
@@ -35,7 +35,7 @@ struct SpeechSettingsForm: Equatable, KeySourceEditing {
         keySource = LLMKeySource(keyEnv: s.keyEnv, apiKey: s.apiKey)
         if keySource == .manual { manualKey = s.apiKey }
         model = s.model
-        voices = s.voices
+        parallelRequests = s.parallelRequests
     }
 
     var isRemote: Bool { engine == .remote }
@@ -50,11 +50,8 @@ struct SpeechSettingsForm: Equatable, KeySourceEditing {
     /// The settings to save. Remote fields are kept when switching to this
     /// machine, so switching back doesn't mean typing them again.
     var settings: SpeechSettings {
-        func trim(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
-        return SpeechSettings(engine: engine, baseUrl: trimmedBaseURL, apiKey: keyFields.apiKey, keyEnv: keyFields.keyEnv,
-                              model: trim(model),
-                              voices: SpeechVoiceRoles(hostFemale: trim(voices.hostFemale), hostMale: trim(voices.hostMale),
-                                                       guestFemale: trim(voices.guestFemale), guestMale: trim(voices.guestMale)))
+        SpeechSettings(engine: engine, baseUrl: trimmedBaseURL, apiKey: keyFields.apiKey, keyEnv: keyFields.keyEnv,
+                       model: model.trimmingCharacters(in: .whitespaces), parallelRequests: parallelRequests)
     }
 
     /// Ask the server for its models and voices.
@@ -69,11 +66,8 @@ struct SpeechSettingsForm: Equatable, KeySourceEditing {
         }
     }
 
-    /// Whether the server speaks with Kokoro's own voice ids.
-    var serverHasKokoroVoices: Bool { serverVoices.contains { KokoroSpeech.allVoices.contains($0) } }
-
-    /// Take in a fetched catalog: keep the chosen model and voices where the
-    /// server offers them, else pick from what it offers. Returns the note to show.
+    /// Take in a fetched catalog: keep the chosen model if the server offers
+    /// it, else pick one it offers. Returns the note to show.
     mutating func apply(_ catalog: SpeechCatalog) -> FormNote? {
         if let error = catalog.error { return FormNote(text: error, isError: true) }
         models = catalog.models
@@ -81,59 +75,30 @@ struct SpeechSettingsForm: Equatable, KeySourceEditing {
         if !models.isEmpty, !models.contains(model) {
             model = models.first { $0.lowercased().contains("kokoro") } ?? models[0]
         }
-        if !serverVoices.isEmpty {
-            let kokoro = serverHasKokoroVoices
-            for (i, role) in SpeechRole.allCases.enumerated() {
-                let current = voices[role]
-                if current.isEmpty ? !kokoro : !serverVoices.contains(current) {
-                    // A Kokoro server can take the cast's voices as they are;
-                    // any other gets a distinct server voice per role.
-                    voices[role] = kokoro ? "" : serverVoices[i % serverVoices.count]
-                }
-            }
+        // Each paper's cast picks Kokoro voices, sent to the server as they are.
+        if !serverVoices.isEmpty, !serverVoices.contains(where: { KokoroSpeech.allVoices.contains($0) }) {
+            return FormNote(text: Self.notKokoroVoices, isError: true)
         }
         return Self.note(models: models.count, voices: serverVoices.count)
     }
 
+    static let notKokoroVoices = "This server doesn't list Kokoro's voices (like af_heart). "
+        + "The cast's voices are sent by name, so set the server's speech engine to Kokoro."
+
     static func note(models: Int, voices: Int) -> FormNote {
-        switch (models, voices) {
-        case (0, 0):
-            return FormNote(text: "The server didn't list models or voices. Type the model name; "
-                + "each paper's Kokoro voices are sent as they are.", isError: false)
-        case (_, 0):
-            return FormNote(text: "Found \(LibraryPresentation.count(models, "model", "models")). The server didn't list voices, "
-                + "so each paper's Kokoro voices are sent as they are.", isError: false)
-        case (0, _):
-            return FormNote(text: "Found \(LibraryPresentation.count(voices, "voice", "voices")). Type the model name.", isError: false)
-        default:
-            return FormNote(text: "Found \(LibraryPresentation.count(models, "model", "models")) and \(LibraryPresentation.count(voices, "voice", "voices")).", isError: false)
+        let found = [models > 0 ? LibraryPresentation.count(models, "model", "models") : nil,
+                     voices > 0 ? LibraryPresentation.count(voices, "voice", "voices") : nil].compactMap { $0 }
+        guard !found.isEmpty else {
+            return FormNote(text: "The server didn't list models or voices. Type the model name.", isError: false)
         }
+        let more = models == 0 ? " Type the model name." : ""
+        return FormNote(text: "Found \(found.joined(separator: " and ")).\(more)", isError: false)
     }
 
-    /// Choices for a role's picker: the cast's own Kokoro voice (when the
-    /// server has Kokoro voices), then every server voice.
-    func voiceOptions(for role: SpeechRole) -> [(id: String, label: String)] {
-        let own = serverHasKokoroVoices ? [("", Self.ownVoiceLabel)] : []
-        var options = own + serverVoices.map { ($0, $0) }
-        let current = voices[role]
-        if !current.isEmpty, !serverVoices.contains(current) { options.insert((current, current), at: 0) }
-        return options
-    }
-
-    /// Pickers once the server has listed voices; text fields otherwise.
-    var showsVoicePickers: Bool { !serverVoices.isEmpty }
     var showsModelPicker: Bool { !models.isEmpty }
 
-    static let ownVoiceLabel = "The cast's Kokoro voice"
-
-    static func roleLabel(_ role: SpeechRole) -> String {
-        switch role {
-        case .hostFemale: return "Female host (Heart)"
-        case .hostMale: return "Male host (Michael)"
-        case .guestFemale: return "Female guests"
-        case .guestMale: return "Male guests"
-        }
-    }
+    /// Stepper text, e.g. "4 at a time".
+    var parallelLabel: String { "\(parallelRequests) at a time" }
 
     static func engineTitle(_ engine: SpeechSettings.Engine) -> String {
         switch engine {
@@ -145,15 +110,14 @@ struct SpeechSettingsForm: Equatable, KeySourceEditing {
     static func engineDescription(_ engine: SpeechSettings.Engine) -> String {
         switch engine {
         case .local: return "Kokoro voices, synthesized on \(Device.this). Downloads the model once and uses about half a gigabyte of memory while voicing."
-        case .remote: return "An OpenAI-compatible text-to-speech server, such as Open WebUI or Kokoro-FastAPI. Nothing is loaded on \(Device.this)."
+        case .remote: return "An OpenAI-compatible text-to-speech server running Kokoro, such as Open WebUI or Kokoro-FastAPI. Nothing is loaded on \(Device.this)."
         }
     }
 
     static let urlPlaceholder = "http://localhost:3000/api/v1"
     static let urlHelp = "Papertalk calls /audio/speech under this URL. For Open WebUI, use its address followed by /api/v1."
-    static let voicesHelp = "Papers keep their Kokoro voices. Pick the server voice used for each part of the cast, "
-        + "or leave a field empty to send the Kokoro voice name as it is."
     static let modelPlaceholder = "\(SpeechSettings.fallbackModel) (manual)"
+    static let parallelHelp = "How many sections are sent to the server at once while voicing a paper. More is faster if the server can keep up."
 
     /// Review lines in the setup wizard.
     var summary: [(label: String, value: String)] {

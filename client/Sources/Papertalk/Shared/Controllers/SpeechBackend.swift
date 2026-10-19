@@ -16,6 +16,8 @@ protocol SpeechBackend: Sendable {
     var preparationShare: Double { get }
     /// Whether the first call loads a model here, which makes it slow.
     var loadsModel: Bool { get }
+    /// Turns voiced at once while baking.
+    var parallelRequests: Int { get }
     /// Longest piece of text sent in one call (see `KokoroSpeech.pieces`).
     var maxPieceLength: Int { get }
     /// Get ready for synthesis; reports (fraction 0…1, wording) while it works.
@@ -29,6 +31,16 @@ extension SpeechBackend {
 
     /// A turn split into the pieces this backend takes per call.
     func pieces(of text: String) -> [String] { KokoroSpeech.pieces(of: text, max: maxPieceLength) }
+
+    /// A whole turn as one WAV, its pieces voiced one after another.
+    func speak(_ text: String, voice: String, speed: Float) async throws -> Data {
+        var parts: [Data] = []
+        for piece in pieces(of: text) {
+            try Task.checkCancellation()
+            parts.append(try await synthesize(text: piece, voice: voice, speed: speed))
+        }
+        return KokoroSpeech.joinWAVs(parts)
+    }
 }
 
 /// Kokoro on this machine (Core ML on macOS, ONNX on Linux): the one shared engine.
@@ -36,6 +48,8 @@ struct LocalSpeechBackend: SpeechBackend {
     var preparingMessage: String { "Preparing Kokoro…" }
     var preparationShare: Double { 0.5 }
     var loadsModel: Bool { true }
+    /// One model, one call at a time (see `KokoroEngine`, `AppStore.audioGate`).
+    var parallelRequests: Int { 1 }
     var maxPieceLength: Int { KokoroSpeech.maxPieceLength }
 
     func prepare(progress: @escaping @Sendable (Double, String) -> Void) async throws {
@@ -73,6 +87,7 @@ struct RemoteSpeechBackend: SpeechBackend {
     var preparingMessage: String { "Connecting to the speech server…" }
     var preparationShare: Double { 0 }
     var loadsModel: Bool { false }
+    var parallelRequests: Int { settings.parallelRequests }
     /// Memory isn't ours to save here, and longer pieces mean fewer requests and
     /// smoother intonation; still well under OpenAI's 4,096-character limit.
     var maxPieceLength: Int { 1000 }
@@ -83,7 +98,7 @@ struct RemoteSpeechBackend: SpeechBackend {
 
     func synthesize(text: String, voice: String, speed: Float) async throws -> Data {
         let client = RemoteSpeechClient(settings: settings, apiKey: apiKey)
-        return try SpeechAudio.normalizedWAV(try await client.speech(text: text, voice: settings.serverVoice(for: voice), speed: speed))
+        return try SpeechAudio.normalizedWAV(try await client.speech(text: text, voice: voice, speed: speed))
     }
 }
 

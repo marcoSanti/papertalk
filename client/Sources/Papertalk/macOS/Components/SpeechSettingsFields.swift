@@ -49,14 +49,9 @@ struct SpeechSettingsFields: View {
                 TextField(SpeechSettingsForm.modelPlaceholder, text: $form.model).textFieldStyle(.roundedBorder)
             }
         }
-        Text(SpeechSettingsForm.voicesHelp).font(.caption).foregroundStyle(.secondary)
-        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
-            ForEach(SpeechRole.allCases) { role in
-                GridRow {
-                    Text(SpeechSettingsForm.roleLabel(role)).font(.caption)
-                    voiceField(role)
-                }
-            }
+        field("Requests at a time") {
+            Stepper(form.parallelLabel, value: $form.parallelRequests, in: SpeechSettings.parallelRange)
+            Text(SpeechSettingsForm.parallelHelp).font(.caption2).foregroundStyle(.secondary)
         }
         HStack(spacing: 8) {
             Button(loading ? "Asking the server…" : "Refresh models and voices") { loadCatalog() }
@@ -65,17 +60,6 @@ struct SpeechSettingsFields: View {
         }
         if let note {
             Text(note.text).font(.caption).foregroundStyle(note.isError ? Color.red : Color.secondary)
-        }
-    }
-
-    @ViewBuilder private func voiceField(_ role: SpeechRole) -> some View {
-        if form.showsVoicePickers {
-            Picker("", selection: $form.voices[role]) {
-                ForEach(form.voiceOptions(for: role), id: \.id) { Text($0.label).tag($0.id) }
-            }
-            .labelsHidden()
-        } else {
-            TextField(SpeechSettingsForm.ownVoiceLabel, text: $form.voices[role]).textFieldStyle(.roundedBorder)
         }
     }
 

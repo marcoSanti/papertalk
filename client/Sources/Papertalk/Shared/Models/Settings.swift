@@ -143,64 +143,6 @@ struct LLMSettings: Codable, Equatable {
 
 // MARK: - Where speech is synthesized (persisted locally)
 
-/// The server voice used for each kind of cast voice when synthesis runs on a
-/// remote server. Papers always store Kokoro voice ids; an empty entry sends
-/// that id to the server unchanged (right for a Kokoro server).
-struct SpeechVoiceRoles: Codable, Equatable {
-    var hostFemale = ""
-    var hostMale = ""
-    var guestFemale = ""
-    var guestMale = ""
-
-    init(hostFemale: String = "", hostMale: String = "", guestFemale: String = "", guestMale: String = "") {
-        self.hostFemale = hostFemale
-        self.hostMale = hostMale
-        self.guestFemale = guestFemale
-        self.guestMale = guestMale
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        hostFemale = try c.decodeIfPresent(String.self, forKey: .hostFemale) ?? ""
-        hostMale = try c.decodeIfPresent(String.self, forKey: .hostMale) ?? ""
-        guestFemale = try c.decodeIfPresent(String.self, forKey: .guestFemale) ?? ""
-        guestMale = try c.decodeIfPresent(String.self, forKey: .guestMale) ?? ""
-    }
-
-    subscript(role: SpeechRole) -> String {
-        get {
-            switch role {
-            case .hostFemale: return hostFemale
-            case .hostMale: return hostMale
-            case .guestFemale: return guestFemale
-            case .guestMale: return guestMale
-            }
-        }
-        set {
-            switch role {
-            case .hostFemale: hostFemale = newValue
-            case .hostMale: hostMale = newValue
-            case .guestFemale: guestFemale = newValue
-            case .guestMale: guestMale = newValue
-            }
-        }
-    }
-}
-
-/// Which part of a cast a Kokoro voice plays: the hosts have the signature
-/// voices (Heart / Michael), everyone else is a guest of their voice's gender.
-enum SpeechRole: String, CaseIterable, Identifiable {
-    case hostFemale, hostMale, guestFemale, guestMale
-    var id: String { rawValue }
-
-    init(kokoroVoice voice: String) {
-        if voice == KokoroSpeech.femaleVoice { self = .hostFemale }
-        else if voice == KokoroSpeech.maleVoice { self = .hostMale }
-        else if KokoroSpeech.voiceGender(voice) == "male" { self = .guestMale }
-        else { self = .guestFemale }
-    }
-}
-
 struct SpeechSettings: Codable, Equatable {
     enum Engine: String, Codable, CaseIterable { case local, remote }
     var engine: Engine = .local
@@ -211,19 +153,24 @@ struct SpeechSettings: Codable, Equatable {
     /// Env var whose value is the key; when set, `apiKey` is ignored (as for the LLM).
     var keyEnv = ""
     var model = ""
-    var voices = SpeechVoiceRoles()
+    /// Speech requests sent at once while voicing a paper (remote only; Kokoro
+    /// on this machine always takes one call at a time).
+    var parallelRequests = SpeechSettings.defaultParallelRequests
+
+    static let defaultParallelRequests = 4
+    static let parallelRange = 1...16
 
     /// Sent when no model is chosen: OpenAI, Kokoro-FastAPI and Open WebUI all accept it.
     static let fallbackModel = "tts-1"
 
     init(engine: Engine = .local, baseUrl: String = "", apiKey: String = "", keyEnv: String = "", model: String = "",
-         voices: SpeechVoiceRoles = SpeechVoiceRoles()) {
+         parallelRequests: Int = SpeechSettings.defaultParallelRequests) {
         self.engine = engine
         self.baseUrl = baseUrl
         self.apiKey = apiKey
         self.keyEnv = keyEnv
         self.model = model
-        self.voices = voices
+        self.parallelRequests = Self.clampParallel(parallelRequests)
     }
 
     // Tolerant: a field added later must not make saved settings unreadable.
@@ -234,7 +181,7 @@ struct SpeechSettings: Codable, Equatable {
         apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
         keyEnv = try c.decodeIfPresent(String.self, forKey: .keyEnv) ?? ""
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? ""
-        voices = try c.decodeIfPresent(SpeechVoiceRoles.self, forKey: .voices) ?? SpeechVoiceRoles()
+        parallelRequests = Self.clampParallel((try? c.decodeIfPresent(Int.self, forKey: .parallelRequests)) ?? Self.defaultParallelRequests)
     }
 
     /// The key to send: the env var's value when one is chosen (or the Keychain
@@ -252,11 +199,7 @@ struct SpeechSettings: Codable, Equatable {
         KeychainStore.set(v, account: keyEnv)
     }
 
-    /// The server voice for a cast's Kokoro voice.
-    func serverVoice(for kokoroVoice: String) -> String {
-        let chosen = voices[SpeechRole(kokoroVoice: kokoroVoice)].trimmingCharacters(in: .whitespaces)
-        return chosen.isEmpty ? kokoroVoice : chosen
-    }
+    static func clampParallel(_ n: Int) -> Int { min(max(n, parallelRange.lowerBound), parallelRange.upperBound) }
 
     /// The backend these settings ask for. The one place a backend is chosen.
     func makeBackend() -> any SpeechBackend {

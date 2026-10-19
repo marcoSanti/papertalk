@@ -214,8 +214,10 @@ Still to do, in order:
   one). `LocalSpeechBackend` wraps `KokoroEngine.shared`; `RemoteSpeechBackend` calls an
   OpenAI-compatible `/audio/speech` and never touches Core ML. Whatever a backend returns goes
   through `SpeechAudio.normalizedWAV`, so stored turns are always 24 kHz mono 16-bit WAV with a
-  44-byte header (`wavDuration` and `joinWAVs` assume it). Tests pass a fake backend to
-  `AppStore(storage:speech:)`.
+  44-byte header (`wavDuration` and `joinWAVs` assume it). `bakeAudio` voices up to
+  `backend.parallelRequests` turns at once (always 1 for local Kokoro; the user's setting on a
+  server) and writes each turn as it finishes, so resuming still works. Remote voices are the
+  cast's Kokoro ids, sent as they are. Tests pass a fake backend to `AppStore(storage:speech:)`.
 - **Use `KokoroEngine.shared` for all local synthesis.** Never create another `KokoroAneManager`: two
   model copies on the Neural Engine, or overlapping calls into one (actors are re-entrant across
   `await`), fail with "unable to compute the asynchronous prediction".

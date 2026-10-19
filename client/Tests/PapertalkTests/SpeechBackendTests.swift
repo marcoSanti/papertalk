@@ -10,9 +10,21 @@ import XCTest
 final class FakeSpeechBackend: SpeechBackend, @unchecked Sendable {
     private let lock = NSLock()
     private var _calls: [(text: String, voice: String)] = []
+    private var inFlight = 0, _mostInFlight = 0
     var calls: [(text: String, voice: String)] { lock.withLock { _calls } }
+    /// The most calls that were running at the same moment.
+    var mostInFlight: Int { lock.withLock { _mostInFlight } }
     let seconds: Double
-    init(seconds: Double = 0.5) { self.seconds = seconds }
+    let parallelRequests: Int
+    let delay: UInt64
+    /// Text that makes a call fail, to follow error handling.
+    let failOn: String?
+    init(seconds: Double = 0.5, parallel: Int = 1, delayMs: UInt64 = 0, failOn: String? = nil) {
+        self.seconds = seconds
+        parallelRequests = parallel
+        delay = delayMs * 1_000_000
+        self.failOn = failOn
+    }
 
     var preparingMessage: String { "Fake preparing" }
     var preparationShare: Double { 0 }
@@ -20,9 +32,20 @@ final class FakeSpeechBackend: SpeechBackend, @unchecked Sendable {
     var maxPieceLength: Int { 40 }
     func prepare(progress: @escaping @Sendable (Double, String) -> Void) async throws {}
     func synthesize(text: String, voice: String, speed: Float) async throws -> Data {
-        lock.withLock { _calls.append((text, voice)) }
+        lock.withLock { _calls.append((text, voice)); inFlight += 1; _mostInFlight = max(_mostInFlight, inFlight) }
+        defer { lock.withLock { inFlight -= 1 } }
+        if delay > 0 { try await Task.sleep(nanoseconds: delay) }
+        if text == failOn { throw RemoteSpeechError.http(500, "boom") }
         return Fixtures.silentWAV(seconds: seconds)
     }
+}
+
+/// Values collected from concurrent mock requests.
+final class Collected<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [T] = []
+    func add(_ item: T) { lock.withLock { items.append(item) } }
+    var all: [T] { lock.withLock { items } }
 }
 
 /// A WAV in any layout, for the normalizer.
@@ -102,10 +125,13 @@ final class SpeechSettingsTests: PapertalkTestCase {
     func testDecodingIsTolerant() throws {
         let empty = try JSONDecoder().decode(SpeechSettings.self, from: Data("{}".utf8))
         XCTAssertEqual(empty, SpeechSettings())
-        let future = try JSONDecoder().decode(SpeechSettings.self, from: Data(#"{"engine":"cloud","baseUrl":"http://x","voices":{"hostMale":"onyx"}}"#.utf8))
+        // Settings saved by an earlier build (role voices) or a later one (unknown engine).
+        let future = try JSONDecoder().decode(SpeechSettings.self, from: Data(#"{"engine":"cloud","baseUrl":"http://x","voices":{"hostMale":"onyx"},"parallelRequests":99}"#.utf8))
         XCTAssertEqual(future.engine, .local)
         XCTAssertEqual(future.baseUrl, "http://x")
-        XCTAssertEqual(future.voices, SpeechVoiceRoles(hostMale: "onyx"))
+        XCTAssertEqual(future.parallelRequests, SpeechSettings.parallelRange.upperBound)
+        XCTAssertEqual(empty.parallelRequests, SpeechSettings.defaultParallelRequests)
+        XCTAssertEqual(SpeechSettings(parallelRequests: 0).parallelRequests, 1)
         XCTAssertEqual(future.keyEnv, "")
     }
 
@@ -124,19 +150,6 @@ final class SpeechSettingsTests: PapertalkTestCase {
         XCTAssertEqual(try JSONDecoder().decode(SpeechSettings.self, from: data).baseUrl, remote.baseUrl)
     }
 
-    func testRolesFollowTheCastsKokoroVoices() {
-        XCTAssertEqual(SpeechRole(kokoroVoice: "af_heart"), .hostFemale)
-        XCTAssertEqual(SpeechRole(kokoroVoice: "am_michael"), .hostMale)
-        XCTAssertEqual(SpeechRole(kokoroVoice: "bm_george"), .guestMale)
-        XCTAssertEqual(SpeechRole(kokoroVoice: "af_bella"), .guestFemale)
-        var s = remote
-        s.voices = SpeechVoiceRoles(hostFemale: "nova", hostMale: " ", guestMale: "onyx")
-        XCTAssertEqual(s.serverVoice(for: "af_heart"), "nova")
-        XCTAssertEqual(s.serverVoice(for: "am_michael"), "am_michael")   // empty: sent as is
-        XCTAssertEqual(s.serverVoice(for: "bm_george"), "onyx")
-        XCTAssertEqual(s.serverVoice(for: "af_bella"), "af_bella")
-    }
-
     func testSettingsPickTheBackend() {
         XCTAssertTrue(SpeechSettings().makeBackend() is LocalSpeechBackend)
         let backend = remote.makeBackend()
@@ -145,6 +158,8 @@ final class SpeechSettingsTests: PapertalkTestCase {
         XCTAssertEqual(LocalSpeechBackend().maxPieceLength, KokoroSpeech.maxPieceLength)
         XCTAssertEqual(LocalSpeechBackend().preparationShare, 0.5)
         XCTAssertEqual(backend.preparationShare, 0)
+        XCTAssertEqual(LocalSpeechBackend().parallelRequests, 1)   // one Kokoro call at a time
+        XCTAssertEqual(SpeechSettings(engine: .remote, baseUrl: "http://x", parallelRequests: 6).makeBackend().parallelRequests, 6)
         XCTAssertGreaterThan(backend.maxPieceLength, KokoroSpeech.maxPieceLength)
         XCTAssertEqual(backend.pieces(of: String(repeating: "Word word. ", count: 50)).count, 1)
     }
@@ -302,18 +317,16 @@ final class RemoteSpeechClientTests: PapertalkTestCase {
         catch { XCTAssertEqual(error as? RemoteSpeechError, .unreachable("http://tts.test/api/v1")) }
     }
 
-    func testBackendMapsVoicesAndNormalizesTheAudio() async throws {
+    func testBackendSendsTheCastsVoiceAndNormalizesTheAudio() async throws {
         var sent: [[String: Any]] = []
         MockLLM.install { req in
             sent.append(body(req))
             return (200, wav(rate: 48_000, channels: 2, bits: 16, frames: 24_000))
         }
-        var settings = remote
-        settings.voices = SpeechVoiceRoles(hostFemale: "nova")
-        let out = try await RemoteSpeechBackend(settings: settings).synthesize(text: "Hi.", voice: "af_heart", speed: 0.95)
+        let out = try await RemoteSpeechBackend(settings: remote).synthesize(text: "Hi.", voice: "bf_emma", speed: 0.95)
         XCTAssertTrue(try SpeechAudio.parseWAV(out).isCanonical)
         XCTAssertEqual(KokoroSpeech.wavDuration(out), 0.5, accuracy: 0.01)
-        XCTAssertEqual(sent.first?["voice"] as? String, "nova")
+        XCTAssertEqual(sent.first?["voice"] as? String, "bf_emma")
         XCTAssertEqual(sent.first?["input"] as? String, "Hi.")
     }
 
@@ -345,10 +358,11 @@ final class SpeechSettingsFormTests: PapertalkTestCase {
         f.keySource = .manual
         f.manualKey = " sk "
         f.model = " tts-1 "
-        f.voices.guestMale = " onyx "
+        f.parallelRequests = 8
+        XCTAssertEqual(f.parallelLabel, "8 at a time")
         XCTAssertTrue(f.canFetchCatalog)
         XCTAssertEqual(f.settings, SpeechSettings(engine: .remote, baseUrl: "http://tts.test/api/v1", apiKey: "sk",
-                                                  model: "tts-1", voices: SpeechVoiceRoles(guestMale: "onyx")))
+                                                  model: "tts-1", parallelRequests: 8))
         f.engine = .local
         XCTAssertEqual(f.settings.engine, .local)
         XCTAssertEqual(f.settings.baseUrl, "http://tts.test/api/v1")
@@ -392,41 +406,30 @@ final class SpeechSettingsFormTests: PapertalkTestCase {
         XCTAssertEqual(Set(auth), ["Bearer sk-typed"])
     }
 
-    func testKokoroServerKeepsTheCastsVoices() {
+    func testApplyingTheCatalog() {
         var f = SpeechSettingsForm(remote)
-        f.voices.hostMale = "gone"
+        f.model = "gone"
         let note = f.apply(SpeechCatalog(models: ["tts-1", "kokoro"], voices: ["af_heart", "am_michael", "bf_emma"]))
         XCTAssertEqual(note, FormNote(text: "Found 2 models and 3 voices.", isError: false))
         XCTAssertEqual(f.model, "kokoro")
-        XCTAssertTrue(f.serverHasKokoroVoices)
-        XCTAssertEqual(f.voices, SpeechVoiceRoles())   // all sent as the cast's own
-        XCTAssertEqual(f.voiceOptions(for: .hostFemale).map(\.id), ["", "af_heart", "am_michael", "bf_emma"])
-        XCTAssertEqual(f.voiceOptions(for: .hostFemale).first?.label, SpeechSettingsForm.ownVoiceLabel)
-        XCTAssertTrue(f.showsVoicePickers)
         XCTAssertTrue(f.showsModelPicker)
+        f.model = "tts-1"
+        _ = f.apply(SpeechCatalog(models: ["tts-1", "kokoro"]))
+        XCTAssertEqual(f.model, "tts-1")   // still offered: kept
     }
 
-    func testOtherServersGetADistinctVoicePerRole() {
+    func testWarnsWhenTheServerHasNoKokoroVoices() {
         var f = SpeechSettingsForm(remote)
-        f.model = "tts-1-hd"
-        f.voices.guestFemale = "shimmer"
-        _ = f.apply(SpeechCatalog(models: ["tts-1", "tts-1-hd"], voices: ["alloy", "echo", "nova", "shimmer"]))
-        XCTAssertEqual(f.model, "tts-1-hd")   // still offered: kept
-        XCTAssertEqual(f.voices, SpeechVoiceRoles(hostFemale: "alloy", hostMale: "echo", guestFemale: "shimmer", guestMale: "shimmer"))
-        XCTAssertEqual(f.voiceOptions(for: .hostMale).map(\.id), ["alloy", "echo", "nova", "shimmer"])
-        f.voices.hostMale = "typed"
-        XCTAssertEqual(f.voiceOptions(for: .hostMale).first?.id, "typed")   // a value not on the list stays visible
+        XCTAssertEqual(f.apply(SpeechCatalog(models: ["tts-1"], voices: ["alloy", "nova"])),
+                       FormNote(text: SpeechSettingsForm.notKokoroVoices, isError: true))
     }
 
     func testNotesWhenTheServerListsLittle() {
         var f = SpeechSettingsForm(remote)
-        XCTAssertEqual(f.apply(SpeechCatalog())?.text,
-                       "The server didn't list models or voices. Type the model name; each paper's Kokoro voices are sent as they are.")
+        XCTAssertEqual(f.apply(SpeechCatalog())?.text, "The server didn't list models or voices. Type the model name.")
         XCTAssertEqual(f.model, "kokoro")
-        XCTAssertFalse(f.showsVoicePickers)
         XCTAssertFalse(f.showsModelPicker)
-        XCTAssertEqual(SpeechSettingsForm.note(models: 1, voices: 0).text,
-                       "Found 1 model. The server didn't list voices, so each paper's Kokoro voices are sent as they are.")
+        XCTAssertEqual(SpeechSettingsForm.note(models: 1, voices: 0).text, "Found 1 model.")
         XCTAssertEqual(SpeechSettingsForm.note(models: 0, voices: 2).text, "Found 2 voices. Type the model name.")
         let failed = f.apply(SpeechCatalog(error: "Couldn't reach it."))
         XCTAssertEqual(failed, FormNote(text: "Couldn't reach it.", isError: true))
@@ -457,8 +460,6 @@ final class SpeechSettingsFormTests: PapertalkTestCase {
         XCTAssertEqual(SpeechSettingsForm(remote).summary.map(\.value), ["http://tts.test/api/v1", "kokoro"])
         XCTAssertEqual(SpeechSettingsForm(SpeechSettings(engine: .remote)).summary.map(\.value),
                        ["Speech server (no URL)", SpeechSettings.fallbackModel])
-        XCTAssertEqual(SpeechRole.allCases.map(SpeechSettingsForm.roleLabel),
-                       ["Female host (Heart)", "Male host (Michael)", "Female guests", "Male guests"])
         XCTAssertEqual(SpeechSettingsForm.engineTitle(.remote), "Speech server")
         XCTAssertTrue(SpeechSettingsForm.engineDescription(.local).contains("Kokoro"))
         XCTAssertTrue(SpeechSettingsForm.engineDescription(.remote).contains("Open WebUI"))
@@ -483,10 +484,11 @@ final class SpeechBackendStoreTests: PapertalkTestCase {
     }
 
     /// A finished script without audio, loaded by the store's startup scan.
-    private func storeWithScript(_ backend: any SpeechBackend) async -> (AppStore, String) {
+    private func storeWithScript(_ backend: any SpeechBackend,
+                                 turns: [(String, String)] = [("Ada", "Hello and welcome."), ("Bob", "Thanks for having me.")]) async -> (AppStore, String) {
         let p = Fixtures.paper(hasScript: true, hasAudio: false)
         await storage.save(p, K.paper(p.id))
-        await storage.save(Fixtures.transcript([("Ada", "Hello and welcome."), ("Bob", "Thanks for having me.")]), K.transcript(p.id))
+        await storage.save(Fixtures.transcript(turns), K.transcript(p.id))
         let store = AppStore(storage: storage, speech: backend)
         await waitUntil { store.papers[p.id] != nil }
         return (store, p.id)
@@ -512,18 +514,16 @@ final class SpeechBackendStoreTests: PapertalkTestCase {
     }
 
     func testRegeneratingAudioOnASpeechServer() async throws {
-        var voices: [String] = []
+        let voices = Collected<String>()
         MockLLM.install { req in
             guard req.url?.path == "/api/v1/audio/speech" else { return (404, Data()) }
-            voices.append(body(req)["voice"] as? String ?? "")
+            voices.add(body(req)["voice"] as? String ?? "")
             return (200, wav(rate: 48_000, channels: 2, bits: 16, frames: 48_000))
         }
-        var settings = remote
-        settings.voices = SpeechVoiceRoles(hostFemale: "nova", guestFemale: "shimmer")
-        let (store, id) = await storeWithScript(settings.makeBackend())
+        let (store, id) = await storeWithScript(remote.makeBackend())
         store.regenerateAudio(id)
         await waitUntil { store.papers[id]?.hasAudio == true }
-        XCTAssertEqual(voices, ["nova", "shimmer"])
+        XCTAssertEqual(voices.all.sorted(), ["af_bella", "af_heart"])   // the cast's own voices
         let turn = try await storage.read(K.turn(id, 0))
         XCTAssertTrue(try SpeechAudio.parseWAV(turn).isCanonical)
         XCTAssertEqual(KokoroSpeech.wavDuration(turn), 1.0, accuracy: 0.01)
@@ -536,6 +536,43 @@ final class SpeechBackendStoreTests: PapertalkTestCase {
         await waitUntil { store.papers[id]?.state == "error" }
         XCTAssertEqual(store.papers[id]?.hasAudio, false)
         XCTAssertTrue(store.papers[id]?.statusError?.contains("rejected the API key") == true)
+    }
+
+    /// A long script voiced several turns at a time: every turn lands in its
+    /// own slot, in order, and never more calls run than the backend allows.
+    func testParallelBakeKeepsTurnsInOrder() async throws {
+        let fake = FakeSpeechBackend(parallel: 3, delayMs: 30)
+        let turns = (0..<10).map { i in (i % 2 == 0 ? "Ada" : "Bob", "Turn \(i).") }
+        let (store, id) = await storeWithScript(fake, turns: turns)
+        store.regenerateAudio(id)
+        await waitUntil(timeout: 5) { store.papers[id]?.hasAudio == true }
+        XCTAssertEqual(fake.calls.count, 10)
+        XCTAssertEqual(fake.mostInFlight, 3)
+        let manifest = await storage.exists(AudioManifest.self, K.audioManifest(id))
+        XCTAssertEqual(manifest?.durations.count, 10)
+        for i in 0..<10 { _ = try await storage.read(K.turn(id, i)) }
+    }
+
+    func testLocalBakeRunsOneAtATime() async {
+        let fake = FakeSpeechBackend(parallel: 1, delayMs: 10)
+        let (store, id) = await storeWithScript(fake, turns: (0..<5).map { ("Ada", "Turn \($0).") })
+        store.regenerateAudio(id)
+        await waitUntil { store.papers[id]?.hasAudio == true }
+        XCTAssertEqual(fake.mostInFlight, 1)
+    }
+
+    /// A failure keeps the finished turns and says where voicing will continue.
+    func testParallelBakeFailureResumes() async throws {
+        let fake = FakeSpeechBackend(parallel: 4, failOn: "Turn 5.")
+        let (store, id) = await storeWithScript(fake, turns: (0..<8).map { ("Ada", "Turn \($0).") })
+        store.regenerateAudio(id)
+        await waitUntil { store.papers[id]?.state == "error" }
+        XCTAssertTrue(store.papers[id]?.statusError?.hasPrefix("Voicing stopped at section 6 of 8") == true,
+                      store.papers[id]?.statusError ?? "")
+        var kept = 0
+        for i in 0..<8 where (try? await storage.read(K.turn(id, i))) != nil { kept += 1 }
+        XCTAssertGreaterThan(kept, 0)   // turns voiced before the failure stay on disk
+        XCTAssertLessThan(kept, 8)
     }
 
     func testOnlyLocalSamplesWaitForAModel() async {

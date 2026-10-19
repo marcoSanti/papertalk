@@ -669,3 +669,81 @@ final class PaceAndSampleTests: PapertalkTestCase {
         XCTAssertFalse(VoiceSamplePresentation.tapStops(nil))
     }
 }
+
+/// What Control Center's Now Playing is told, and when it's worth telling it.
+final class NowPlayingPresentationTests: PapertalkTestCase {
+    private func info(elapsed: Double = 10, advancing: Bool = true, duration: Double = 600) -> NowPlayingInfo {
+        NowPlayingInfo(paperId: "p", title: "T", artist: nil, duration: duration, elapsed: elapsed, isAdvancing: advancing)
+    }
+
+    func testInfoNeedsALoadedEpisode() {
+        let p = Fixtures.paper(title: "Attention")
+        XCTAssertNil(NowPlayingPresentation.info(paper: nil, turnCount: 3, isPlaying: true, isBuffering: false,
+                                                 currentTime: 1, duration: 10))
+        XCTAssertNil(NowPlayingPresentation.info(paper: p, turnCount: 0, isPlaying: false, isBuffering: false,
+                                                 currentTime: 0, duration: 0))
+    }
+
+    func testInfoFromPaper() {
+        let p = Fixtures.paper(title: "Attention", authors: ["A", "B", "C", "D"])
+        let i = NowPlayingPresentation.info(paper: p, turnCount: 3, isPlaying: true, isBuffering: false,
+                                            currentTime: 12, duration: 300)
+        XCTAssertEqual(i, NowPlayingInfo(paperId: p.id, title: "Attention", artist: "A, B, C et al.",
+                                         duration: 300, elapsed: 12, isAdvancing: true))
+        let untitled = Fixtures.paper(title: nil, filename: "x.pdf")
+        let u = NowPlayingPresentation.info(paper: untitled, turnCount: 1, isPlaying: false, isBuffering: false,
+                                            currentTime: 400, duration: 300)
+        XCTAssertEqual(u?.title, "x.pdf")
+        XCTAssertNil(u?.artist)
+        XCTAssertEqual(u?.elapsed, 300, "elapsed stays inside the episode")
+        XCTAssertEqual(u?.isAdvancing, false)
+    }
+
+    func testBufferingIsNotAdvancing() {
+        let i = NowPlayingPresentation.info(paper: Fixtures.paper(), turnCount: 3, isPlaying: true, isBuffering: true,
+                                            currentTime: 5, duration: 50)
+        XCTAssertEqual(i?.isAdvancing, false)
+    }
+
+    func testNeedsPublishOnLoadAndClear() {
+        XCTAssertFalse(NowPlayingPresentation.needsPublish(nil, after: nil, secondsSince: 5))
+        XCTAssertTrue(NowPlayingPresentation.needsPublish(info(), after: nil, secondsSince: 0))
+        XCTAssertTrue(NowPlayingPresentation.needsPublish(nil, after: info(), secondsSince: 0))
+    }
+
+    func testNeedsPublishIgnoresSteadyPlayback() {
+        XCTAssertFalse(NowPlayingPresentation.needsPublish(info(elapsed: 14.8), after: info(elapsed: 10), secondsSince: 5))
+        XCTAssertFalse(NowPlayingPresentation.needsPublish(info(elapsed: 10, advancing: false),
+                                                           after: info(elapsed: 10, advancing: false), secondsSince: 30))
+    }
+
+    func testNeedsPublishOnSeekPauseAndEdits() {
+        XCTAssertTrue(NowPlayingPresentation.needsPublish(info(elapsed: 100), after: info(elapsed: 10), secondsSince: 1),
+                      "a seek forward")
+        XCTAssertTrue(NowPlayingPresentation.needsPublish(info(elapsed: 0), after: info(elapsed: 10), secondsSince: 1),
+                      "a skip back")
+        XCTAssertTrue(NowPlayingPresentation.needsPublish(info(elapsed: 15, advancing: false),
+                                                          after: info(elapsed: 10, advancing: false), secondsSince: 1),
+                      "a seek while paused")
+        XCTAssertTrue(NowPlayingPresentation.needsPublish(info(advancing: false), after: info(), secondsSince: 0))
+        XCTAssertTrue(NowPlayingPresentation.needsPublish(info(duration: 700), after: info(), secondsSince: 0),
+                      "a live render growing the episode")
+        var renamed = info(); renamed.title = "New"
+        XCTAssertTrue(NowPlayingPresentation.needsPublish(renamed, after: info(), secondsSince: 0))
+    }
+
+    func testSkipTargetStaysInside() {
+        XCTAssertEqual(NowPlayingPresentation.skipTarget(from: 10, by: 15, duration: 100), 25)
+        XCTAssertEqual(NowPlayingPresentation.skipTarget(from: 10, by: -15, duration: 100), 0)
+        XCTAssertEqual(NowPlayingPresentation.skipTarget(from: 95, by: 15, duration: 100), 100)
+    }
+
+    func testPlayPauseCommands() {
+        XCTAssertTrue(NowPlayingPresentation.shouldToggle(.play, isPlaying: false))
+        XCTAssertFalse(NowPlayingPresentation.shouldToggle(.play, isPlaying: true))
+        XCTAssertTrue(NowPlayingPresentation.shouldToggle(.pause, isPlaying: true))
+        XCTAssertFalse(NowPlayingPresentation.shouldToggle(.pause, isPlaying: false))
+        XCTAssertTrue(NowPlayingPresentation.shouldToggle(.toggle, isPlaying: true))
+        XCTAssertTrue(NowPlayingPresentation.shouldToggle(.toggle, isPlaying: false))
+    }
+}

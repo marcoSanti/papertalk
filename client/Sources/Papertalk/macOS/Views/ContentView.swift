@@ -91,6 +91,7 @@ struct ContentView: View {
         .animation(.spring(duration: 0.35), value: store.toast)
         .onAppear {
             store.trackPlayback()
+            NowPlaying.shared.attach(to: store)
         }
     }
 

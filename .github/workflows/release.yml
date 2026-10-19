@@ -134,9 +134,13 @@ jobs:
             echo "The app is only ad-hoc signed, so the first time macOS may refuse to open it:"
             echo "right-click the app and choose **Open**."
             echo
-            echo "On Linux, download \`Papertalk-${VERSION}-x86_64.AppImage\`, make it executable"
-            echo "(\`chmod +x\`) and run it. It needs a desktop with GTK 4 (Ubuntu 22.04+, Fedora 36+ and alike)."
-            echo
+            # No AppImage while the Linux job is off (see the linux job below).
+            LINUX_BUILDS=false
+            if [ "$LINUX_BUILDS" = true ]; then
+              echo "On Linux, download \`Papertalk-${VERSION}-x86_64.AppImage\`, make it executable"
+              echo "(\`chmod +x\`) and run it. It needs a desktop with GTK 4 (Ubuntu 22.04+, Fedora 36+ and alike)."
+              echo
+            fi
             echo "\`Papertalk-${VERSION}-source.tar.gz\` is the source code this build was made from."
             echo
             echo "> This app is vibecoded. I had the need not the time. bugs are expected and help is appreciated"
@@ -180,6 +184,9 @@ jobs:
     # made: the Linux tests, the AppImage (official icon for stable releases,
     # DEV ribbon for dev builds), a smoke test on plain Ubuntu, then upload.
     needs: release
+    # Temporarily off, with the Linux job in tests.yml. Delete this line (and the
+    # LINUX_BUILDS guard in the release notes) to publish the AppImage again.
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

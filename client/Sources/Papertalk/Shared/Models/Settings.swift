@@ -141,6 +141,142 @@ struct LLMSettings: Codable, Equatable {
     }
 }
 
+// MARK: - Where speech is synthesized (persisted locally)
+
+/// The server voice used for each kind of cast voice when synthesis runs on a
+/// remote server. Papers always store Kokoro voice ids; an empty entry sends
+/// that id to the server unchanged (right for a Kokoro server).
+struct SpeechVoiceRoles: Codable, Equatable {
+    var hostFemale = ""
+    var hostMale = ""
+    var guestFemale = ""
+    var guestMale = ""
+
+    init(hostFemale: String = "", hostMale: String = "", guestFemale: String = "", guestMale: String = "") {
+        self.hostFemale = hostFemale
+        self.hostMale = hostMale
+        self.guestFemale = guestFemale
+        self.guestMale = guestMale
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hostFemale = try c.decodeIfPresent(String.self, forKey: .hostFemale) ?? ""
+        hostMale = try c.decodeIfPresent(String.self, forKey: .hostMale) ?? ""
+        guestFemale = try c.decodeIfPresent(String.self, forKey: .guestFemale) ?? ""
+        guestMale = try c.decodeIfPresent(String.self, forKey: .guestMale) ?? ""
+    }
+
+    subscript(role: SpeechRole) -> String {
+        get {
+            switch role {
+            case .hostFemale: return hostFemale
+            case .hostMale: return hostMale
+            case .guestFemale: return guestFemale
+            case .guestMale: return guestMale
+            }
+        }
+        set {
+            switch role {
+            case .hostFemale: hostFemale = newValue
+            case .hostMale: hostMale = newValue
+            case .guestFemale: guestFemale = newValue
+            case .guestMale: guestMale = newValue
+            }
+        }
+    }
+}
+
+/// Which part of a cast a Kokoro voice plays: the hosts have the signature
+/// voices (Heart / Michael), everyone else is a guest of their voice's gender.
+enum SpeechRole: String, CaseIterable, Identifiable {
+    case hostFemale, hostMale, guestFemale, guestMale
+    var id: String { rawValue }
+
+    init(kokoroVoice voice: String) {
+        if voice == KokoroSpeech.femaleVoice { self = .hostFemale }
+        else if voice == KokoroSpeech.maleVoice { self = .hostMale }
+        else if KokoroSpeech.voiceGender(voice) == "male" { self = .guestMale }
+        else { self = .guestFemale }
+    }
+}
+
+struct SpeechSettings: Codable, Equatable {
+    enum Engine: String, Codable, CaseIterable { case local, remote }
+    var engine: Engine = .local
+    /// OpenAI-compatible base URL; `/audio/speech` is appended.
+    var baseUrl = ""
+    /// Kept in the Keychain only; never written to user defaults.
+    var apiKey = ""
+    var model = ""
+    var voices = SpeechVoiceRoles()
+
+    /// Sent when no model is chosen: OpenAI, Kokoro-FastAPI and Open WebUI all accept it.
+    static let fallbackModel = "tts-1"
+
+    init(engine: Engine = .local, baseUrl: String = "", apiKey: String = "", model: String = "",
+         voices: SpeechVoiceRoles = SpeechVoiceRoles()) {
+        self.engine = engine
+        self.baseUrl = baseUrl
+        self.apiKey = apiKey
+        self.model = model
+        self.voices = voices
+    }
+
+    // Tolerant: a field added later must not make saved settings unreadable.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        engine = (try? c.decodeIfPresent(Engine.self, forKey: .engine)) ?? .local
+        baseUrl = try c.decodeIfPresent(String.self, forKey: .baseUrl) ?? ""
+        apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        model = try c.decodeIfPresent(String.self, forKey: .model) ?? ""
+        voices = try c.decodeIfPresent(SpeechVoiceRoles.self, forKey: .voices) ?? SpeechVoiceRoles()
+    }
+
+    /// The server voice for a cast's Kokoro voice.
+    func serverVoice(for kokoroVoice: String) -> String {
+        let chosen = voices[SpeechRole(kokoroVoice: kokoroVoice)].trimmingCharacters(in: .whitespaces)
+        return chosen.isEmpty ? kokoroVoice : chosen
+    }
+
+    /// The backend these settings ask for. The one place a backend is chosen.
+    func makeBackend() -> any SpeechBackend {
+        switch engine {
+        case .local: return LocalSpeechBackend()
+        case .remote: return RemoteSpeechBackend(settings: self)
+        }
+    }
+
+    static let typedKeyAccount = "papertalk.speech.apiKey"
+    static let defaultsKey = "papertalk.speech.json"
+
+    static func load() -> SpeechSettings {
+        guard let raw = UserDefaults.standard.string(forKey: defaultsKey),
+              let data = raw.data(using: .utf8),
+              var s = try? JSONDecoder().decode(SpeechSettings.self, from: data) else { return SpeechSettings() }
+        s.apiKey = KeychainStore.get(typedKeyAccount) ?? ""
+        return s
+    }
+
+    /// What goes into user defaults: everything except the key.
+    var persisted: SpeechSettings {
+        var copy = self
+        copy.apiKey = ""
+        return copy
+    }
+
+    func save() {
+        if apiKey.isEmpty {
+            KeychainStore.delete(Self.typedKeyAccount)
+        } else {
+            KeychainStore.set(apiKey, account: Self.typedKeyAccount)
+        }
+        if let data = try? JSONEncoder().encode(persisted) {
+            UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: Self.defaultsKey)
+        }
+    }
+}
+
 // MARK: - Editable LLM prose prompts (persisted locally)
 //
 // Only NON data-format instructions are exposed here. The JSON-reply-context

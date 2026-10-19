@@ -471,6 +471,32 @@ struct LLMSettingsPage: View {
     }
 }
 
+// MARK: - Voices page: where speech is synthesized
+struct VoicesSettingsPage: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var form = SpeechSettingsForm(SpeechSettings())
+    @State private var loaded = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Voices").font(.title3).fontWeight(.semibold)
+                if loaded { SpeechSettingsFields(form: $form) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+        }
+        .onAppear {
+            form = SpeechSettingsForm(store.speech)
+            loaded = true
+        }
+        .onDisappear { store.saveSpeechSettings(form.settings) }
+        .onReceive(NotificationCenter.default.publisher(for: .papertalkSaveSettings)) { _ in
+            store.saveSpeechSettings(form.settings)
+        }
+    }
+}
+
 /// The key fields under the key-source picker (shared by Settings and setup).
 struct KeySourceFields: View {
     @Binding var form: LLMSettingsForm
@@ -653,6 +679,7 @@ struct SettingsView: View {
             NavigationSplitView {
                 List(selection: selectedIndex) {
                     Label("LLM Settings", systemImage: "waveform").tag(0)
+                    Label("Voices", systemImage: "person.wave.2").tag(AppStore.SettingsPage.voices.rawValue)
                     Label("Server Settings", systemImage: "server.rack").tag(1)
                     Label("Query Prompts", systemImage: "quote.bubble").tag(2)
                     Label("Prompt Presets", systemImage: "slider.horizontal.3").tag(3)
@@ -664,6 +691,7 @@ struct SettingsView: View {
                 Group {
                     switch store.settingsPage {
                     case .llm: LLMSettingsPage()
+                    case .voices: VoicesSettingsPage()
                     case .server: ServerSettingsPage()
                     case .prompts: PromptsSettingsPage()
                     case .presets: CustomPresetsPage()

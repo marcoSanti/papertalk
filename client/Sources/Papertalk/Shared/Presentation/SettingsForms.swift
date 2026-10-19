@@ -124,12 +124,13 @@ enum SettingsSheetPresentation {
 
 /// The first-run setup wizard's steps.
 enum SetupStep: Equatable {
-    case storage, llm, review
+    case storage, llm, voices, review
 
     var next: SetupStep? {
         switch self {
         case .storage: return .llm
-        case .llm: return .review
+        case .llm: return .voices
+        case .voices: return .review
         case .review: return nil
         }
     }
@@ -138,7 +139,8 @@ enum SetupStep: Equatable {
         switch self {
         case .storage: return nil
         case .llm: return .storage
-        case .review: return .llm
+        case .voices: return .llm
+        case .review: return .voices
         }
     }
 
@@ -147,8 +149,8 @@ enum SetupStep: Equatable {
 
     var nextTitle: String {
         switch self {
-        case .storage: return "Continue"
-        case .llm: return "Review"
+        case .storage, .llm: return "Continue"
+        case .voices: return "Review"
         case .review: return "Finish"
         }
     }

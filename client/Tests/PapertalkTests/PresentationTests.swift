@@ -548,10 +548,17 @@ final class FormTests: PapertalkTestCase {
 
     func testSetupSteps() {
         XCTAssertEqual(SetupStep.storage.next, .llm)
+        XCTAssertEqual(SetupStep.llm.next, .voices)
+        XCTAssertEqual(SetupStep.voices.next, .review)
         XCTAssertEqual(SetupStep.review.next, nil)
         XCTAssertEqual(SetupStep.llm.previous, .storage)
+        XCTAssertEqual(SetupStep.voices.previous, .llm)
+        XCTAssertEqual(SetupStep.review.previous, .voices)
         XCTAssertNil(SetupStep.storage.previous)
+        XCTAssertTrue(SetupStep.voices.canSkip)
         XCTAssertFalse(SetupStep.review.canSkip)
+        XCTAssertEqual(SetupStep.llm.nextTitle, "Continue")
+        XCTAssertEqual(SetupStep.voices.nextTitle, "Review")
         XCTAssertEqual(SetupStep.review.nextTitle, "Finish")
         XCTAssertEqual(SetupStep.llmSummary(LLMSettings(baseUrl: "", apiKey: "", model: "", keyEnv: "")).map(\.value),
                        ["Not configured (read-through)"])

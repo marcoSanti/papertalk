@@ -79,6 +79,11 @@ final class AppStore: ObservableObject {
         llm.saveResolvedKey()
     }
 
+    /// Save where voices are synthesized (only when it changed).
+    func saveSpeechSettings(_ next: SpeechSettings) {
+        if next != speech { speech = next }
+    }
+
     /// Save the edited LLM prompts (only when they changed).
     func savePrompts(_ next: PromptSettings) {
         if next != prompts { prompts = next }
@@ -106,10 +111,11 @@ final class AppStore: ObservableObject {
     }
 
     /// Setup wizard: save everything and close it.
-    func finishSetup(server: ServerConfig, llm next: LLMSettings) {
+    func finishSetup(server: ServerConfig, llm next: LLMSettings, speech voices: SpeechSettings) {
         config = server
         llm = next
         llm.saveResolvedKey()
+        saveSpeechSettings(voices)
         show("Setup complete")
         markOnboarded()
     }
@@ -187,6 +193,18 @@ final class AppStore: ObservableObject {
     /// LLM endpoint the in-process pipeline uses. Stored locally.
     @Published var llm = LLMSettings.load() { didSet { llm.save() } }
 
+    /// Where voices are synthesized (this machine or a speech server). Stored locally.
+    @Published var speech: SpeechSettings {
+        didSet {
+            speech.save()
+            player.speechBackend = speechBackend
+        }
+    }
+    /// Fixed speech backend for tests, so they never reach Kokoro.
+    private let speechOverride: (any SpeechBackend)?
+    /// The backend every synthesis path uses: baking, live playback, samples.
+    var speechBackend: any SpeechBackend { speechOverride ?? speech.makeBackend() }
+
     /// Editable LLM prose prompts. Stored locally.
     @Published var prompts = PromptSettings.load() { didSet { prompts.save() } }
 
@@ -217,8 +235,9 @@ final class AppStore: ObservableObject {
         logEntries.filter { $0.paperId == id }.map(\.text)
     }
 
+    /// Raw values are remembered between launches: add new pages at the end.
     enum SettingsPage: Int, Identifiable {
-        case llm, server, prompts, presets, clear
+        case llm, server, prompts, presets, clear, voices
         var id: Int { rawValue }
     }
     /// Whether the unified settings sheet is open.
@@ -232,10 +251,14 @@ final class AppStore: ObservableObject {
     enum ViewMode { case all, fav, authors, tag, author }
 
     /// `storage` pins the backend (tests pass a temp-folder `LocalStorage`);
-    /// the app passes nothing and follows the configured server.
-    init(storage: Storage? = nil) {
+    /// the app passes nothing and follows the configured server. `speech`
+    /// likewise pins the speech backend, else the saved settings pick it.
+    init(storage: Storage? = nil, speech backend: (any SpeechBackend)? = nil) {
         storageOverride = storage
-        player = PlayerController()
+        speechOverride = backend
+        let settings = SpeechSettings.load()
+        speech = settings
+        player = PlayerController(speechBackend: backend ?? settings.makeBackend())
         notifier.onOpen = { [weak self] id in self?.reveal(id) }
         Self.migrateDefaults()
         refresh()
@@ -769,12 +792,14 @@ final class AppStore: ObservableObject {
             // 3. API keys in the Keychain (typed key + env-sourced copies).
             //    Voice models are left alone: they have their own button.
             KeychainStore.delete(LLMSettings.typedKeyAccount)
+            KeychainStore.delete(SpeechSettings.typedKeyAccount)
             for env in ["OPENWEBUI_API_KEY", "LLM_API_KEY", "PAPERTALK_API_KEY", llm.keyEnv] where !env.isEmpty {
                 KeychainStore.delete(env)
             }
             // 4. Back to a clean reactive state.
             config = ServerConfig.load()   // save() re-persists env defaults
             llm = LLMSettings.load()
+            speech = SpeechSettings.load()
             prompts = PromptSettings.defaults
             player.voiceSpeed = PlayerController.defaultSpeed
             customPresets = CustomDepthPresets(entries: [])
@@ -888,7 +913,7 @@ final class AppStore: ObservableObject {
 
     // MARK: Audio baking
 
-    /// Render a transcript to per-turn WAVs with Kokoro and store them under
+    /// Render a transcript to per-turn WAVs with the speech backend and store them under
     /// the paper's `turns/` keys. Reports download + per-turn progress across
     /// the given [start, end] band of the unified pipeline bar. Returns nil on
     /// success (hasAudio = true), otherwise a message for the user. Turns already
@@ -903,30 +928,18 @@ final class AppStore: ObservableObject {
         }
         await audioGate.acquire()
         defer { audioGate.release() }
-        updateRec(id) { $0.stage = "audio"; $0.progress = map(0.0); $0.message = "Preparing Kokoro…" }
+        let backend = speechBackend
+        let share = backend.preparationShare
+        updateRec(id) { $0.stage = "audio"; $0.progress = map(0.0); $0.message = backend.preparingMessage }
 
         var current = 0
         do {
-            // Warm the model cache with download progress (single bar). No-op
-            // when models already cached, but still reports journal progress.
-            try await KokoroAneResourceDownloader.ensureModels(variant: .english) { [weak self] p in
-                let phase: String = {
-                    switch p.phase {
-                    case .listing: return "Contacting model server…"
-                    case .downloading: return "Downloading Kokoro model…"
-                    case .compiling: return "Compiling Kokoro model…"
-                    }
-                }()
+            // Local Kokoro downloads its model here, on the first part of the band.
+            try await backend.prepare { [weak self] fraction, phase in
                 Task { @MainActor in
-                    self?.updateRec(id) {
-                        $0.stage = "audio"
-                        // Download occupies the first half of the bake band.
-                        $0.progress = map(p.fractionCompleted * 0.5)
-                        $0.message = phase
-                    }
+                    self?.updateRec(id) { $0.stage = "audio"; $0.progress = map(fraction * share); $0.message = phase }
                 }
             }
-            try await KokoroEngine.shared.prepare()
 
             var durations: [Double] = []
             let voiceMap = castVoices(for: id, speakers: flat.map { $0.speaker })
@@ -941,15 +954,15 @@ final class AppStore: ObservableObject {
                 } else {
                     let voice = voiceMap[turn.speaker] ?? KokoroSpeech.defaultVoice
                     var parts: [Data] = []
-                    for piece in KokoroSpeech.pieces(of: turn.text) {
+                    for piece in backend.pieces(of: turn.text) {
                         if Task.isCancelled { return "Stopped." }
-                        parts.append(try await KokoroEngine.shared.synthesize(text: piece, voice: voice, speed: Float(player.voiceSpeed)))
+                        parts.append(try await backend.synthesize(text: piece, voice: voice, speed: Float(player.voiceSpeed)))
                     }
                     wav = KokoroSpeech.joinWAVs(parts)
                     try await storage.write(K.turn(id, i), wav)
                 }
                 durations.append(KokoroSpeech.wavDuration(wav))
-                let frac = 0.5 + 0.5 * Double(i + 1) / Double(total)
+                let frac = share + (1 - share) * Double(i + 1) / Double(total)
                 updateRec(id) { $0.stage = "audio"; $0.progress = map(frac); $0.message = "Synthesizing section \(i + 1)/\(total)…" }
             }
             await storage.save(AudioManifest(durations: durations), K.audioManifest(id))
@@ -1072,7 +1085,8 @@ final class AppStore: ObservableObject {
             // (voicing failed part-way) continues from where it stopped.
             if p.hasAudio { await deleteBakedAudio(id) }
             appendLog("Regenerating audio for \(p.displayTitle)…", paper: id)
-            updateRec(id) { $0.state = "running"; $0.stage = "audio"; $0.progress = 0.02; $0.message = "Preparing Kokoro…" }
+            let preparing = speechBackend.preparingMessage
+            updateRec(id) { $0.state = "running"; $0.stage = "audio"; $0.progress = 0.02; $0.message = preparing }
             if let failure = await bakeAudio(id, t, from: 0.0, to: 1.0) {
                 await failAudio(id, failure)
             } else {

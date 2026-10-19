@@ -14,7 +14,7 @@ final class PlayerControllerTests: PapertalkTestCase {
     }
 
     func testPrepareBakedBuildsTimelineWithGaps() async {
-        let p = PlayerController()
+        let p = PlayerController(speechBackend: LocalSpeechBackend())
         p.prepare(baked: baked([1.0, 0.5, 2.0]))
         XCTAssertEqual(p.turnCount, 3)
         XCTAssertEqual(p.renderedCount, 3)
@@ -24,14 +24,14 @@ final class PlayerControllerTests: PapertalkTestCase {
     }
 
     func testPrepareEmptyBakedLeavesPlayerEmpty() async {
-        let p = PlayerController()
+        let p = PlayerController(speechBackend: LocalSpeechBackend())
         p.prepare(baked: [])
         XCTAssertEqual(p.turnCount, 0)
         XCTAssertEqual(p.duration, 0)
     }
 
     func testSkipMovesByWholeTurnsAndClamps() async {
-        let p = PlayerController()
+        let p = PlayerController(speechBackend: LocalSpeechBackend())
         p.prepare(baked: baked([1.0, 0.5, 2.0]))
         p.skip(by: 1)
         XCTAssertEqual(p.activeTurn, 1)
@@ -44,7 +44,7 @@ final class PlayerControllerTests: PapertalkTestCase {
     }
 
     func testSeekLandsInTheRightTurnAndClampsToItsEnd() async {
-        let p = PlayerController()
+        let p = PlayerController(speechBackend: LocalSpeechBackend())
         p.prepare(baked: baked([1.0, 0.5, 2.0]))
         p.seek(toTime: 1.5)                       // 0.15 s into turn 1
         XCTAssertEqual(p.activeTurn, 1)
@@ -55,7 +55,7 @@ final class PlayerControllerTests: PapertalkTestCase {
     }
 
     func testStopAllResetsState() async {
-        let p = PlayerController()
+        let p = PlayerController(speechBackend: LocalSpeechBackend())
         p.prepare(baked: baked([1.0, 1.0]))
         p.skip(by: 1)
         p.stopAll()
@@ -68,7 +68,7 @@ final class PlayerControllerTests: PapertalkTestCase {
     }
 
     func testStopPreviewClearsPreviewState() async {
-        let p = PlayerController()
+        let p = PlayerController(speechBackend: LocalSpeechBackend())
         p.stopPreview()
         XCTAssertNil(p.preview)
         XCTAssertEqual(p.previewProgress, 0)
@@ -79,13 +79,13 @@ final class PlayerControllerTests: PapertalkTestCase {
         let saved = UserDefaults.standard.object(forKey: key)
         defer { UserDefaults.standard.set(saved, forKey: key) }
 
-        let p = PlayerController()
+        let p = PlayerController(speechBackend: LocalSpeechBackend())
         p.voiceSpeed = 1.6
         XCTAssertEqual(UserDefaults.standard.double(forKey: key), 1.6)
-        XCTAssertEqual(PlayerController().voiceSpeed, 1.6)   // a new player reads it back
+        XCTAssertEqual(PlayerController(speechBackend: LocalSpeechBackend()).voiceSpeed, 1.6)   // a new player reads it back
 
         UserDefaults.standard.set(9.0, forKey: key)          // corrupt / out of range
-        XCTAssertEqual(PlayerController().voiceSpeed, PlayerController.defaultSpeed)
+        XCTAssertEqual(PlayerController(speechBackend: LocalSpeechBackend()).voiceSpeed, PlayerController.defaultSpeed)
         XCTAssertEqual(PlayerController.speedRange.upperBound, 2.0)
     }
 }

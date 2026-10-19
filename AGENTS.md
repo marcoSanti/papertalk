@@ -195,8 +195,8 @@ Still to do, in order:
   vanish from the library. Add new fields as optionals (see `storedSpeakers` and its computed
   `speakers` wrapper), or write a tolerant `init(from:)`. A property left *out* of `CodingKeys`
   is silently never saved.
-- API keys live in the Keychain only (`KeychainStore`). `LLMSettings.save()` strips the key
-  before writing user defaults; keep it that way.
+- API keys live in the Keychain only (`KeychainStore`). `LLMSettings.save()` and
+  `SpeechSettings.save()` strip the key before writing user defaults; keep it that way.
 
 ## Pipeline rules
 
@@ -209,7 +209,14 @@ Still to do, in order:
   monologue in one call peaked at ~1.2 GB and got the app killed; pieces keep it near 0.45 GB.
 - `bakeAudio` reuses turns already on disk, so re-running it resumes. On failure it returns a
   message and the paper goes to an error state via `failAudio`, never to "done" without audio.
-- **Use `KokoroEngine.shared` for all synthesis.** Never create another `KokoroAneManager`: two
+- **Synthesis goes through `SpeechBackend`** (`Shared/Controllers/SpeechBackend.swift`), picked
+  only by `SpeechSettings.makeBackend()` via `AppStore.speechBackend` (the player gets the same
+  one). `LocalSpeechBackend` wraps `KokoroEngine.shared`; `RemoteSpeechBackend` calls an
+  OpenAI-compatible `/audio/speech` and never touches Core ML. Whatever a backend returns goes
+  through `SpeechAudio.normalizedWAV`, so stored turns are always 24 kHz mono 16-bit WAV with a
+  44-byte header (`wavDuration` and `joinWAVs` assume it). Tests pass a fake backend to
+  `AppStore(storage:speech:)`.
+- **Use `KokoroEngine.shared` for all local synthesis.** Never create another `KokoroAneManager`: two
   model copies on the Neural Engine, or overlapping calls into one (actors are re-entrant across
   `await`), fail with "unable to compute the asynchronous prediction".
 - `LocalPipeline.extractJSON` takes text from the first `{` to the last `}`. **Ask the LLM for a

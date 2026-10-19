@@ -30,7 +30,8 @@ follows your own instructions (which you can save as presets), and *Direct read*
 entirely and reads the paper out as-is.
 
 Finally every line is voiced with [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), running
-on the Neural Engine through [FluidAudio](https://github.com/FluidInference/FluidAudio). The
+on the Neural Engine through [FluidAudio](https://github.com/FluidInference/FluidAudio), or
+on a text-to-speech server of your own (see [Voices on a server](#voices-on-a-server)). The
 audio is saved with the paper, so playback afterwards is instant.
 
 Any OpenAI-compatible chat endpoint works for the writing part: LM Studio, llama.cpp, Ollama
@@ -63,10 +64,13 @@ one; it never downloads or installs anything by itself.
 
 On first launch a short setup asks where your library should live (on this Mac, or on a
 [storage server](#sharing-a-library-between-macs)) and which LLM should write the episodes:
-its base URL, an optional API key and the model. **Test connection** checks that both work.
+its base URL, an optional API key and the model. Then it asks where the voices should be
+synthesized: on this Mac, or on a [speech server](#voices-on-a-server). **Test connection**
+checks that the storage server and the LLM answer.
 You can skip the setup and change all of this later in **Settings** (⌘,).
 
-The first episode takes a little longer, because it downloads the voice models (about 120 MB).
+With voices on this Mac, the first episode takes a little longer, because it downloads the voice
+models (about 120 MB).
 
 ### Linux (preview)
 
@@ -141,6 +145,27 @@ It's a flat key/value store over HTTP: `GET /` lists the keys, and `GET`, `PUT`,
 
 </details>
 
+## Voices on a server
+
+Voicing an episode on the Mac takes about half a gigabyte of memory while it runs, which is a
+lot on an 8 GB machine. **Settings → Voices** (also in the first-run setup) can send the speech
+to an OpenAI-compatible text-to-speech server instead, such as
+[Open WebUI](https://docs.openwebui.com/) or [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI).
+Then nothing is loaded on the Mac.
+
+- **Server URL**: Papertalk calls `/audio/speech` under it. For Open WebUI that's its address
+  followed by `/api/v1` (e.g. `http://localhost:3000/api/v1`); for Kokoro-FastAPI,
+  `http://<host>:8880/v1`.
+- **API key**: optional, kept in the Keychain. Open WebUI needs one (Settings → Account → API keys).
+- **Model** and **voices**: Papertalk asks the server what it offers (`/audio/models` or `/models`,
+  and `/audio/voices`) and fills the pickers. If it lists nothing, type the model name.
+
+Papers always keep their Kokoro voices. A Kokoro server can speak them as they are; for any other
+server, pick a server voice for each part of the cast: the female host (Heart), the male host
+(Michael), female guests and male guests. Papertalk asks for WAV; MP3 and other formats are
+converted on the Mac. Every synthesis path uses the setting: importing, **Regenerate audio**,
+playing a paper that has no audio yet, and voice samples.
+
 ## Settings, keys and data
 
 Everything is configured inside the app. If you'd rather set defaults from the environment, the
@@ -148,7 +173,8 @@ app picks up `OPENWEBUI_BASE_URL` or `LLM_BASE_URL`, `PAPERTALK_MODEL`, and an A
 `OPENWEBUI_API_KEY`, `LLM_API_KEY` or `PAPERTALK_API_KEY`. `PAPERTALK_SERVER_URL` and
 `PAPERTALK_API_TOKEN` set a default storage server.
 
-API keys are kept in the macOS Keychain, never in the preferences file. The voice models live in
+API keys (the LLM's and the speech server's) are kept in the macOS Keychain, never in the
+preferences file. The voice models live in
 `~/.cache/fluidaudio/`. **Settings → Clear Data** can erase the library and reset everything, or
 separately delete the voice models if you want the disk space back.
 
@@ -178,8 +204,9 @@ under `client/Sources/Papertalk/Shared/Presentation/`, so it can be tested witho
 It covers the presentation layer, the library (filtering, search, sorting, authors, tags, edits
 and how they're saved, deleting), the storage backends, the LLM steps (metadata, casting, outline, dialogue and
 monologue, episode length per depth), voice choice, playback timing, settings and the data
-formats on disk. Speech synthesis itself isn't tested, since it needs the Kokoro model and the
-Neural Engine. When you fix a bug, add a test that fails without the fix.
+formats on disk. The speech server client is tested against a mocked server, and so are the
+audio conversion and which backend each path uses. Kokoro synthesis itself isn't tested, since
+it needs the model and the Neural Engine. When you fix a bug, add a test that fails without the fix.
 
 `app.sh coverage` runs the same suite with code coverage, using only the Xcode toolchain, and
 writes the results to `coverage/` (a per-file table, `report.txt` and `lcov.info` for editors). Coverage is reported two ways: **logic** (models, controllers, helpers), which is what the

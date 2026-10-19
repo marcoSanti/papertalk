@@ -190,11 +190,6 @@ enum KokoroSpeech {
         if parts.count == 1 { return parts[0] }
         var pcm = Data()
         for part in parts where part.count > 44 { pcm.append(part.subdata(in: part.startIndex + 44..<part.endIndex)) }
-        func le32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
-        func le16(_ v: UInt16) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
-        var wav = Data("RIFF".utf8) + le32(UInt32(36 + pcm.count)) + Data("WAVEfmt ".utf8)
-        wav += le32(16) + le16(1) + le16(1) + le32(24000) + le32(24000 * 2) + le16(2) + le16(16)
-        wav += Data("data".utf8) + le32(UInt32(pcm.count)) + pcm
-        return wav
+        return SpeechAudio.wavFile(pcm16: pcm)
     }
 }

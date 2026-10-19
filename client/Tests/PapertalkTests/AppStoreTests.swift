@@ -279,11 +279,10 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("papers/p").path))
     }
 
-    func testDeleteIsRefusedWhileConverting() async {
+    func testDeleteWorksOnAPaperMarkedConverting() async {
         let store = await makeStore([Fixtures.paper(id: "p", state: "running")])
         store.delete("p")
-        XCTAssertNotNil(store.papers["p"])
-        XCTAssertEqual(store.toast, "Wait for the conversion to finish before deleting")
+        await waitUntil { store.papers["p"] == nil }
     }
 
     // MARK: errors and reruns

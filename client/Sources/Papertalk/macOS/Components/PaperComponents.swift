@@ -178,6 +178,13 @@ struct ContextMenuItems: View {
             Label("Rerun episode", systemImage: "arrow.counterclockwise")
         }
         .disabled(!PaperPresentation.canRerun(paper))
+        if PaperPresentation.canStop(paper) {
+            Button {
+                store.stopConversion(paper.id)
+            } label: {
+                Label(PaperPresentation.stopTitle, systemImage: "stop.circle")
+            }
+        }
         Button {
             store.refreshMeta(paper.id)
         } label: {

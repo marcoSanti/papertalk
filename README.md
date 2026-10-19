@@ -118,6 +118,10 @@ If an episode doesn't sound right, **Regenerate audio** re-voices the existing s
 **Rerun episode** writes a new one from scratch. To change how the LLM writes, edit the prompts
 in **Settings → Query Prompts**.
 
+A conversion can be stopped while it runs, with **Stop conversion** in the paper's details or its
+right-click menu. The script and any sections already voiced are kept, and **Try again** carries
+on from there. Deleting a paper that's still converting stops it first.
+
 ## Sharing a library between Macs
 
 Papers normally live in `~/Library/Application Support/papertalk/`. To use one library from

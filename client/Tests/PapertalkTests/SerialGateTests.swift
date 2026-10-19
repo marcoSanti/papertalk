@@ -40,6 +40,38 @@ final class SerialGateTests: PapertalkTestCase {
         XCTAssertTrue(gate.isBusy)
     }
 
+    /// A paper stopped while it waits for another's audio leaves the line
+    /// without the gate, and the gate still goes to the next in line.
+    func testCancelledWaiterLeavesWithoutTheGate() async {
+        let gate = SerialGate()
+        await gate.acquire()
+        let cancelled = Task { @MainActor in await gate.acquire() }
+        let next = Task { @MainActor in await gate.acquire() }
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertEqual(gate.waiting, 2)
+        cancelled.cancel()
+        let gotIt = await cancelled.value
+        XCTAssertFalse(gotIt)
+        XCTAssertEqual(gate.waiting, 1)
+        gate.release()
+        let nextGotIt = await next.value
+        XCTAssertTrue(nextGotIt)
+        XCTAssertTrue(gate.isBusy)
+        gate.release()
+        XCTAssertFalse(gate.isBusy)
+    }
+
+    func testAlreadyCancelledCallerDoesNotTakeAFreeGate() async {
+        let gate = SerialGate()
+        let t = Task { @MainActor () -> Bool in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await gate.acquire()
+        }
+        let got = await t.value
+        XCTAssertFalse(got)
+        XCTAssertFalse(gate.isBusy)
+    }
+
     func testStoreSharesOneGate() async {
         let store = AppStore(storage: LocalStorage(root: Fixtures.tempDir()))
         XCTAssertFalse(store.audioGate.isBusy)

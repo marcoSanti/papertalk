@@ -101,6 +101,10 @@ enum PaperPresentation {
 
     static func canRerun(_ p: Paper) -> Bool { !p.isActive }
 
+    /// A converting paper can be stopped (and deleted) while it runs.
+    static func canStop(_ p: Paper) -> Bool { p.isActive }
+    static let stopTitle = "Stop conversion"
+
     /// Rerunning a paper that has an episode replaces it, so it's confirmed first.
     static func rerunNeedsConfirmation(_ p: Paper) -> Bool { p.hasScript || p.hasAudio }
 
@@ -143,6 +147,11 @@ enum PaperPresentation {
         }
     }
 
+    /// The error card's heading: a stop the user asked for isn't a failure.
+    static func failureTitle(_ p: Paper) -> String {
+        p.statusError == ConversionPresentation.stoppedMessage ? "Conversion stopped" : "Conversion failed"
+    }
+
     static func failureMessage(_ p: Paper) -> String {
         p.statusError ?? p.message ?? "Something went wrong while converting this paper."
     }
@@ -150,6 +159,9 @@ enum PaperPresentation {
 
 /// The conversion checklist shown while a paper converts.
 enum ConversionPresentation {
+    /// Left on a paper whose conversion was stopped.
+    static let stoppedMessage = "Stopped. The script and any voiced sections are kept: Try again continues from there."
+
     static let stages: [(key: String, label: String)] = [
         ("extract", "Extract text"),
         ("notes", "Summarize"),

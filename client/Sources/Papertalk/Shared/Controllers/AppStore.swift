@@ -562,7 +562,7 @@ final class AppStore: ObservableObject {
                     optimistic(p.id, { $0.state = "done"; $0.stage = "done"; $0.progress = 1; $0.message = "Done" })
                     continue
                 }
-                Task { await resumePipeline(p.id) }
+                startRun(p.id) { await self.resumePipeline(p.id) }
             }
         }
     }
@@ -642,12 +642,12 @@ final class AppStore: ObservableObject {
     func rerun(_ id: String, fresh: Bool = true) {
         guard let p = papers[id], !p.isActive else { return }
         let depth = Depth(rawValue: p.depth ?? "") ?? .inDepth
-        Task {
+        startRun(id) {
             if fresh {
-                await discardEpisode(id)
-                optimistic(id, { $0.hasScript = false; $0.hasAudio = false; $0.duration = 0 })
+                await self.discardEpisode(id)
+                self.optimistic(id, { $0.hasScript = false; $0.hasAudio = false; $0.duration = 0 })
             }
-            await runPipeline(papers[id], depth: depth)
+            await self.runPipeline(self.papers[id], depth: depth)
         }
     }
 
@@ -664,12 +664,58 @@ final class AppStore: ObservableObject {
         papers[id] = next
         persist(id)
     }
-    func delete(_ id: String) {
-        // A running conversion would recreate the folder as it writes.
-        guard papers[id]?.isActive != true else {
-            show("Wait for the conversion to finish before deleting"); return
+    // MARK: Running conversions
+
+    /// Each paper's running conversion (import, rerun, resume or regenerate),
+    /// so it can be stopped. The token tells a finished run from a newer one.
+    private var runs: [String: (token: UUID, task: Task<Void, Never>)] = [:]
+
+    /// Run `work` as paper `id`'s conversion, tracked so it can be stopped.
+    private func startRun(_ id: String, _ work: @escaping @MainActor () async -> Void) {
+        let token = UUID()
+        let task = Task { @MainActor in
+            await work()
+            if Task.isCancelled { await markStopped(id) }
+            if runs[id]?.token == token { runs[id] = nil }
         }
+        runs[id] = (token, task)
+    }
+
+    /// Whether paper `id` has a conversion that can be stopped.
+    func isRunning(_ id: String) -> Bool { runs[id] != nil }
+
+    /// Stop a paper's conversion. What's already on disk (the script, voiced
+    /// sections) is kept, so "Try again" continues from there.
+    func stopConversion(_ id: String) {
+        guard runs[id] != nil else { return }
+        appendLog("Stopping…", paper: id)
+        Task { await stopRun(id) }
+    }
+
+    /// Cancel `id`'s run, answer any question it's waiting on, and wait for it
+    /// to wind down.
+    private func stopRun(_ id: String) async {
+        guard let run = runs[id] else { return }
+        run.task.cancel()
+        if pendingCast?.paperId == id { cancelCast() }
+        if pendingDuplicate?.incoming.id == id { resolveDuplicate(false) }
+        await run.task.value
+    }
+
+    /// A stopped run leaves a resumable error (unless it got to the end, or the
+    /// import was discarded at the cast or duplicate question).
+    private func markStopped(_ id: String) async {
+        guard papers[id]?.isDone == false else { return }
+        updateRec(id) { $0.state = "error"; $0.statusError = ConversionPresentation.stoppedMessage; $0.message = nil }
+        if let stopped = papers[id] { await storage.save(stopped, K.paper(id)) }
+        appendLog("Stopped.", paper: id)
+    }
+
+    func delete(_ id: String) {
         Task {
+            // A running conversion would recreate the folder as it writes:
+            // stop it and let it wind down first.
+            await stopRun(id)
             do {
                 if playingPaperId == id { player.stopAll(); playingPaperId = nil }
                 // Let queued saves finish first: one writing into the folder
@@ -701,7 +747,8 @@ final class AppStore: ObservableObject {
     /// with true to continue the import, false to abort it.
     private func askDuplicate(_ incoming: Paper, duplicateOf dup: Paper) async -> Bool {
         // One prompt at a time: wait for any other import's question to be answered.
-        while pendingDuplicate != nil { try? await Task.sleep(nanoseconds: 200_000_000) }
+        while pendingDuplicate != nil, !Task.isCancelled { try? await Task.sleep(nanoseconds: 200_000_000) }
+        guard !Task.isCancelled else { return false }
         notifier.post(.needsInput("Already in your library?"), paperId: incoming.id, title: incoming.displayTitle)
         return await withCheckedContinuation { c in
             pendingDuplicate = DuplicatePrompt(incoming: incoming, duplicateOf: dup, cont: c)
@@ -720,7 +767,8 @@ final class AppStore: ObservableObject {
     /// Pause the import pipeline to confirm the episode cast the model proposed.
     /// Resolves with nil if the user cancels the import, else the final cast.
     private func askCast(_ id: String, _ proposal: CastProposal, authors: [String], paperTitle: String) async -> [SpeakerConfig]? {
-        while pendingCast != nil { try? await Task.sleep(nanoseconds: 200_000_000) }
+        while pendingCast != nil, !Task.isCancelled { try? await Task.sleep(nanoseconds: 200_000_000) }
+        guard !Task.isCancelled else { return nil }
         notifier.post(.needsInput("Choose the voices for your episode"), paperId: id, title: paperTitle)
         return await withCheckedContinuation { c in
             pendingCast = CastPrompt(paperId: id, paperTitle: paperTitle, proposals: proposal.speakers, authors: authors,
@@ -911,7 +959,8 @@ final class AppStore: ObservableObject {
 
     /// Run the in-process pipeline on a PDF (or an existing stored paper).
     func upload(_ pdf: Data, filename: String, depth: Depth, depthNote: String) {
-        Task { await runPipeline(nil, pdf: pdf, filename: filename, depth: depth, depthNote: depthNote) }
+        let id = UUID().uuidString
+        startRun(id) { await self.runPipeline(nil, id: id, pdf: pdf, filename: filename, depth: depth, depthNote: depthNote) }
     }
 
     // MARK: Audio baking
@@ -929,7 +978,7 @@ final class AppStore: ObservableObject {
         if audioGate.isBusy {
             updateRec(id) { $0.stage = "audio"; $0.progress = map(0.0); $0.message = "Waiting for another paper's audio…" }
         }
-        await audioGate.acquire()
+        guard await audioGate.acquire() else { return "Stopped." }
         defer { audioGate.release() }
         let backend = speechBackend
         let share = backend.preparationShare
@@ -1102,7 +1151,7 @@ final class AppStore: ObservableObject {
         guard let p = papers[id], p.hasScript else { show("No transcript to speak"); return }
         guard !p.isActive else { return }
         notifier.requestPermissionIfNeeded()
-        Task {
+        startRun(id) { [self] in
             guard let t = await transcript(for: id) else { show("No transcript on disk"); return }
             if playingPaperId == id { player.stopAll(); playingPaperId = nil }
             // A complete episode is re-voiced from scratch; an incomplete one
@@ -1124,8 +1173,9 @@ final class AppStore: ObservableObject {
     }
 
     // MARK: Pipeline (always local)
-    private func runPipeline(_ existing: Paper?, pdf: Data? = nil, filename: String = "", depth: Depth = .inDepth, depthNote: String = "") async {
-        let id = existing?.id ?? UUID().uuidString
+    private func runPipeline(_ existing: Paper?, id newId: String? = nil, pdf: Data? = nil, filename: String = "",
+                             depth: Depth = .inDepth, depthNote: String = "") async {
+        let id = existing?.id ?? newId ?? UUID().uuidString
         // First conversion is when notifications start to matter: ask then.
         notifier.requestPermissionIfNeeded()
         let name = filename.isEmpty ? (existing?.filename ?? "Paper") : filename
@@ -1267,6 +1317,8 @@ final class AppStore: ObservableObject {
             await finish(id, script, papers[id]?.displayTitle ?? name,
                          authors: papers[id]?.authors ?? [], pdfData: pdfData, depth: depth, hasAudio: true)
         } catch {
+            // Stopped: the run's wrapper records that (`markStopped`), not a failure.
+            if Task.isCancelled { return }
             updateRec(id) { $0.state = "error"; $0.statusError = error.localizedDescription }
             appendLog("ERROR: \(error.localizedDescription)", paper: id)
             show("Conversion failed: \(error.localizedDescription)")

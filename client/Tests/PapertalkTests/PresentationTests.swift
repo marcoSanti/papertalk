@@ -546,6 +546,21 @@ final class FormTests: PapertalkTestCase {
         XCTAssertEqual(ServerSettingsForm(ServerConfig(apiBase: "http://x", token: "t")).mode, .remote)
     }
 
+    func testStopAndDeleteWording() {
+        let running = Fixtures.paper(state: "running")
+        let done = Fixtures.paper(state: "done")
+        XCTAssertTrue(PaperPresentation.canStop(running))
+        XCTAssertTrue(PaperPresentation.canStop(Fixtures.paper(state: "queued")))
+        XCTAssertFalse(PaperPresentation.canStop(done))
+        XCTAssertTrue(ConfirmationText(.delete(running)).message.hasPrefix("Its conversion is stopped first. "))
+        XCTAssertFalse(ConfirmationText(.delete(done)).message.contains("stopped"))
+        var failed = Fixtures.paper(state: "error")
+        failed.statusError = "boom"
+        XCTAssertEqual(PaperPresentation.failureTitle(failed), "Conversion failed")
+        failed.statusError = ConversionPresentation.stoppedMessage
+        XCTAssertEqual(PaperPresentation.failureTitle(failed), "Conversion stopped")
+    }
+
     func testSetupSteps() {
         XCTAssertEqual(SetupStep.storage.next, .llm)
         XCTAssertEqual(SetupStep.llm.next, .voices)

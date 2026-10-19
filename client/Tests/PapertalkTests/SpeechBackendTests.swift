@@ -575,6 +575,85 @@ final class SpeechBackendStoreTests: PapertalkTestCase {
         XCTAssertLessThan(kept, 8)
     }
 
+    // MARK: stopping
+
+    /// A long, slow voicing that can be stopped part-way.
+    private func slowRegenerate(_ fake: FakeSpeechBackend, turns: Int = 40) async -> (AppStore, String) {
+        let (store, id) = await storeWithScript(fake, turns: (0..<turns).map { ("Ada", "Turn \($0).") })
+        store.regenerateAudio(id)
+        await waitUntil { fake.calls.count >= 2 }
+        XCTAssertTrue(store.isRunning(id))
+        XCTAssertTrue(PaperPresentation.canStop(store.papers[id]!))
+        return (store, id)
+    }
+
+    func testStoppingKeepsVoicedSectionsAndResumes() async throws {
+        let fake = FakeSpeechBackend(parallel: 2, delayMs: 40)
+        let (store, id) = await slowRegenerate(fake)
+        let storage = self.storage!
+        await waitUntil { (try? await storage.read(K.turn(id, 0))) != nil }   // one section saved
+        store.stopConversion(id)
+        await waitUntil { store.papers[id]?.state == "error" }
+        await waitUntil { !store.isRunning(id) }
+        let p = try XCTUnwrap(store.papers[id])
+        XCTAssertEqual(p.statusError, ConversionPresentation.stoppedMessage)
+        XCTAssertEqual(PaperPresentation.failureTitle(p), "Conversion stopped")
+        XCTAssertFalse(p.hasAudio)
+        XCTAssertNil(store.toast.flatMap { $0.contains("failed") ? $0 : nil })
+        let onDisk = await storage.exists(Paper.self, K.paper(id))
+        XCTAssertEqual(onDisk?.statusError, ConversionPresentation.stoppedMessage)
+
+        // Nothing more is voiced once stopped.
+        let callsAtStop = fake.calls.count
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(fake.calls.count, callsAtStop)
+        XCTAssertLessThan(callsAtStop, 40)
+
+        // Voicing again continues: only the missing sections are asked for.
+        var kept = 0
+        for i in 0..<40 where (try? await storage.read(K.turn(id, i))) != nil { kept += 1 }
+        XCTAssertGreaterThan(kept, 0)
+        let resume = FakeSpeechBackend(parallel: 8)
+        let again = AppStore(storage: storage, speech: resume)
+        await waitUntil { again.papers[id] != nil }
+        again.regenerateAudio(id)
+        await waitUntil(timeout: 5) { again.papers[id]?.hasAudio == true }
+        XCTAssertEqual(resume.calls.count, 40 - kept)
+    }
+
+    func testDeletingAConvertingPaperStopsItFirst() async throws {
+        let fake = FakeSpeechBackend(parallel: 2, delayMs: 40)
+        let (store, id) = await slowRegenerate(fake)
+        store.delete(id)
+        await waitUntil { store.papers[id] == nil }
+        XCTAssertFalse(store.isRunning(id))
+        let callsAtDelete = fake.calls.count
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(fake.calls.count, callsAtDelete)
+        // The folder is gone and stays gone: nothing wrote into it afterwards.
+        let folder = dir.appendingPathComponent("papers/\(id)")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    /// A paper waiting for another paper's audio can be stopped without
+    /// disturbing the one being voiced.
+    func testStoppingAPaperWaitingForTheGate() async throws {
+        let fake = FakeSpeechBackend(parallel: 1, delayMs: 30)
+        let (store, first) = await slowRegenerate(fake, turns: 10)
+        let second = Fixtures.paper(hasScript: true, hasAudio: false)
+        await storage.save(second, K.paper(second.id))
+        await storage.save(Fixtures.transcript([("Bob", "Waiting here.")]), K.transcript(second.id))
+        store.papers[second.id] = second
+        store.regenerateAudio(second.id)
+        await waitUntil { store.papers[second.id]?.message == "Waiting for another paper's audio…" }
+        store.stopConversion(second.id)
+        await waitUntil { store.papers[second.id]?.state == "error" }
+        XCTAssertEqual(store.papers[second.id]?.statusError, ConversionPresentation.stoppedMessage)
+        await waitUntil(timeout: 5) { store.papers[first]?.hasAudio == true }
+        XCTAssertFalse(fake.calls.contains { $0.text == "Waiting here." })
+        XCTAssertFalse(store.audioGate.isBusy)
+    }
+
     func testOnlyLocalSamplesWaitForAModel() async {
         XCTAssertTrue(PlayerController(speechBackend: LocalSpeechBackend()).sampleLoadsModel)
         XCTAssertFalse(PlayerController(speechBackend: remote.makeBackend()).sampleLoadsModel)

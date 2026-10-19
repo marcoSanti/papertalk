@@ -11,7 +11,8 @@ struct ConfirmationText: Equatable {
         case .delete(let p):
             title = "Delete “\(p.displayTitle)”?"
             confirmLabel = "Delete paper"
-            message = "The PDF, transcript and generated audio are removed from the library. This can’t be undone."
+            message = (p.isActive ? "Its conversion is stopped first. " : "")
+                + "The PDF, transcript and generated audio are removed from the library. This can’t be undone."
         case .rerun(let p):
             title = "Rerun “\(p.displayTitle)”?"
             confirmLabel = "Rerun episode"

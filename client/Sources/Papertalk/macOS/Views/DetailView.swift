@@ -489,13 +489,19 @@ private struct ConversionStatusCard: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+            Button {
+                store.stopConversion(paper.id)
+            } label: {
+                Label(PaperPresentation.stopTitle, systemImage: "stop.circle")
+            }
+            .buttonStyle(.glass)
         }
         .glassCard(tint: Color.appAccent.opacity(0.10))
     }
 
     private var errorBody: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Conversion failed", systemImage: "exclamationmark.triangle.fill")
+            Label(PaperPresentation.failureTitle(paper), systemImage: "exclamationmark.triangle.fill")
                 .font(.headline)
                 .foregroundStyle(.red)
             Text(PaperPresentation.failureMessage(paper))

@@ -170,9 +170,9 @@ enum VoiceSamplePresentation {
         preview?.voice == voice ? preview : nil
     }
 
-    static func label(_ phase: PlayerController.PreviewPhase?, modelLoaded: Bool) -> String {
+    static func label(_ phase: PlayerController.PreviewPhase?, loadingModel: Bool) -> String {
         switch phase {
-        case .generating: return modelLoaded ? "Generating…" : "Loading voices…"
+        case .generating: return loadingModel ? "Loading voices…" : "Generating…"
         case .playing: return "Playing"
         case .failed: return "Retry"
         case nil: return "Sample"

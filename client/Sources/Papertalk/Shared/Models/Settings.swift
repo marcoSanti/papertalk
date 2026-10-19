@@ -141,6 +141,104 @@ struct LLMSettings: Codable, Equatable {
     }
 }
 
+// MARK: - Where speech is synthesized (persisted locally)
+
+struct SpeechSettings: Codable, Equatable {
+    enum Engine: String, Codable, CaseIterable { case local, remote }
+    var engine: Engine = .local
+    /// OpenAI-compatible base URL; `/audio/speech` is appended.
+    var baseUrl = ""
+    /// A typed key. Kept in the Keychain only; never written to user defaults.
+    var apiKey = ""
+    /// Env var whose value is the key; when set, `apiKey` is ignored (as for the LLM).
+    var keyEnv = ""
+    var model = ""
+    /// Speech requests sent at once while voicing a paper (remote only; Kokoro
+    /// on this machine always takes one call at a time).
+    var parallelRequests = SpeechSettings.defaultParallelRequests
+
+    static let defaultParallelRequests = 4
+    static let parallelRange = 1...16
+
+    /// Sent when no model is chosen: OpenAI, Kokoro-FastAPI and Open WebUI all accept it.
+    static let fallbackModel = "tts-1"
+
+    init(engine: Engine = .local, baseUrl: String = "", apiKey: String = "", keyEnv: String = "", model: String = "",
+         parallelRequests: Int = SpeechSettings.defaultParallelRequests) {
+        self.engine = engine
+        self.baseUrl = baseUrl
+        self.apiKey = apiKey
+        self.keyEnv = keyEnv
+        self.model = model
+        self.parallelRequests = Self.clampParallel(parallelRequests)
+    }
+
+    // Tolerant: a field added later must not make saved settings unreadable.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        engine = (try? c.decodeIfPresent(Engine.self, forKey: .engine)) ?? .local
+        baseUrl = try c.decodeIfPresent(String.self, forKey: .baseUrl) ?? ""
+        apiKey = try c.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        keyEnv = try c.decodeIfPresent(String.self, forKey: .keyEnv) ?? ""
+        model = try c.decodeIfPresent(String.self, forKey: .model) ?? ""
+        parallelRequests = Self.clampParallel((try? c.decodeIfPresent(Int.self, forKey: .parallelRequests)) ?? Self.defaultParallelRequests)
+    }
+
+    /// The key to send: the env var's value when one is chosen (or the Keychain
+    /// copy saved for apps launched from Finder, which don't see shell env),
+    /// else the typed key.
+    func resolvedKey(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        guard !keyEnv.isEmpty else { return apiKey }
+        if let v = environment[keyEnv], !v.isEmpty { return v }
+        return KeychainStore.get(keyEnv) ?? ""
+    }
+
+    /// Copy an env-sourced key into the Keychain while the app can see it.
+    func saveResolvedKey() {
+        guard !keyEnv.isEmpty, let v = ProcessInfo.processInfo.environment[keyEnv], !v.isEmpty else { return }
+        KeychainStore.set(v, account: keyEnv)
+    }
+
+    static func clampParallel(_ n: Int) -> Int { min(max(n, parallelRange.lowerBound), parallelRange.upperBound) }
+
+    /// The backend these settings ask for. The one place a backend is chosen.
+    func makeBackend() -> any SpeechBackend {
+        switch engine {
+        case .local: return LocalSpeechBackend()
+        case .remote: return RemoteSpeechBackend(settings: self)
+        }
+    }
+
+    static let typedKeyAccount = "papertalk.speech.apiKey"
+    static let defaultsKey = "papertalk.speech.json"
+
+    static func load() -> SpeechSettings {
+        guard let raw = UserDefaults.standard.string(forKey: defaultsKey),
+              let data = raw.data(using: .utf8),
+              var s = try? JSONDecoder().decode(SpeechSettings.self, from: data) else { return SpeechSettings() }
+        s.apiKey = KeychainStore.get(typedKeyAccount) ?? ""
+        return s
+    }
+
+    /// What goes into user defaults: everything except the key.
+    var persisted: SpeechSettings {
+        var copy = self
+        copy.apiKey = ""
+        return copy
+    }
+
+    func save() {
+        if apiKey.isEmpty {
+            KeychainStore.delete(Self.typedKeyAccount)
+        } else {
+            KeychainStore.set(apiKey, account: Self.typedKeyAccount)
+        }
+        if let data = try? JSONEncoder().encode(persisted) {
+            UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: Self.defaultsKey)
+        }
+    }
+}
+
 // MARK: - Editable LLM prose prompts (persisted locally)
 //
 // Only NON data-format instructions are exposed here. The JSON-reply-context

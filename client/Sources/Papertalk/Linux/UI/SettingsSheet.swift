@@ -89,7 +89,7 @@ struct SettingsSheet: View {
     private func save() {
         let store = bridge.store
         if isSetup {
-            store.finishSetup(server: server.configFromURL, llm: llm.settings)
+            store.finishSetup(server: server.configFromURL, llm: llm.settings, speech: store.speech)
         } else {
             store.saveLLMSettings(llm.settings)
             store.saveServerSettings(server.configFromURL)

@@ -12,8 +12,8 @@ import FluidAudio
 #endif
 
 /// Speaks a paper's transcript using Kokoro neural voices (on-device Core ML /
-/// Neural Engine via FluidAudio). Each turn is synthesized to a 24 kHz WAV and
-/// played sequentially with AVAudioPlayer.
+/// Neural Engine via FluidAudio, or a speech server: see `SpeechBackend`).
+/// Each turn is synthesized to a 24 kHz WAV and played sequentially with AVAudioPlayer.
 ///
 /// Real audio gives us accurate per-turn durations (no char-based estimates).
 /// The fluent interface mirrors the old AVSpeechSynthesizer player, so the UI
@@ -50,6 +50,8 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     @Published private(set) var previewProgress: Double = 0
     /// False until the Kokoro model has been loaded once; the first sample is slow.
     @Published private(set) var modelLoaded = false
+    /// The next sample has to load the model first (never on a speech server).
+    var sampleLoadsModel: Bool { speechBackend.loadsModel && !modelLoaded }
     /// Speaking pace for synthesis (< 1 slower, > 1 faster), shared by voice
     /// samples, live rendering and import-time baking. `@Published` + defaults
     /// rather than `@AppStorage`, which doesn't notify views from an
@@ -83,7 +85,12 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
     // MARK: - Lifecycle
 
-    override init() {
+    /// Where samples and live renders are synthesized. `AppStore` keeps it
+    /// in step with the speech settings.
+    var speechBackend: any SpeechBackend
+
+    init(speechBackend: any SpeechBackend) {
+        self.speechBackend = speechBackend
         super.init()
     }
 
@@ -118,11 +125,12 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         previewGeneration += 1
         let gen = previewGeneration
         preview = .generating(voice)
+        let backend = speechBackend
         Task { [self] in
             do {
-                try await KokoroEngine.shared.prepare()
+                try await backend.prepare()
                 modelLoaded = true
-                let data = try await KokoroEngine.shared.synthesize(text: KokoroSpeech.samplePrompt(for: voice), voice: voice, speed: Float(voiceSpeed))
+                let data = try await backend.synthesize(text: KokoroSpeech.samplePrompt(for: voice), voice: voice, speed: Float(voiceSpeed))
                 guard gen == previewGeneration else { return }
                 let p = try AVAudioPlayer(data: data)
                 p.delegate = self
@@ -174,6 +182,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         totalBefore = []
 
         let gen = generation
+        let backend = speechBackend
         isRendering = true
         renderError = nil
         Task {
@@ -181,11 +190,11 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
             for (i, text) in turns.enumerated() {
                 if generation != gen { return }
                 do {
-                    // Short Kokoro calls keep memory flat on long turns (see `KokoroSpeech.pieces`).
+                    // Short calls keep memory flat on long turns (see `KokoroSpeech.pieces`).
                     var parts: [Data] = []
-                    for piece in KokoroSpeech.pieces(of: text) {
+                    for piece in backend.pieces(of: text) {
                         if generation != gen { return }
-                        parts.append(try await KokoroEngine.shared.synthesize(text: piece, voice: voices[i], speed: Float(voiceSpeed)))
+                        parts.append(try await backend.synthesize(text: piece, voice: voices[i], speed: Float(voiceSpeed)))
                     }
                     let wav = KokoroSpeech.joinWAVs(parts)
                     if generation != gen { return }

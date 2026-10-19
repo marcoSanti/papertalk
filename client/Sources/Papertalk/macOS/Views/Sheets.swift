@@ -23,6 +23,12 @@ struct ClearDataPage: View {
                     .tint(.red)
             }
 
+            section(title: "Audio of finished episodes",
+                    detail: "When an episode has been listened to the end, ask whether to delete its audio. The script is always kept.") {
+                Toggle("Ask after listening", isOn: $store.askToDeleteListenedAudio)
+                Spacer()
+            }
+
             section(title: "Voice models",
                     detail: "The Kokoro voices used to speak episodes. Deleting them frees disk space; they download again the next time audio is generated.") {
                 Text(ClearDataPresentation.voiceModels(bytes: modelBytes))
@@ -57,8 +63,9 @@ struct ClearDataPage: View {
     private func section<Content: View>(title: String, detail: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline)
+            // No .fixedSize here: inside the split view it stretched the sidebar's
+            // table thousands of points tall, scrolled to the bottom and blank.
             Text(detail).font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
             HStack { content() }
         }
         .padding(14)
@@ -471,9 +478,35 @@ struct LLMSettingsPage: View {
     }
 }
 
+// MARK: - Voices page: where speech is synthesized
+struct VoicesSettingsPage: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var form = SpeechSettingsForm(SpeechSettings())
+    @State private var loaded = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Voices").font(.title3).fontWeight(.semibold)
+                if loaded { SpeechSettingsFields(form: $form) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+        }
+        .onAppear {
+            form = SpeechSettingsForm(store.speech)
+            loaded = true
+        }
+        .onDisappear { store.saveSpeechSettings(form.settings) }
+        .onReceive(NotificationCenter.default.publisher(for: .papertalkSaveSettings)) { _ in
+            store.saveSpeechSettings(form.settings)
+        }
+    }
+}
+
 /// The key fields under the key-source picker (shared by Settings and setup).
-struct KeySourceFields: View {
-    @Binding var form: LLMSettingsForm
+struct KeySourceFields<Form: KeySourceEditing>: View {
+    @Binding var form: Form
 
     var body: some View {
         switch form.keySource {
@@ -653,6 +686,7 @@ struct SettingsView: View {
             NavigationSplitView {
                 List(selection: selectedIndex) {
                     Label("LLM Settings", systemImage: "waveform").tag(0)
+                    Label("Voices", systemImage: "person.wave.2").tag(AppStore.SettingsPage.voices.rawValue)
                     Label("Server Settings", systemImage: "server.rack").tag(1)
                     Label("Query Prompts", systemImage: "quote.bubble").tag(2)
                     Label("Prompt Presets", systemImage: "slider.horizontal.3").tag(3)
@@ -664,6 +698,7 @@ struct SettingsView: View {
                 Group {
                     switch store.settingsPage {
                     case .llm: LLMSettingsPage()
+                    case .voices: VoicesSettingsPage()
                     case .server: ServerSettingsPage()
                     case .prompts: PromptsSettingsPage()
                     case .presets: CustomPresetsPage()
@@ -1005,7 +1040,7 @@ private struct VoiceSampleButton: View {
         }
     }
 
-    private var label: String { VoiceSamplePresentation.label(phase, modelLoaded: player.modelLoaded) }
+    private var label: String { VoiceSamplePresentation.label(phase, loadingModel: player.sampleLoadsModel) }
     private var help: String { VoiceSamplePresentation.help(phase, voice: voice) }
 
     private func tap() {

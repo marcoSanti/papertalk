@@ -279,11 +279,10 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("papers/p").path))
     }
 
-    func testDeleteIsRefusedWhileConverting() async {
+    func testDeleteWorksOnAPaperMarkedConverting() async {
         let store = await makeStore([Fixtures.paper(id: "p", state: "running")])
         store.delete("p")
-        XCTAssertNotNil(store.papers["p"])
-        XCTAssertEqual(store.toast, "Wait for the conversion to finish before deleting")
+        await waitUntil { store.papers["p"] == nil }
     }
 
     // MARK: errors and reruns
@@ -327,6 +326,75 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertEqual(map["William"], "am_puck")
         XCTAssertEqual(Set(map.keys), ["Jordan", "William", "Guest"])
         XCTAssertNotEqual(map["Jordan"], map["Guest"])
+    }
+
+    // MARK: deleting audio
+
+    /// A finished paper with a script and two voiced turns on disk.
+    private func storeWithBakedAudio() async throws -> AppStore {
+        let store = await makeStore([Fixtures.paper(id: "p", hasScript: true, hasAudio: true)])
+        await storage.save(Fixtures.transcript([("Jordan", "Hi"), ("Ada", "Hello")]), K.transcript("p"))
+        await storage.save(AudioManifest(durations: [0.5, 0.25]), K.audioManifest("p"))
+        try await storage.write(K.turn("p", 0), Fixtures.silentWAV(seconds: 0.5))
+        try await storage.write(K.turn("p", 1), Fixtures.silentWAV(seconds: 0.25))
+        return store
+    }
+
+    func testDeleteAudioKeepsTheScript() async throws {
+        let store = try await storeWithBakedAudio()
+        store.deleteAudio("p")
+        await waitUntil { store.papers["p"]?.hasAudio == false }
+        await waitUntil { await self.onDisk("p")?.hasAudio == false }
+        let manifest = await storage.exists(AudioManifest.self, K.audioManifest("p"))
+        XCTAssertNil(manifest)
+        let turn = try? await storage.read(K.turn("p", 0))
+        XCTAssertNil(turn)
+        let script = await storage.exists(Transcript.self, K.transcript("p"))
+        XCTAssertNotNil(script)
+        XCTAssertTrue(PaperPresentation.isPlayable(store.papers["p"]!))   // live voices still play it
+        XCTAssertEqual(store.toast, "Audio deleted")
+    }
+
+    func testDeleteAudioWaitsForAConversion() async {
+        let store = await makeStore([Fixtures.paper(id: "p", state: "running", hasAudio: true)])
+        store.deleteAudio("p")   // refused on the spot: nothing is started
+        XCTAssertEqual(store.papers["p"]?.hasAudio, true)
+        XCTAssertNil(store.toast)
+    }
+
+    func testFinishingAnEpisodeAsksAboutItsAudio() async throws {
+        let store = try await storeWithBakedAudio()
+        defer { store.askToDeleteListenedAudio = true }
+        store.trackPlayback()
+        store.playingPaperId = "p"
+        store.player.didEnd = true
+        await waitUntil { store.pendingConfirmation != nil }
+        guard case .finishedListening(let asked)? = store.pendingConfirmation else { return XCTFail("no question") }
+        XCTAssertEqual(asked.id, "p")
+        XCTAssertEqual(store.papers["p"]?.read, true)
+
+        // "Delete audio"
+        store.confirmPending(.finishedListening(asked))
+        await waitUntil { store.papers["p"]?.hasAudio == false }
+        XCTAssertNil(store.pendingConfirmation)
+    }
+
+    func testFinishingDoesNotAskWithoutAudioOrWhenTurnedOff() async throws {
+        let store = try await storeWithBakedAudio()
+        defer { store.askToDeleteListenedAudio = true }
+        // "Keep, and don't ask again"
+        store.episodeFinished("p")
+        store.confirmSecondary(store.pendingConfirmation!)
+        XCTAssertFalse(store.askToDeleteListenedAudio)
+        XCTAssertEqual(UserDefaults.standard.object(forKey: AppStore.askDeleteKey) as? Bool, false)
+        store.episodeFinished("p")
+        XCTAssertNil(store.pendingConfirmation)
+        XCTAssertEqual(store.papers["p"]?.hasAudio, true)   // kept
+
+        store.askToDeleteListenedAudio = true
+        store.papers["p"]?.hasAudio = false
+        store.episodeFinished("p")
+        XCTAssertNil(store.pendingConfirmation)              // nothing to delete
     }
 
     func testLoadBakedAudioNeedsEveryTurn() async throws {

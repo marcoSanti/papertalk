@@ -23,6 +23,11 @@ final class MockLLM {
                 client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
                 return
             }
+            // A negative status stands for a server that can't be reached.
+            if reply.status < 0 {
+                client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
+                return
+            }
             let resp = HTTPURLResponse(url: request.url!,
                                        statusCode: reply.status,
                                        httpVersion: "HTTP/1.1",

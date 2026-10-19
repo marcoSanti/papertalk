@@ -8,6 +8,7 @@ struct OnboardingView: View {
     @State private var step: SetupStep = .storage
     @State private var server = ServerSettingsForm(ServerConfig(apiBase: "", token: ""))
     @State private var llm = LLMSettingsForm(LLMSettings(baseUrl: "", apiKey: "", model: "", keyEnv: ""))
+    @State private var speech = SpeechSettingsForm(SpeechSettings())
     @State private var models: [String] = []
     @State private var loadingModels = false
     @State private var testing = false
@@ -21,6 +22,7 @@ struct OnboardingView: View {
                 switch step {
                 case .storage: storageView
                 case .llm: llmView
+                case .voices: voicesView
                 case .review: reviewView
                 }
             }
@@ -30,12 +32,13 @@ struct OnboardingView: View {
             footer
         }
         .padding(24)
-        .frame(width: 500, height: 560)
+        .frame(width: 500, height: 640)
         .tint(Color.appAccent)
         .onChange(of: llm.keySource) { _, _ in llm.keySourceChanged() }
         .onAppear {
             server = ServerSettingsForm(store.config)
             llm = LLMSettingsForm(store.llm)
+            speech = SpeechSettingsForm(store.speech)
             if llm.canFetchModels { loadModels() }
         }
     }
@@ -46,7 +49,7 @@ struct OnboardingView: View {
                 .font(.system(size: 28)).foregroundStyle(Color.appAccent)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Welcome to Papertalk").font(.title2).fontWeight(.semibold)
-                Text("Set up where your papers live and which LLM writes the episodes.").font(.subheadline).foregroundStyle(.secondary)
+                Text("Set up where your papers live, which LLM writes the episodes, and where the voices are made.").font(.subheadline).foregroundStyle(.secondary)
             }
         }
     }
@@ -144,14 +147,25 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: Step 3 — review + test
+    // MARK: Step 3 — voices
+    private var voicesView: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            stepTitle("3. Where should the voices be synthesized?")
+            ScrollView { SpeechSettingsFields(form: $speech).padding(.trailing, 8) }
+        }
+    }
+
+    // MARK: Step 4 — review + test
     private var reviewView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepTitle("3. Review")
+            stepTitle("4. Review")
 
             VStack(alignment: .leading, spacing: 6) {
                 summaryRow("Storage", server.summary)
                 ForEach(SetupStep.llmSummary(llm.settings), id: \.label) { row in
+                    summaryRow(row.label, row.value)
+                }
+                ForEach(speech.summary, id: \.label) { row in
                     summaryRow(row.label, row.value)
                 }
             }
@@ -211,7 +225,7 @@ struct OnboardingView: View {
                 Button("Back") { step = previous }.buttonStyle(.borderless)
             }
             Button(step.nextTitle) {
-                if let next = step.next { step = next } else { store.finishSetup(server: server.config, llm: llm.settings) }
+                if let next = step.next { step = next } else { store.finishSetup(server: server.config, llm: llm.settings, speech: speech.settings) }
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(step.next == nil ? .defaultAction : nil)

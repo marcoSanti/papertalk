@@ -546,12 +546,57 @@ final class FormTests: PapertalkTestCase {
         XCTAssertEqual(ServerSettingsForm(ServerConfig(apiBase: "http://x", token: "t")).mode, .remote)
     }
 
+    func testDeleteAudioWording() {
+        let p = Fixtures.paper(title: "Waves", hasAudio: true)
+        XCTAssertTrue(PaperPresentation.canDeleteAudio(p))
+        XCTAssertFalse(PaperPresentation.canDeleteAudio(Fixtures.paper(hasAudio: false)))
+        XCTAssertFalse(PaperPresentation.canDeleteAudio(Fixtures.paper(state: "running", hasAudio: true)))
+
+        let delete = ConfirmationText(.deleteAudio(p))
+        XCTAssertEqual(delete.title, "Delete the audio of “Waves”?")
+        XCTAssertEqual(delete.confirmLabel, "Delete audio")
+        XCTAssertEqual(delete.cancelLabel, "Cancel")
+        XCTAssertNil(delete.secondaryLabel)
+        XCTAssertTrue(delete.message.contains("Regenerate audio"))
+
+        let finished = ConfirmationText(.finishedListening(p))
+        XCTAssertEqual(finished.title, "You finished “Waves”")
+        XCTAssertEqual(finished.confirmLabel, "Delete audio")
+        XCTAssertEqual(finished.cancelLabel, "Keep audio")
+        XCTAssertEqual(finished.secondaryLabel, "Keep, and don’t ask again")
+        XCTAssertTrue(finished.message.hasPrefix("Delete its audio to free up space?"))
+        XCTAssertEqual(ConfirmationText(.rerun(p)).cancelLabel, "Cancel")
+        XCTAssertNotEqual(AppStore.PendingConfirmation.deleteAudio(p).id, AppStore.PendingConfirmation.finishedListening(p).id)
+    }
+
+    func testStopAndDeleteWording() {
+        let running = Fixtures.paper(state: "running")
+        let done = Fixtures.paper(state: "done")
+        XCTAssertTrue(PaperPresentation.canStop(running))
+        XCTAssertTrue(PaperPresentation.canStop(Fixtures.paper(state: "queued")))
+        XCTAssertFalse(PaperPresentation.canStop(done))
+        XCTAssertTrue(ConfirmationText(.delete(running)).message.hasPrefix("Its conversion is stopped first. "))
+        XCTAssertFalse(ConfirmationText(.delete(done)).message.contains("stopped"))
+        var failed = Fixtures.paper(state: "error")
+        failed.statusError = "boom"
+        XCTAssertEqual(PaperPresentation.failureTitle(failed), "Conversion failed")
+        failed.statusError = ConversionPresentation.stoppedMessage
+        XCTAssertEqual(PaperPresentation.failureTitle(failed), "Conversion stopped")
+    }
+
     func testSetupSteps() {
         XCTAssertEqual(SetupStep.storage.next, .llm)
+        XCTAssertEqual(SetupStep.llm.next, .voices)
+        XCTAssertEqual(SetupStep.voices.next, .review)
         XCTAssertEqual(SetupStep.review.next, nil)
         XCTAssertEqual(SetupStep.llm.previous, .storage)
+        XCTAssertEqual(SetupStep.voices.previous, .llm)
+        XCTAssertEqual(SetupStep.review.previous, .voices)
         XCTAssertNil(SetupStep.storage.previous)
+        XCTAssertTrue(SetupStep.voices.canSkip)
         XCTAssertFalse(SetupStep.review.canSkip)
+        XCTAssertEqual(SetupStep.llm.nextTitle, "Continue")
+        XCTAssertEqual(SetupStep.voices.nextTitle, "Review")
         XCTAssertEqual(SetupStep.review.nextTitle, "Finish")
         XCTAssertEqual(SetupStep.llmSummary(LLMSettings(baseUrl: "", apiKey: "", model: "", keyEnv: "")).map(\.value),
                        ["Not configured (read-through)"])
@@ -659,9 +704,9 @@ final class PaceAndSampleTests: PapertalkTestCase {
         let generating = PlayerController.PreviewPhase.generating("af_bella")
         XCTAssertEqual(VoiceSamplePresentation.phase(generating, for: "af_bella"), generating)
         XCTAssertNil(VoiceSamplePresentation.phase(generating, for: "am_puck"))   // another voice's sample
-        XCTAssertEqual(VoiceSamplePresentation.label(generating, modelLoaded: false), "Loading voices…")
-        XCTAssertEqual(VoiceSamplePresentation.label(generating, modelLoaded: true), "Generating…")
-        XCTAssertEqual(VoiceSamplePresentation.label(nil, modelLoaded: true), "Sample")
+        XCTAssertEqual(VoiceSamplePresentation.label(generating, loadingModel: true), "Loading voices…")
+        XCTAssertEqual(VoiceSamplePresentation.label(generating, loadingModel: false), "Generating…")
+        XCTAssertEqual(VoiceSamplePresentation.label(nil, loadingModel: false), "Sample")
         XCTAssertEqual(VoiceSamplePresentation.help(.failed("af_bella", "no model"), voice: "af_bella"),
                        "Couldn't play the sample: no model")
         XCTAssertTrue(VoiceSamplePresentation.tapStops(.playing("af_bella")))

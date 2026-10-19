@@ -5,19 +5,36 @@ struct ConfirmationText: Equatable {
     let title: String
     let confirmLabel: String
     let message: String
+    var cancelLabel = "Cancel"
+    /// A third choice, besides confirming and cancelling.
+    var secondaryLabel: String?
 
     init(_ pending: AppStore.PendingConfirmation) {
         switch pending {
         case .delete(let p):
             title = "Delete “\(p.displayTitle)”?"
             confirmLabel = "Delete paper"
-            message = "The PDF, transcript and generated audio are removed from the library. This can’t be undone."
+            message = (p.isActive ? "Its conversion is stopped first. " : "")
+                + "The PDF, transcript and generated audio are removed from the library. This can’t be undone."
         case .rerun(let p):
             title = "Rerun “\(p.displayTitle)”?"
             confirmLabel = "Rerun episode"
             message = "The current script and audio are replaced with a newly written episode."
+        case .deleteAudio(let p):
+            title = "Delete the audio of “\(p.displayTitle)”?"
+            confirmLabel = "Delete audio"
+            message = Self.keptAfterAudio
+        case .finishedListening(let p):
+            title = "You finished “\(p.displayTitle)”"
+            confirmLabel = "Delete audio"
+            message = "Delete its audio to free up space? " + Self.keptAfterAudio
+            cancelLabel = "Keep audio"
+            secondaryLabel = "Keep, and don’t ask again"
         }
     }
+
+    private static let keptAfterAudio = "The script and PDF stay. You can still play the episode with live voices, "
+        + "or voice it again with Regenerate audio."
 
     /// Title and message together, for alerts that only show a title (Linux).
     var combined: String { "\(title)\n\(message)" }

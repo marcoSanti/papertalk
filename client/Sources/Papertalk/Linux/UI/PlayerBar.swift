@@ -9,7 +9,7 @@ struct PlayerBar: View {
 
     var body: some View {
         let store = bridge.store
-        let content = BottomBarContent(activeImport: store.activeRun,
+        let content = BottomBarContent(activeImport: store.shownProgress,
                                        playing: store.playingPaperId.flatMap { store.papers[$0] },
                                        selected: store.selectedPaper())
         VStack(alignment: .leading, spacing: 8) {
@@ -87,7 +87,7 @@ struct ImportPane: View {
             HStack {
                 Text("Importing “\(paper.displayTitle)”").lineLimit(1)
                 Spacer()
-                Text(ImportProgressPresentation.counter(index: store.activeRunIndex, count: store.activeRuns.count) ?? "")
+                Text(ImportProgressPresentation.counter(index: store.activeRunIndex, count: store.progressItems.count) ?? "")
                     .foregroundColor(.gray)
             }
             HStack {

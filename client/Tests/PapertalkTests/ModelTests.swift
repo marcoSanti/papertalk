@@ -41,6 +41,14 @@ final class PaperModelTests: PapertalkTestCase {
         XCTAssertEqual(p.displayTitle, "A Paper")
     }
 
+    func testMindMapFlagIsOptional() throws {
+        XCTAssertNil(try decode(makeJSON()).hasMindMap)                       // records from before mind maps
+        let p = try decode(makeJSON(extra: ["has_mind_map": true]))
+        XCTAssertEqual(p.hasMindMap, true)
+        let raw = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p)) as! [String: Any]
+        XCTAssertEqual(raw["has_mind_map"] as? Bool, true)
+    }
+
     func testTargetMinutesIsSavedAsTargetMinutes() throws {
         let p = try decode(makeJSON(extra: ["target_minutes": 20]))
         XCTAssertEqual(p.targetMinutes, 20)

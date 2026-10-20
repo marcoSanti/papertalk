@@ -185,7 +185,8 @@ Still to do, in order:
 ## Data and storage
 
 - Local library: `~/Library/Application Support/papertalk/papers/<id>/`, containing
-  `paper.json`, `source.pdf`, `transcript.json`, `audio.json` (manifest) and `turns/<n>.wav`.
+  `paper.json`, `source.pdf`, `transcript.json`, `mindmap.json`, `audio.json` (manifest) and
+  `turns/<n>.wav`.
   Kokoro models: `~/.cache/fluidaudio/Models/kokoro*`.
 - Everything for a paper lives under `K.folder(id)`. Delete a paper with
   `storage.deleteFolder(K.folder(id))`, never with a hand-written list of keys (that left
@@ -239,6 +240,12 @@ Still to do, in order:
   quietly become a female voice.
 - The cast prompt can answer **Skip audio** (`resolveCast(_:voiceAudio: false)`): the script
   is written and the paper finishes "done" with `hasAudio == false`; Regenerate audio voices it.
+- Mind map (`MindMap`, `LocalPipeline.mindMap`): drawn after the script, before voicing, and
+  best-effort (a failure logs and toasts, never fails the import; Create mind map retries).
+  `MindMap.parse` repairs the reply (short labels, orphans under their branch root, cycles,
+  stray links) and returns nil unless all three pillars exist; the pipeline asks once more when a
+  pillar has fewer than two parts. Layout is `MindMapLayout` (pure, tested); `Paper.hasMindMap`
+  is optional so older records decode.
 - The duplicate and cast prompts pause the pipeline on a `CheckedContinuation`. Prompts queue,
   one at a time. Only *new* imports (`existing == nil`) may be discarded by the duplicate
   prompt, because declining deletes the paper.

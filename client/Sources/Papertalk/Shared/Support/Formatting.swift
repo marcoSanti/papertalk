@@ -15,6 +15,7 @@ func stageLabel(_ stage: String) -> String {
     case "outline": return "Planning episode"
     case "segments": return "Writing dialogue"
     case "audio": return "Synthesizing audio"
+    case Paper.mindMapStage: return "Drawing mind map"
     case "finalize": return "Finalizing"
     default: return stage.isEmpty ? "Processing…" : stage.capitalized + "…"
     }

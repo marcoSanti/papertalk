@@ -35,7 +35,7 @@ struct DetailView: View {
             VStack(alignment: .leading, spacing: 14) {
                 hero
                 QuickActionBar(player: store.player, paper: paper,
-                               onPDF: openPDF, onTranscript: openTranscript, onEdit: onEdit)
+                               onPDF: openPDF, onTranscript: openTranscript, onMindMap: openMindMap, onEdit: onEdit)
                 if PaperPresentation.showsConversionCard(paper) {
                     ConversionStatusCard(paper: paper)
                         .transition(.blurReplace)
@@ -301,6 +301,13 @@ struct DetailView: View {
                     store.requestRerun(paper)
                 }
                 .disabled(!PaperPresentation.canRerun(paper))
+                let drawing = store.drawingMindMaps.contains(paper.id)
+                let mindMap = PaperPresentation.mindMapRow(paper, drawing: drawing)
+                ManageRow(title: mindMap.title, subtitle: mindMap.subtitle,
+                          icon: "point.3.connected.trianglepath.dotted", tint: .purple) {
+                    store.createMindMap(paper.id)
+                }
+                .disabled(!store.canCreateMindMap(paper))
                 ManageRow(title: "Refresh metadata", subtitle: "Re-extract title, authors and DOI",
                           icon: "arrow.clockwise", tint: .teal) {
                     store.refreshMeta(paper.id)
@@ -345,6 +352,17 @@ struct DetailView: View {
             transcriptSheet = TranscriptSheet(transcript: await store.transcript(for: paper.id))
         }
     }
+
+    private func openMindMap() {
+        Task {
+            // Always read the current file: Redraw may have replaced it.
+            if let map = await store.mindMap(for: paper.id) {
+                MindMapWindow.present(map: map, title: paper.displayTitle, paperId: paper.id)
+            } else {
+                store.show(MindMapPresentation.missingMessage)
+            }
+        }
+    }
 }
 
 // MARK: - Backdrop
@@ -387,6 +405,7 @@ private struct QuickActionBar: View {
     let paper: Paper
     var onPDF: () -> Void
     var onTranscript: () -> Void
+    var onMindMap: () -> Void
     var onEdit: () -> Void
 
     private var isLoaded: Bool { store.playingPaperId == paper.id }
@@ -394,53 +413,75 @@ private struct QuickActionBar: View {
     var body: some View {
         let play = PaperPresentation.playButton(paper, isPlaying: isLoaded && player.isPlaying)
         let favorite = PaperPresentation.favoriteButton(paper)
+        // Two rows: Play is the main action and gets the full width; six round
+        // buttons in one row left no room between them in a narrow inspector.
         GlassEffectContainer(spacing: 14) {
-            HStack(alignment: .top, spacing: 0) {
-                action(play.title, icon: play.icon,
-                       prominent: true, busy: isLoaded && player.isRendering,
-                       enabled: PaperPresentation.isPlayable(paper),
-                       perform: togglePlay)
-                action("PDF", icon: "doc.text", enabled: paper.hasPdf, perform: onPDF)
-                action("Transcript", icon: "text.quote", enabled: paper.hasScript, perform: onTranscript)
-                action(favorite.title, icon: favorite.icon,
-                       iconColor: paper.favorite ? Color.yellow : nil) {
-                    withAnimation(.snappy) { store.toggleFavorite(paper.id) }
-                }
-                action("Edit", icon: "pencil", perform: onEdit)
+            VStack(spacing: 10) {
+                playButton(play.title, icon: play.icon, busy: isLoaded && player.isRendering,
+                           enabled: PaperPresentation.isPlayable(paper))
+                secondaryActions(favorite)
             }
         }
         .frame(maxWidth: .infinity)
     }
 
+    private func playButton(_ title: String, icon: String, busy: Bool, enabled: Bool) -> some View {
+        Button(action: togglePlay) {
+            HStack(spacing: 8) {
+                if busy {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                Text(title).font(.headline)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .glassEffect(Glass.regular.tint(Color.appAccent).interactive(), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+        .help(title)
+    }
+
+    private func secondaryActions(_ favorite: (title: String, icon: String)) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            action("PDF", icon: "doc.text", enabled: paper.hasPdf, perform: onPDF)
+            action("Transcript", icon: "text.quote", enabled: paper.hasScript, perform: onTranscript)
+            action("Mind map", icon: "point.3.connected.trianglepath.dotted",
+                   enabled: PaperPresentation.hasMindMap(paper), perform: onMindMap)
+            action(favorite.title, icon: favorite.icon,
+                   iconColor: paper.favorite ? Color.yellow : nil) {
+                withAnimation(.snappy) { store.toggleFavorite(paper.id) }
+            }
+            action("Edit", icon: "pencil", perform: onEdit)
+        }
+    }
+
     private func togglePlay() { store.togglePlayback(paper.id) }
 
-    private func action(_ title: String, icon: String, prominent: Bool = false, busy: Bool = false,
-                        enabled: Bool = true, iconColor: Color? = nil,
+    private func action(_ title: String, icon: String, enabled: Bool = true, iconColor: Color? = nil,
                         perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
             VStack(spacing: 6) {
-                ZStack {
-                    if busy {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: icon)
-                            .font(.system(size: prominent ? 17 : 15, weight: .semibold))
-                            .foregroundStyle(prominent ? AnyShapeStyle(Color.white)
-                                             : AnyShapeStyle(iconColor ?? Color.primary))
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                }
-                .frame(width: prominent ? 50 : 42, height: prominent ? 50 : 42)
-                .glassEffect(prominent ? Glass.regular.tint(Color.appAccent).interactive()
-                                       : Glass.regular.interactive(),
-                             in: Circle())
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(iconColor ?? Color.primary)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 42, height: 42)
+                    .glassEffect(Glass.regular.interactive(), in: Circle())
                 Text(title)
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 74, alignment: .bottom)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

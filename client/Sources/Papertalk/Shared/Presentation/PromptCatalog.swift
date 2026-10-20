@@ -99,6 +99,12 @@ enum PromptCatalog {
                     usedWhen: "The {position} of every block between the first and the last.", tokens: [], keyPath: \.blockMiddle),
         PromptEntry(id: "blockLast", group: "Monologue", title: "Position: last block",
                     usedWhen: "The {position} of the method's last block.", tokens: [], keyPath: \.blockLast),
+        PromptEntry(id: "mindMap", group: "Mind map", title: "Mind map",
+                    usedWhen: "After the script, to map the paper's key concepts under three branches: the problem, the method and the demonstration.",
+                    tokens: [], keyPath: \.mindMap),
+        PromptEntry(id: "mindMapRetry", group: "Mind map", title: "Mind map retry",
+                    usedWhen: "Only when a main concept of the mind map came back without at least two parts, to ask again.",
+                    tokens: [], keyPath: \.mindMapRetry),
     ]
 
     /// The entries by group, in order, for the page's list.

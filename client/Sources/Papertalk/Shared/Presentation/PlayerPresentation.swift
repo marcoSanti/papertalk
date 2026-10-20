@@ -76,10 +76,13 @@ enum BottomBarContent: Equatable {
     case hidden
 
     /// The loaded paper earns its pane beside a running import; a paper that's
-    /// merely selected doesn't push the import aside.
+    /// merely selected doesn't push the import aside. Drawing a mind map leaves
+    /// playback alone, so even the paper being mapped keeps its player.
     init(activeImport: Paper?, playing: Paper?, selected: Paper?) {
         if let run = activeImport {
-            if let playing, playing.id != run.id { self = .playerAndImport(playing: playing, importing: run) }
+            if let playing, playing.id != run.id || run.stage == Paper.mindMapStage {
+                self = .playerAndImport(playing: playing, importing: run)
+            }
             else { self = .importOnly(run) }
         } else if let paper = playing ?? selected {
             self = .player(paper)
@@ -116,6 +119,13 @@ enum PlayerPane: Equatable {
 
 /// The import progress pane in the bottom bar.
 enum ImportProgressPresentation {
+    /// A mind map is one LLM call with no progress to report: the bar creeps
+    /// towards `creepCeiling` while it waits, and completes when the map arrives.
+    static let creepCeiling = 0.92
+    static func creep(_ progress: Double) -> Double {
+        progress >= creepCeiling ? progress : progress + (creepCeiling - progress) * 0.03
+    }
+
     /// "2/3" when several imports run at once, else nil.
     static func counter(index: Int, count: Int) -> String? {
         count > 1 ? "\((index % count) + 1)/\(count)" : nil

@@ -519,16 +519,32 @@ final class AppStore: ObservableObject {
             .sorted { ($0.createdIso ?? "") < ($1.createdIso ?? "") }
     }
 
-    /// The single import the bottom status bar is currently showing.
-    var activeRun: Paper? {
+    /// The first conversion running, if any (they share the speech engine).
+    var activeRun: Paper? { activeRuns.first }
+
+    /// What the bottom bar's progress pane cycles through: conversions, then
+    /// mind maps being drawn (shown as a running copy of their paper).
+    var progressItems: [Paper] {
         let runs = activeRuns
-        guard !runs.isEmpty else { return nil }
-        return runs[activeRunIndex % runs.count]
+        let maps = mindMapJobs.keys.sorted().compactMap { id -> Paper? in
+            guard var p = papers[id], let job = mindMapJobs[id], !runs.contains(where: { $0.id == id }) else { return nil }
+            p.state = "running"; p.stage = Paper.mindMapStage
+            p.progress = job.progress; p.message = job.message; p.statusError = nil
+            return p
+        }
+        return runs + maps
     }
 
-    /// Move the bottom bar's import focus. Cycles across all concurrent imports.
+    /// The progress item the bottom bar is currently showing.
+    var shownProgress: Paper? {
+        let items = progressItems
+        guard !items.isEmpty else { return nil }
+        return items[activeRunIndex % items.count]
+    }
+
+    /// Move the bottom bar's progress focus. Cycles across everything in progress.
     func focusImport(_ delta: Int) {
-        let runs = activeRuns
+        let runs = progressItems
         guard !runs.isEmpty else { activeRunIndex = 0; return }
         activeRunIndex = (activeRunIndex + delta + runs.count) % runs.count
     }
@@ -568,6 +584,10 @@ final class AppStore: ObservableObject {
     // MARK: Artifact access (all via the active storage)
     func transcript(for id: String) async -> Transcript? {
         await storage.exists(Transcript.self, K.transcript(id))
+    }
+
+    func mindMap(for id: String) async -> MindMap? {
+        await storage.exists(MindMap.self, K.mindMap(id))
     }
 
     /// Audio is always synthesized live from the transcript (AVSpeechSynthesizer),
@@ -942,6 +962,79 @@ final class AppStore: ObservableObject {
         if playingPaperId != nil { player.stopAll(); playingPaperId = nil }
         for dir in voiceModelDirs { try? FileManager.default.removeItem(at: dir) }
         show("Voice models deleted — they'll download again when needed")
+    }
+
+    /// A mind map being drawn outside an import, for the bottom bar's progress pane.
+    struct MindMapJob: Equatable {
+        var progress: Double
+        var message: String
+    }
+    @Published private(set) var mindMapJobs: [String: MindMapJob] = [:]
+    /// Papers whose mind map is being drawn from the detail pane.
+    var drawingMindMaps: Set<String> { Set(mindMapJobs.keys) }
+
+    func beginMindMapJob(_ id: String) {
+        mindMapJobs[id] = MindMapJob(progress: 0.02, message: "Reading the PDF…")
+    }
+
+    func updateMindMapJob(_ id: String, progress: Double? = nil, message: String? = nil) {
+        guard var job = mindMapJobs[id] else { return }
+        if let progress { job.progress = progress }
+        if let message { job.message = message }
+        mindMapJobs[id] = job
+    }
+
+    func endMindMapJob(_ id: String) { mindMapJobs[id] = nil }
+
+    func canCreateMindMap(_ p: Paper) -> Bool {
+        PaperPresentation.canCreateMindMap(p, llmConfigured: !llm.baseUrl.isEmpty, drawing: drawingMindMaps.contains(p.id))
+    }
+
+    /// Draw (or redraw) a paper's mind map from its PDF, outside an import.
+    func createMindMap(_ id: String) {
+        guard let p = papers[id], canCreateMindMap(p) else { return }
+        beginMindMapJob(id)
+        Task {
+            defer { endMindMapJob(id) }
+            guard let pdfData = try? await storage.read(K.pdf(id)) else { show("No PDF to read"); return }
+            let text = LocalPipeline.extractText(pdfData)
+            guard !text.isEmpty else { show("Could not read PDF text"); return }
+            updateMindMapJob(id, progress: 0.08, message: "Asking the LLM for the paper's key concepts…")
+            // Cancelled when the drawing ends (below), so holding the store is fine.
+            let ticker = Task { @MainActor in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    guard let job = self.mindMapJobs[id] else { return }
+                    self.updateMindMapJob(id, progress: ImportProgressPresentation.creep(job.progress))
+                }
+            }
+            defer { ticker.cancel() }
+            var pipeline = LocalPipeline(baseUrl: llm.baseUrl, apiKey: llm.resolvedKey(),
+                                         model: llm.model.isEmpty ? "llama3.1:70b" : llm.model)
+            pipeline.prompts = prompts
+            pipeline.log = { line in Task { @MainActor in self.appendLog(line, paper: id) } }
+            if await drawMindMap(id, text: text, title: p.displayTitle, pipeline: pipeline) {
+                updateMindMapJob(id, progress: 1, message: "Done")
+                show("Mind map ready")
+            }
+        }
+    }
+
+    /// Ask for the mind map and save it. Returns whether it was saved; a
+    /// failure is logged and shown, never thrown.
+    @discardableResult
+    private func drawMindMap(_ id: String, text: String, title: String, pipeline: LocalPipeline) async -> Bool {
+        do {
+            let map = try await pipeline.mindMap(title: title, text: text)
+            await storage.save(map, K.mindMap(id))
+            optimistic(id, { $0.hasMindMap = true })
+            return true
+        } catch {
+            if Task.isCancelled { return false }
+            appendLog("WARN: mind map failed: \(error.localizedDescription)", paper: id)
+            show("Couldn't draw the mind map: \(error.localizedDescription)")
+            return false
+        }
     }
 
     func refreshMeta(_ id: String) {
@@ -1365,6 +1458,11 @@ final class AppStore: ObservableObject {
                 // Persist now so an interrupted run can resume past segments later.
                 await storage.save(script, K.transcript(id))
                 appendLog("Got transcript (\(script.segments.count) segments)", paper: id)
+            }
+            // Best-effort: a mind map that fails doesn't fail the episode (Create mind map retries).
+            if papers[id]?.hasMindMap != true {
+                updateRec(id) { $0.stage = Paper.mindMapStage; $0.progress = 0.76; $0.message = "Asking the LLM for the paper's key concepts…" }
+                await drawMindMap(id, text: text, title: papers[id]?.displayTitle ?? name, pipeline: pipeline)
             }
             guard voiceAudio else {
                 appendLog("Skipped audio — voice the script later with Regenerate audio.", paper: id)

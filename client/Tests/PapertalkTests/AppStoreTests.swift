@@ -574,6 +574,39 @@ final class AppStoreTests: PapertalkTestCase {
 
     // MARK: prompts, imports, log, toasts
 
+    func testMindMapsBeingDrawnShowInTheProgressBarBesideConversions() async {
+        let store = await makeStore([Fixtures.paper(id: "a", title: "Alpha"), Fixtures.paper(id: "b", state: "running")])
+        XCTAssertEqual(store.progressItems.map(\.id), ["b"])
+        store.beginMindMapJob("a")
+        store.updateMindMapJob("a", progress: 0.4, message: "Asking")
+        let items = store.progressItems
+        XCTAssertEqual(items.map(\.id), ["b", "a"])
+        XCTAssertEqual(items[1].stage, Paper.mindMapStage)
+        XCTAssertEqual(items[1].progress, 0.4)
+        XCTAssertEqual(items[1].message, "Asking")
+        // The paper itself isn't converting: its episode, state and actions are untouched.
+        XCTAssertEqual(store.papers["a"]?.state, "done")
+        XCTAssertEqual(store.activeRuns.map(\.id), ["b"])
+        XCTAssertEqual(store.drawingMindMaps, ["a"])
+        store.focusImport(1)
+        XCTAssertEqual(store.shownProgress?.id, "a")
+        store.endMindMapJob("a")
+        XCTAssertEqual(store.progressItems.map(\.id), ["b"])
+        XCTAssertTrue(store.drawingMindMaps.isEmpty)
+    }
+
+    func testMindMapIsReadFromThePaperFolder() async throws {
+        let store = await makeStore([Fixtures.paper(id: "m")])
+        let none = await store.mindMap(for: "m")
+        XCTAssertNil(none)
+        let map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply()))
+        await storage.save(map, K.mindMap("m"))
+        let loaded = await store.mindMap(for: "m")
+        XCTAssertEqual(loaded, map)
+        XCTAssertEqual(K.mindMap("m"), "papers/m/mindmap.json")
+        XCTAssertTrue(store.drawingMindMaps.isEmpty)
+    }
+
     func testResolvingWithNothingPendingIsHarmless() async {
         let store = await makeStore()
         store.resolveDuplicate(true)
@@ -602,13 +635,14 @@ final class AppStoreTests: PapertalkTestCase {
     func testActiveRunsAndImportFocusCycle() async {
         let store = await makeStore(library)                // "2" running (2024-01), "3" queued (2024-02)
         XCTAssertEqual(store.activeRuns.map(\.id), ["2", "3"])
-        XCTAssertEqual(store.activeRun?.id, "2")
+        XCTAssertEqual(store.shownProgress?.id, "2")
         store.focusImport(1)
-        XCTAssertEqual(store.activeRun?.id, "3")
+        XCTAssertEqual(store.shownProgress?.id, "3")
         store.focusImport(1)
-        XCTAssertEqual(store.activeRun?.id, "2")      // wraps around
+        XCTAssertEqual(store.shownProgress?.id, "2")      // wraps around
         store.focusImport(-1)
-        XCTAssertEqual(store.activeRun?.id, "3")
+        XCTAssertEqual(store.shownProgress?.id, "3")
+        XCTAssertEqual(store.activeRun?.id, "2")           // the bar's focus doesn't change it
     }
 
     func testLogIsTaggedPerPaperAndCapped() async {

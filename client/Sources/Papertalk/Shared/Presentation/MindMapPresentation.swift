@@ -74,6 +74,31 @@ struct MindMapLayout: Equatable {
 
     static func clampScale(_ s: Double) -> Double { min(maxScale, max(minScale, s)) }
 
+    /// Where the graph starts inside the scroll view at `scale`: after the
+    /// padding, or centred when it's smaller than the viewport.
+    private func origin(_ scale: Double, viewport: (width: Double, height: Double), padding: Double) -> Point {
+        Point(x: max(padding, (viewport.width - width * scale) / 2), y: max(padding, (viewport.height - height * scale) / 2))
+    }
+
+    /// The point of the map (in layout units) under `anchor`, a point in the viewport.
+    func mapPoint(under anchor: Point, offset: Point, scale: Double,
+                  viewport: (width: Double, height: Double), padding: Double) -> Point {
+        let o = origin(scale, viewport: viewport, padding: padding)
+        return Point(x: (offset.x + anchor.x - o.x) / scale, y: (offset.y + anchor.y - o.y) / scale)
+    }
+
+    /// The scroll offset that keeps the map point under `anchor` (the pointer,
+    /// or the viewport's centre) in place when zooming from `s0` to `s1`.
+    func zoomedOffset(offset: Point, anchor: Point, from s0: Double, to s1: Double,
+                      viewport: (width: Double, height: Double), padding: Double) -> Point {
+        let g = mapPoint(under: anchor, offset: offset, scale: s0, viewport: viewport, padding: padding)
+        let o1 = origin(s1, viewport: viewport, padding: padding)
+        let maxX = max(0, width * s1 + 2 * padding - viewport.width)
+        let maxY = max(0, height * s1 + 2 * padding - viewport.height)
+        return Point(x: min(maxX, max(0, g.x * s1 + o1.x - anchor.x)),
+                     y: min(maxY, max(0, g.y * s1 + o1.y - anchor.y)))
+    }
+
     /// The scroll offset after dragging the map by (`dx`, `dy`) from `start`:
     /// the content follows the pointer, and stops at its edges.
     static func panned(from start: Point, dx: Double, dy: Double,

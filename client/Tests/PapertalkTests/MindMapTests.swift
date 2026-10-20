@@ -241,6 +241,38 @@ final class MindMapLayoutTests: PapertalkTestCase {
         }
     }
 
+    func testZoomKeepsThePointUnderThePointerInPlace() throws {
+        typealias P = MindMapLayout.Point
+        let layout = MindMapLayout(try crowded())                  // much larger than the viewport
+        let viewport = (width: 900.0, height: 700.0), pad = 20.0
+        let offset = P(x: 600, y: 500), pointer = P(x: 250, y: 400)
+        for (s0, s1) in [(1.0, 1.25), (1.0, 0.8), (0.6, 1.5)] {
+            let under = layout.mapPoint(under: pointer, offset: offset, scale: s0, viewport: viewport, padding: pad)
+            let o1 = layout.zoomedOffset(offset: offset, anchor: pointer, from: s0, to: s1, viewport: viewport, padding: pad)
+            let after = layout.mapPoint(under: pointer, offset: o1, scale: s1, viewport: viewport, padding: pad)
+            XCTAssertEqual(after.x, under.x, accuracy: 0.001, "\(s0)→\(s1)")
+            XCTAssertEqual(after.y, under.y, accuracy: 0.001, "\(s0)→\(s1)")
+        }
+    }
+
+    func testZoomStopsAtTheEdgesAndLeavesASmallMapCentred() throws {
+        typealias P = MindMapLayout.Point
+        let big = MindMapLayout(try crowded()), viewport = (width: 900.0, height: 700.0)
+        // Zooming out around the top-left corner can't scroll past the start.
+        let o = big.zoomedOffset(offset: P(x: 10, y: 10), anchor: P(x: 0, y: 0), from: 1, to: 0.5, viewport: viewport, padding: 20)
+        XCTAssertEqual(o, P(x: 0, y: 0))
+        // Nor past the end.
+        let far = big.zoomedOffset(offset: P(x: 50_000, y: 50_000), anchor: P(x: 900, y: 700), from: 1, to: 1.25,
+                                   viewport: viewport, padding: 20)
+        XCTAssertEqual(far.x, big.width * 1.25 + 40 - 900, accuracy: 0.001)
+        XCTAssertEqual(far.y, big.height * 1.25 + 40 - 700, accuracy: 0.001)
+        // A map that fits the window at both scales doesn't scroll.
+        let small = MindMapLayout(try XCTUnwrap(MindMap.parse(MindMapFixtures.reply())))
+        let huge = (width: 5000.0, height: 5000.0)
+        XCTAssertEqual(small.zoomedOffset(offset: P(x: 0, y: 0), anchor: P(x: 100, y: 100), from: 0.8, to: 1,
+                                          viewport: huge, padding: 20), P(x: 0, y: 0))
+    }
+
     func testEdgesJoinTheCentreTheTreeAndTheLinks() throws {
         let map = try crowded()
         let layout = MindMapLayout(map)

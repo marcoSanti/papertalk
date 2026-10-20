@@ -13,7 +13,15 @@ struct MindMapView: View {
     /// nil: fit the whole map in the window.
     @State private var zoom: Double?
     @State private var fit = 1.0
-    @GestureState private var pinch = 1.0
+    @GestureState private var pinch = Pinch()
+    /// A pinch in progress: how much, and where it started (in the viewport).
+    private struct Pinch: Equatable {
+        var scale = 1.0
+        var location: CGPoint?
+    }
+    /// Where to scroll once a zoom has resized the content, to keep its anchor in place.
+    @State private var pendingScroll: CGPoint?
+    private static let padding = 20.0
     // Click-and-drag panning drives the scroll view's position.
     @State private var scroll = ScrollPosition()
     @State private var geometry = ScrollFrame()
@@ -40,8 +48,32 @@ struct MindMapView: View {
         _selection = State(initialValue: selected.map { .node($0) } ?? selectedEdge.map { .edge($0) })
     }
 
+    private var scale: Double { MindMapLayout.clampScale(zoom ?? fit) }
+    private var viewport: (width: Double, height: Double) { (geometry.viewport.width, geometry.viewport.height) }
+
+    /// Zoom to `newScale` keeping the map point under `anchor` (a viewport point) where it is.
+    private func zoom(to newScale: Double, around anchor: CGPoint) {
+        let s0 = scale, s1 = MindMapLayout.clampScale(newScale)
+        guard s1 != s0 else { return }
+        let o = layout.zoomedOffset(offset: .init(x: geometry.offset.x, y: geometry.offset.y),
+                                    anchor: .init(x: anchor.x, y: anchor.y), from: s0, to: s1,
+                                    viewport: viewport, padding: Self.padding)
+        pendingScroll = CGPoint(x: o.x, y: o.y)
+        zoom = s1
+    }
+
+    private var viewportCenter: CGPoint { CGPoint(x: geometry.viewport.width / 2, y: geometry.viewport.height / 2) }
+
+    /// The pinch's preview scales around the map point under the fingers.
+    private var pinchAnchor: UnitPoint {
+        guard let l = pinch.location, layout.width > 0, layout.height > 0 else { return .center }
+        let g = layout.mapPoint(under: .init(x: l.x, y: l.y), offset: .init(x: geometry.offset.x, y: geometry.offset.y),
+                                scale: scale, viewport: viewport, padding: Self.padding)
+        return UnitPoint(x: g.x / layout.width, y: g.y / layout.height)
+    }
+
     var body: some View {
-        let scale = MindMapLayout.clampScale(zoom ?? fit)
+        let scale = scale
         // No toolbar: the window's title bar names the map and closes it.
         VStack(spacing: 0) {
             HStack(spacing: 0) {
@@ -49,14 +81,21 @@ struct MindMapView: View {
                     ScrollView([.horizontal, .vertical]) {
                         graph(layout, scale: scale)
                             // A pinch in progress only scales the drawn graph; it's laid out again once, at the end.
-                            .scaleEffect(MindMapLayout.clampScale(scale * pinch) / scale)
-                            .padding(20)
+                            .scaleEffect(MindMapLayout.clampScale(scale * pinch.scale) / scale, anchor: pinchAnchor)
+                            .padding(Self.padding)
                             .frame(minWidth: geo.size.width, minHeight: geo.size.height)
                     }
                     .scrollPosition($scroll)
                     .onScrollGeometryChange(for: ScrollFrame.self) {
                         ScrollFrame(offset: $0.contentOffset, content: $0.contentSize, viewport: $0.containerSize)
-                    } action: { _, frame in geometry = frame }
+                    } action: { old, frame in
+                        geometry = frame
+                        // The zoomed content has its new size now: scroll so the anchor stays put.
+                        if let target = pendingScroll, frame.content != old.content {
+                            pendingScroll = nil
+                            scroll.scrollTo(point: target)
+                        }
+                    }
                     // Window coordinates: the content moves under the pointer while panning.
                     .simultaneousGesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
                         .onChanged { drag in
@@ -75,8 +114,9 @@ struct MindMapView: View {
                 }
                 .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
                 .overlay(alignment: .bottomTrailing) { zoomControls(scale) }
-                .gesture(MagnifyGesture().updating($pinch) { value, state, _ in state = value.magnification }
-                    .onEnded { zoom = MindMapLayout.clampScale((zoom ?? fit) * $0.magnification) })
+                .gesture(MagnifyGesture()
+                    .updating($pinch) { value, state, _ in state = Pinch(scale: value.magnification, location: value.startLocation) }
+                    .onEnded { zoom(to: scale * $0.magnification, around: $0.startLocation) })
                 Divider()
                 panel
                     .frame(width: 290)
@@ -87,7 +127,7 @@ struct MindMapView: View {
 
     private func zoomControls(_ scale: Double) -> some View {
         HStack(spacing: 2) {
-            Button { zoom = MindMapLayout.clampScale(scale / 1.25) } label: {
+            Button { zoom(to: scale / 1.25, around: viewportCenter) } label: {
                 Image(systemName: "minus.magnifyingglass").frame(width: 26, height: 24)
             }
             .help("Zoom out")
@@ -95,7 +135,7 @@ struct MindMapView: View {
                 Text("\(Int((scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 44, minHeight: 24)
             }
             .help("Fit the whole map")
-            Button { zoom = MindMapLayout.clampScale(scale * 1.25) } label: {
+            Button { zoom(to: scale * 1.25, around: viewportCenter) } label: {
                 Image(systemName: "plus.magnifyingglass").frame(width: 26, height: 24)
             }
             .help("Zoom in")

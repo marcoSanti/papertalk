@@ -177,7 +177,7 @@ struct UploadSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.tinted(.gray))
                     .keyboardShortcut(.cancelAction)
                 Button("Start episode") {
                     if let s = form.submission {
@@ -186,7 +186,7 @@ struct UploadSheet: View {
                         dismiss()
                     }
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.tinted(Color.appAccent, prominent: true))
                 .disabled(!form.canStart)
                 .help(form.startHelp)
                 .keyboardShortcut(.defaultAction)
@@ -795,17 +795,14 @@ struct CastSheet: View {
                 Spacer()
                 // One accent per outcome: discard (red), script only (indigo), voice it (app orange).
                 Button("Cancel import") { store.cancelCast() }
-                    .buttonStyle(.glass)
-                    .tint(.red)
+                    .buttonStyle(.tinted(.red))
                     .keyboardShortcut(.cancelAction)
                 Button(CastForm.scriptOnlyTitle) { store.resolveCast(form.cast, voiceAudio: false) }
-                    .buttonStyle(.glassProminent)
-                    .tint(.indigo)
+                    .buttonStyle(.tinted(.indigo, prominent: true))
                     .disabled(!form.canConfirm)
                     .help(CastForm.scriptOnlyHelp)
                 Button("Use these voices") { store.resolveCast(form.cast) }
-                    .buttonStyle(.glassProminent)
-                    .tint(Color.appAccent)
+                    .buttonStyle(.tinted(Color.appAccent, prominent: true))
                     .disabled(!form.canConfirm)
                     .keyboardShortcut(.defaultAction)
             }

@@ -39,6 +39,35 @@ extension View {
     }
 }
 
+// MARK: - Tinted button
+
+/// A sheet button in a colour of its own. `.glass` / `.glassProminent` ignore
+/// `.tint` inside sheets (every button came out the same), so this paints a
+/// plain capsule. Prominent: filled with `color`, white label; otherwise a
+/// faint wash with the label in `color`.
+struct TintedButtonStyle: ButtonStyle {
+    var color: Color
+    var prominent = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.body.weight(prominent ? .semibold : .medium))
+            .foregroundStyle(prominent ? Color.white : color)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(prominent ? AnyShapeStyle(color.gradient) : AnyShapeStyle(color.opacity(0.15))))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+            .contentShape(Capsule())
+    }
+}
+
+extension ButtonStyle where Self == TintedButtonStyle {
+    static func tinted(_ color: Color, prominent: Bool = false) -> TintedButtonStyle {
+        TintedButtonStyle(color: color, prominent: prominent)
+    }
+}
+
 // MARK: - Section label
 
 /// Small all-caps heading used above grouped content.

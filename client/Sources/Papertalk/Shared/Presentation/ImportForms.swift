@@ -1,12 +1,23 @@
 import Foundation
 
-/// The import sheet's state and rules: the chosen PDF, the depth and its
-/// custom description. The sheet binds to this and lays it out.
+/// The import sheet's state and rules: the chosen PDF, the depth, its
+/// custom description and the summary length. The sheet binds to this and lays it out.
 struct ImportForm {
     private(set) var fileName: String?
     private(set) var fileData: Data?
     var depth: Depth = .inDepth
     var depthNote = ""
+    /// The summary length slider's value (a Double, as sliders bind to one).
+    var summaryMinutes = Double(SummaryLength.defaultMinutes)
+
+    /// Only a summary has a length to choose; the other depths run as long as the paper needs.
+    var showsLengthSlider: Bool { depth == .summary }
+    var lengthLabel: String { SummaryLength.label(SummaryLength.clamped(summaryMinutes)) }
+    static let lengthRange = Double(SummaryLength.range.lowerBound)...Double(SummaryLength.range.upperBound)
+    static let lengthStep = Double(SummaryLength.step)
+    static let lengthMinLabel = "\(SummaryLength.range.lowerBound) min"
+    static let lengthMaxLabel = "\(SummaryLength.range.upperBound) min"
+    static let lengthHelp = "The episode is written to fit in this time at the default speaking pace."
 
     var hasFile: Bool { fileData != nil }
 
@@ -41,9 +52,9 @@ struct ImportForm {
     }
 
     /// What `AppStore.upload` needs, once the form is complete.
-    var submission: (data: Data, filename: String, depth: Depth, depthNote: String)? {
+    var submission: (data: Data, filename: String, depth: Depth, depthNote: String, targetMinutes: Int?)? {
         guard canStart, let fileData, let fileName else { return nil }
-        return (fileData, fileName, depth, depthNote)
+        return (fileData, fileName, depth, depthNote, showsLengthSlider ? SummaryLength.clamped(summaryMinutes) : nil)
     }
 
     /// The file button and the label beside it.

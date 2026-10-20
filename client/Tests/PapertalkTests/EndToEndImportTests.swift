@@ -67,6 +67,49 @@ final class EndToEndImportTests: PapertalkTestCase {
         XCTAssertGreaterThan(wav.count, 24_000 * 2)   // more than a second of audio
     }
 
+    /// Skip audio at the cast prompt: the script is written with the chosen
+    /// names and voices, nothing is voiced, and the summary length is kept for
+    /// reruns. Needs no Kokoro, only the mocked LLM.
+    func testSkippingAudioWritesOnlyTheScript() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PAPERTALK_E2E"] == "1",
+                          "End-to-end import is opt-in: PAPERTALK_E2E=1 (client/linux-dev/dev.sh e2e)")
+        installLLM()
+        let root = Fixtures.tempDir()
+        let storage = LocalStorage(root: root)
+        await storage.save(Fixtures.paper(id: "seed"), K.paper("seed"))
+        let fake = FakeSpeechBackend()
+        let store = AppStore(storage: storage, speech: fake)
+        XCTAssertFalse(store.llm.baseUrl.isEmpty, "set LLM_BASE_URL for the mocked LLM")
+        await waitUntil { store.papers["seed"] != nil }
+
+        store.upload(Fixtures.pdf(lines: Self.paperLines), filename: "paper.pdf", depth: .summary, depthNote: "",
+                     targetMinutes: 10)
+        var cast: [SpeakerConfig] = []
+        await waitUntil(timeout: 60) {
+            if store.pendingDuplicate != nil { store.resolveDuplicate(true) }
+            if let prompt = store.pendingCast {
+                cast = CastForm(proposals: prompt.proposals, authors: prompt.authors,
+                                authorGenders: prompt.authorGenders).cast
+                store.resolveCast(cast, voiceAudio: false)
+            }
+            return store.papers.values.contains { $0.id != "seed" && ($0.isDone || $0.isError) }
+        }
+
+        let paper = try XCTUnwrap(store.papers.values.first { $0.id != "seed" })
+        XCTAssertTrue(paper.isDone, paper.statusError ?? "not finished")
+        XCTAssertTrue(paper.hasScript)
+        XCTAssertFalse(paper.hasAudio)
+        XCTAssertTrue(fake.calls.isEmpty)
+        let onDisk = await storage.exists(Paper.self, K.paper(paper.id))
+        let saved = try XCTUnwrap(onDisk)
+        XCTAssertEqual(saved.targetMinutes, 10)
+        XCTAssertEqual(saved.speakers, cast)
+        XCTAssertFalse(saved.hasAudio)
+        let files = try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("papers/\(paper.id)").path)
+        XCTAssertTrue(files.contains("transcript.json"))
+        XCTAssertFalse(files.contains("turns"))
+    }
+
     /// Canned replies for each pipeline prompt, matched like the other pipeline tests.
     private func installLLM() {
         let meta = #"{"title":"Attention Mechanisms in Modern Models","authors":["Ada Lovelace","Grace Hopper"],"affiliations":["UCL"],"doi":"","tags":["nlp"]}"#

@@ -8,25 +8,40 @@ struct MindMapView: View {
     let title: String
     /// Closes the window it's in.
     var onClose: () -> Void = {}
-    @State private var selected: String?
+    /// What the side panel shows: a concept, or an edge with both its concepts.
+    private enum Selection: Equatable { case node(String), edge(String) }
+    @State private var selection: Selection?
+    private var selectedNode: String? { if case .node(let id) = selection { id } else { nil } }
     /// nil: fit the whole map in the window.
     @State private var zoom: Double?
     @State private var fit = 1.0
     @GestureState private var pinch = 1.0
+    // Click-and-drag panning drives the scroll view's position.
+    @State private var scroll = ScrollPosition()
+    @State private var geometry = ScrollFrame()
+    @State private var dragStart: CGPoint?
+
+    /// What panning needs to know about the scroll view.
+    private struct ScrollFrame: Equatable {
+        var offset = CGPoint.zero
+        var content = CGSize.zero
+        var viewport = CGSize.zero
+    }
 
     // Computed once: rebuilding them on every redraw (each pinch frame) made the graph lag.
     private let layout: MindMapLayout
     private let nodes: [String: MindMap.Node]
     private let ids: [String]
 
-    init(map: MindMap, title: String, selected: String? = nil, onClose: @escaping () -> Void = {}) {
+    init(map: MindMap, title: String, selected: String? = nil, selectedEdge: String? = nil,
+         onClose: @escaping () -> Void = {}) {
         self.map = map
         self.title = title
         self.onClose = onClose
         layout = MindMapLayout(map)
         nodes = Dictionary(map.nodes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         ids = layout.positions.keys.sorted()
-        _selected = State(initialValue: selected)
+        _selection = State(initialValue: selected.map { .node($0) } ?? selectedEdge.map { .edge($0) })
     }
 
     var body: some View {
@@ -64,6 +79,23 @@ struct MindMapView: View {
                             .padding(20)
                             .frame(minWidth: geo.size.width, minHeight: geo.size.height)
                     }
+                    .scrollPosition($scroll)
+                    .onScrollGeometryChange(for: ScrollFrame.self) {
+                        ScrollFrame(offset: $0.contentOffset, content: $0.contentSize, viewport: $0.containerSize)
+                    } action: { _, frame in geometry = frame }
+                    // Window coordinates: the content moves under the pointer while panning.
+                    .simultaneousGesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
+                        .onChanged { drag in
+                            let start = dragStart ?? geometry.offset
+                            dragStart = start
+                            let p = MindMapLayout.panned(from: .init(x: start.x, y: start.y),
+                                                         dx: drag.translation.width, dy: drag.translation.height,
+                                                         content: (geometry.content.width, geometry.content.height),
+                                                         viewport: (geometry.viewport.width, geometry.viewport.height))
+                            scroll.scrollTo(point: CGPoint(x: p.x, y: p.y))
+                        }
+                        .onEnded { _ in dragStart = nil })
+                    .pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
                     .onAppear { fit = layout.fitScale(width: geo.size.width - 40, height: geo.size.height - 40) }
                     .onChange(of: geo.size) { _, size in fit = layout.fitScale(width: size.width - 40, height: size.height - 40) }
                 }
@@ -88,15 +120,13 @@ struct MindMapView: View {
                     var path = Path()
                     let p1 = CGPoint(x: a.x * scale, y: a.y * scale), p2 = CGPoint(x: b.x * scale, y: b.y * scale)
                     path.move(to: p1)
-                    if e.label == nil {
-                        path.addLine(to: p2)
+                    if let k = layout.control(e) {
+                        path.addQuadCurve(to: p2, control: CGPoint(x: k.x * scale, y: k.y * scale))
                     } else {
-                        // Links across branches bow towards the centre, so they don't run over tree edges.
-                        let mid = CGPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
-                        let c = layout.positions[MindMapLayout.centerId].map { CGPoint(x: $0.x * scale, y: $0.y * scale) } ?? mid
-                        path.addQuadCurve(to: p2, control: CGPoint(x: (mid.x + c.x) / 2, y: (mid.y + c.y) / 2))
+                        path.addLine(to: p2)
                     }
-                    let highlighted = selected != nil && (e.from == selected || e.to == selected)
+                    let highlighted = selection == .edge(e.id)
+                        || (selectedNode != nil && (e.from == selectedNode || e.to == selectedNode))
                     let color = edgeColor(e)
                     ctx.stroke(path, with: .color(color.opacity(highlighted ? 0.95 : 0.45)),
                                style: StrokeStyle(lineWidth: highlighted ? 2.5 : 1.5, lineCap: .round,
@@ -112,10 +142,18 @@ struct MindMapView: View {
                         .position(x: p.x * scale, y: p.y * scale)
                 }
             }
+
+            // Above the nodes, so a handle can never hide under one.
+            ForEach(layout.selectableEdges) { e in
+                if let p = layout.handle(e), let detail = MindMapPresentation.edgeDetail(map, e) {
+                    edgeHandle(e, detail: detail)
+                        .position(x: p.x * scale, y: p.y * scale)
+                }
+            }
         }
         .frame(width: layout.width * scale, height: layout.height * scale, alignment: .topLeading)
         .contentShape(Rectangle())
-        .onTapGesture { selected = nil }
+        .onTapGesture { selection = nil }
     }
 
     @ViewBuilder
@@ -123,20 +161,22 @@ struct MindMapView: View {
         let tier = MindMapPresentation.tier(layout, id)
         let node = nodes[id]
         let color = node.map { Self.color($0.branch) } ?? Color.appAccent
-        let isSelected = selected == id
+        let isSelected = selection == .node(id)
         let shape = RoundedRectangle(cornerRadius: tier == .detail ? 10 : 14, style: .continuous)
         Button {
-            withAnimation(.snappy) { selected = node == nil ? nil : id }
+            withAnimation(.snappy) { selection = node == nil ? nil : .node(id) }
         } label: {
-            VStack(spacing: 2) {
+            Group {
+                // The main concepts' icon sits inline, so long names keep both lines.
                 if tier == .main, let node {
-                    Image(systemName: MindMapPresentation.branchIcon(node.branch)).font(.caption.weight(.bold))
+                    Text("\(Image(systemName: MindMapPresentation.branchIcon(node.branch))) \(node.label)")
+                } else {
+                    Text(node?.label ?? title)
                 }
-                Text(node?.label ?? title)
-                    .font(tier == .detail ? .callout.weight(.medium) : .callout.weight(.bold))
-                    .lineLimit(tier == .paper ? 3 : 2)
-                    .multilineTextAlignment(.center)
             }
+            .font(tier == .detail ? .callout.weight(.medium) : .callout.weight(.bold))
+            .lineLimit(tier == .paper ? 3 : 2)
+            .multilineTextAlignment(.center)
             .foregroundStyle(tier == .detail ? Color.primary : Color.white)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -166,13 +206,47 @@ struct MindMapView: View {
         }
     }
 
+    /// A link shows its label as a clickable tag; a tree edge a small dot.
+    private func edgeHandle(_ e: MindMapLayout.Edge, detail: MindMapPresentation.EdgeDetail) -> some View {
+        let isSelected = selection == .edge(e.id)
+        let color = edgeColor(e)
+        return Button {
+            withAnimation(.snappy) { selection = .edge(e.id) }
+        } label: {
+            Group {
+                if let label = e.label, !label.isEmpty {
+                    Text(label)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(isSelected ? AnyShapeStyle(Color.accentColor)
+                                                              : AnyShapeStyle(Color(nsColor: .windowBackgroundColor))))
+                        .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1))
+                } else {
+                    Circle()
+                        .fill(color)
+                        .frame(width: isSelected ? 13 : 9, height: isSelected ? 13 : 9)
+                        .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
+                        .padding(6)   // a larger target than the dot
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(MindMapPresentation.edgeHelp(detail))
+    }
+
     // MARK: panel
 
     @ViewBuilder
     private var panel: some View {
         ScrollView {
-            if let id = selected, let node = nodes[id] {
+            if let id = selectedNode, let node = nodes[id] {
                 detail(node)
+            } else if case .edge(let id) = selection, let e = layout.selectableEdges.first(where: { $0.id == id }),
+                      let d = MindMapPresentation.edgeDetail(map, e) {
+                edgeDetail(d)
             } else {
                 overview
             }
@@ -185,7 +259,7 @@ struct MindMapView: View {
             Text(MindMapPresentation.hint).font(.callout).foregroundStyle(.secondary)
             ForEach(MindMap.Branch.allCases, id: \.self) { b in
                 if let root = map.root(b) {
-                    Button { withAnimation(.snappy) { selected = root.id } } label: {
+                    Button { withAnimation(.snappy) { selection = .node(root.id) } } label: {
                         HStack(spacing: 10) {
                             Image(systemName: MindMapPresentation.branchIcon(b))
                                 .foregroundStyle(.white)
@@ -205,6 +279,52 @@ struct MindMapView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Both concepts of the selected edge, one above the other, with how they relate between them.
+    private func edgeDetail(_ d: MindMapPresentation.EdgeDetail) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(MindMapPresentation.connectionHeading, systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            conceptCard(d.top)
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down")
+                Text(d.relation).italic()
+            }
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            conceptCard(d.bottom)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// One concept in the edge panel; clicking it opens that concept.
+    private func conceptCard(_ node: MindMap.Node) -> some View {
+        let color = Self.color(node.branch)
+        return Button { withAnimation(.snappy) { selection = .node(node.id) } } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(MindMapPresentation.branchTitle(node.branch), systemImage: MindMapPresentation.branchIcon(node.branch))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(color)
+                Text(node.label).font(.headline)
+                if !node.core.isEmpty {
+                    Text(node.core).font(.callout.weight(.medium))
+                }
+                if !node.description.isEmpty {
+                    Text(node.description).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(color.opacity(0.35), lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func detail(_ node: MindMap.Node) -> some View {
@@ -235,7 +355,7 @@ struct MindMapView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     SectionLabel(title: MindMapPresentation.connectionsTitle, systemImage: "point.3.connected.trianglepath.dotted")
                     ForEach(connections) { c in
-                        Button { withAnimation(.snappy) { selected = c.id } } label: {
+                        Button { withAnimation(.snappy) { selection = .node(c.id) } } label: {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
                                 Text(c.relation).font(.caption).foregroundStyle(.secondary)
                                 Text(c.label).font(.callout)

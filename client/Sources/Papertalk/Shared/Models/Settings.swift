@@ -315,8 +315,8 @@ struct PromptSettings: Codable, Equatable {
         - Exactly three main concepts, with no parent: the PROBLEM the paper tackles (branch "problem"), the METHOD or approach it takes (branch "method"), and the DEMONSTRATION, the experiments and evidence that show it works (branch "evidence").
         - Break each main concept into 2 to 5 more specific concepts (their parent is its id), and break those down further where it helps. Aim for 12 to 30 concepts in all.
         - label: the concept's name, at most 4 words. A name, never a sentence.
-        - description: 1 to 3 sentences on what the concept means in this paper.
-        - core: one sentence with its key feature, finding or number.
+        - description: 2 to 4 sentences on what the concept means in this paper and why it matters, so a reader new to the topic can follow.
+        - core: 1 to 2 sentences with its key feature, finding or number, including enough context to make sense on its own.
         - links: a few connections between concepts on different branches (for example, a method step that answers part of the problem, or a result that validates a step), each with a label of 1 to 3 words.
         - Use only what the paper states.
         """,

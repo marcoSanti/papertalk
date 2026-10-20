@@ -6,16 +6,41 @@ import Foundation
 /// they lead to. Rings move out until neighbours have room for their labels.
 struct MindMapLayout: Equatable {
     struct Point: Equatable { var x: Double; var y: Double }
-    struct Edge: Equatable {
+    struct Edge: Equatable, Identifiable {
         let from: String
         let to: String
         /// A link across branches (drawn dashed, with its label); otherwise a tree edge.
         let label: String?
+        var id: String { from + "→" + to }
+    }
+
+    /// Edges that join two concepts (not the paper to a main concept): these can be selected.
+    var selectableEdges: [Edge] { edges.filter { $0.from != Self.centerId } }
+
+    /// A link's curve control point: links bow sideways, away from the centre,
+    /// so a link between opposite branches doesn't run (with its label) under
+    /// the paper node. nil for straight tree edges.
+    func control(_ e: Edge) -> Point? {
+        guard e.label != nil, let a = positions[e.from], let b = positions[e.to] else { return nil }
+        let mid = Point(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+        let dx = b.x - a.x, dy = b.y - a.y, length = max(hypot(dx, dy), 1)
+        var nx = -dy / length, ny = dx / length
+        if let c = positions[Self.centerId], nx * (c.x - mid.x) + ny * (c.y - mid.y) > 0 { nx = -nx; ny = -ny }
+        return Point(x: mid.x + nx * 0.3 * length, y: mid.y + ny * 0.3 * length)
+    }
+
+    /// Where an edge's handle sits: halfway along the line or curve.
+    func handle(_ e: Edge) -> Point? {
+        guard let a = positions[e.from], let b = positions[e.to] else { return nil }
+        guard let k = control(e) else { return Point(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2) }
+        return Point(x: 0.25 * a.x + 0.5 * k.x + 0.25 * b.x, y: 0.25 * a.y + 0.5 * k.y + 0.25 * b.y)
     }
 
     static let centerId = "§paper"
     /// Node box the layout leaves room for.
     static let nodeWidth = 150.0, nodeHeight = 56.0
+    /// Room left for a link's label tag.
+    static let linkLabelWidth = 110.0, linkLabelHeight = 24.0
     private static let firstRing = 200.0, ringGap = 175.0, margin = 24.0
 
     /// Concept id (and `centerId`) → centre of its node, in points from the top-left.
@@ -35,6 +60,14 @@ struct MindMapLayout: Equatable {
     }
 
     static func clampScale(_ s: Double) -> Double { min(maxScale, max(minScale, s)) }
+
+    /// The scroll offset after dragging the map by (`dx`, `dy`) from `start`:
+    /// the content follows the pointer, and stops at its edges.
+    static func panned(from start: Point, dx: Double, dy: Double,
+                       content: (width: Double, height: Double), viewport: (width: Double, height: Double)) -> Point {
+        Point(x: min(max(0, content.width - viewport.width), max(0, start.x - dx)),
+              y: min(max(0, content.height - viewport.height), max(0, start.y - dy)))
+    }
 
     static func sectorCenter(_ b: MindMap.Branch) -> Double {
         switch b {
@@ -86,16 +119,22 @@ struct MindMapLayout: Equatable {
             let r = radius[depth[id] ?? 1] ?? Self.firstRing
             raw[id] = Point(x: r * cos(a * .pi / 180), y: r * sin(a * .pi / 180))
         }
-        let xs = raw.values.map(\.x), ys = raw.values.map(\.y)
-        let left = (xs.min() ?? 0) - Self.nodeWidth / 2 - Self.margin
-        let top = (ys.min() ?? 0) - Self.nodeHeight / 2 - Self.margin
-        positions = raw.mapValues { Point(x: $0.x - left, y: $0.y - top) }
-        width = (xs.max() ?? 0) + Self.nodeWidth / 2 + Self.margin - left
-        height = (ys.max() ?? 0) + Self.nodeHeight / 2 + Self.margin - top
-
         edges = MindMap.Branch.allCases.compactMap { map.root($0) }.map { Edge(from: Self.centerId, to: $0.id, label: nil) }
             + map.nodes.compactMap { n in n.parent.map { Edge(from: $0, to: n.id, label: nil) } }
             + map.links.map { Edge(from: $0.from, to: $0.to, label: $0.label) }
+
+        // The canvas holds every node, and every link's curve and label: a link
+        // bows outward, and its furthest point is its handle.
+        positions = raw
+        let handles = edges.filter { $0.label != nil }.compactMap { handle($0) }
+        let xs = raw.values.map { [$0.x - Self.nodeWidth / 2, $0.x + Self.nodeWidth / 2] }.flatMap { $0 }
+            + handles.map { [$0.x - Self.linkLabelWidth / 2, $0.x + Self.linkLabelWidth / 2] }.flatMap { $0 }
+        let ys = raw.values.map { [$0.y - Self.nodeHeight / 2, $0.y + Self.nodeHeight / 2] }.flatMap { $0 }
+            + handles.map { [$0.y - Self.linkLabelHeight / 2, $0.y + Self.linkLabelHeight / 2] }.flatMap { $0 }
+        let left = (xs.min() ?? 0) - Self.margin, top = (ys.min() ?? 0) - Self.margin
+        positions = raw.mapValues { Point(x: $0.x - left, y: $0.y - top) }
+        width = (xs.max() ?? 0) + Self.margin - left
+        height = (ys.max() ?? 0) + Self.margin - top
     }
 }
 
@@ -143,6 +182,25 @@ enum MindMapPresentation {
         }
         return out
     }
+
+    static let connectionHeading = "Connection"
+
+    /// A selected edge: the two concepts it joins, top to bottom, and how.
+    struct EdgeDetail: Equatable {
+        let top: MindMap.Node
+        let bottom: MindMap.Node
+        let relation: String
+    }
+
+    /// Tree edges read "includes" from the broader concept down; links keep
+    /// their label and direction.
+    static func edgeDetail(_ map: MindMap, _ edge: MindMapLayout.Edge) -> EdgeDetail? {
+        guard let a = map.node(edge.from), let b = map.node(edge.to) else { return nil }
+        guard let label = edge.label else { return EdgeDetail(top: a, bottom: b, relation: "includes") }
+        return EdgeDetail(top: a, bottom: b, relation: label.isEmpty ? "linked to" : label)
+    }
+
+    static func edgeHelp(_ d: EdgeDetail) -> String { "\(d.top.label) \(d.relation) \(d.bottom.label)" }
 
     /// A node's tier, for its look: the paper, a main concept, or a detail.
     enum Tier { case paper, main, detail }

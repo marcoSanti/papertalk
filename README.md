@@ -34,7 +34,9 @@ as-is.
 It also draws a **mind map** of the paper: its key concepts as a graph around three branches,
 the problem, the approach and the demonstration, each broken into its parts. Open it with
 **Mind map** in the paper's details: it opens in its own window, which you can resize or
-maximise. Clicking a concept shows what it means, its core idea and what it connects to. Papers
+maximise. Drag the map to move around it, and pinch or use the zoom buttons. Clicking a concept
+shows what it means, its core idea and what it connects to; clicking a connection (the dot or
+label halfway along it) shows the two concepts it joins, one above the other. Papers
 imported earlier get one with **Create mind map** under Manage, with its progress in the bottom
 bar like an import.
 

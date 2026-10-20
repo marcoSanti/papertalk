@@ -156,6 +156,68 @@ final class MindMapLayoutTests: PapertalkTestCase {
         XCTAssertEqual(MindMapLayout.clampScale(9), MindMapLayout.maxScale)
     }
 
+    func testPanningFollowsThePointerAndStopsAtTheEdges() {
+        typealias P = MindMapLayout.Point
+        let content = (width: 2000.0, height: 1500.0), viewport = (width: 800.0, height: 600.0)
+        func pan(_ x: Double, _ y: Double, _ dx: Double, _ dy: Double) -> P {
+            MindMapLayout.panned(from: P(x: x, y: y), dx: dx, dy: dy, content: content, viewport: viewport)
+        }
+        XCTAssertEqual(pan(500, 400, 100, -50), P(x: 400, y: 450))      // drag right/up: see more left/down
+        XCTAssertEqual(pan(50, 50, 300, 300), P(x: 0, y: 0))            // stops at the top-left
+        XCTAssertEqual(pan(1100, 800, -500, -500), P(x: 1200, y: 900))  // and at the bottom-right
+        // A map smaller than the window doesn't move.
+        XCTAssertEqual(MindMapLayout.panned(from: P(x: 0, y: 0), dx: -200, dy: -200,
+                                            content: (500, 400), viewport: viewport), P(x: 0, y: 0))
+    }
+
+    func testEdgesCanBeSelectedByAHandleHalfwayAlong() throws {
+        let links = #"[{"from":"problem0","to":"method1","label":"solved by"}]"#
+        let map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(links: links)))
+        let layout = MindMapLayout(map)
+        // The paper's own edges to the main concepts aren't selectable.
+        XCTAssertFalse(layout.selectableEdges.contains { $0.from == MindMapLayout.centerId })
+        XCTAssertEqual(layout.selectableEdges.count, 6 + 1)
+
+        let tree = try XCTUnwrap(layout.selectableEdges.first { $0.from == "method" && $0.to == "method0" })
+        let a = try XCTUnwrap(layout.positions["method"]), b = try XCTUnwrap(layout.positions["method0"])
+        XCTAssertNil(layout.control(tree))
+        XCTAssertEqual(layout.handle(tree), MindMapLayout.Point(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2))
+
+        // A link bows away from the centre, and its handle sits on the curve, off the straight line.
+        let link = try XCTUnwrap(layout.selectableEdges.first { $0.label != nil })
+        XCTAssertEqual(link.id, "problem0→method1")
+        let h = try XCTUnwrap(layout.handle(link))
+        let p = try XCTUnwrap(layout.positions["problem0"]), q = try XCTUnwrap(layout.positions["method1"])
+        let c = try XCTUnwrap(layout.positions[MindMapLayout.centerId])
+        let straight = MindMapLayout.Point(x: (p.x + q.x) / 2, y: (p.y + q.y) / 2)
+        XCTAssertGreaterThan(hypot(h.x - c.x, h.y - c.y), hypot(straight.x - c.x, straight.y - c.y) + 20)
+    }
+
+    func testALinkAcrossTheCentreKeepsItsHandleClearOfThePaperNode() throws {
+        // problem0 (up-left) to evidence1 (down): the straight line passes near the centre.
+        let links = #"[{"from":"problem0","to":"evidence1","label":"shown by"},{"from":"method0","to":"evidence0","label":"tested by"}]"#
+        let layout = MindMapLayout(try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(links: links))))
+        let c = try XCTUnwrap(layout.positions[MindMapLayout.centerId])
+        for link in layout.selectableEdges where link.label != nil {
+            let h = try XCTUnwrap(layout.handle(link))
+            let clear = abs(h.x - c.x) > MindMapLayout.nodeWidth / 2 || abs(h.y - c.y) > MindMapLayout.nodeHeight / 2
+            XCTAssertTrue(clear, "\(link.id) handle under the paper node")
+        }
+    }
+
+    func testLinkLabelsStayInsideTheCanvas() throws {
+        // Two concepts on the outer ring of neighbouring branches: their link bows outward.
+        let links = #"[{"from":"problem1","to":"method0","label":"fixes"},{"from":"evidence0","to":"evidence1","label":"x"}]"#
+        let layout = MindMapLayout(try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(links: links))))
+        for link in layout.selectableEdges where link.label != nil {
+            let h = try XCTUnwrap(layout.handle(link))
+            XCTAssertGreaterThanOrEqual(h.x - MindMapLayout.linkLabelWidth / 2, 0, link.id)
+            XCTAssertGreaterThanOrEqual(h.y - MindMapLayout.linkLabelHeight / 2, 0, link.id)
+            XCTAssertLessThanOrEqual(h.x + MindMapLayout.linkLabelWidth / 2, layout.width, link.id)
+            XCTAssertLessThanOrEqual(h.y + MindMapLayout.linkLabelHeight / 2, layout.height, link.id)
+        }
+    }
+
     func testEdgesJoinTheCentreTheTreeAndTheLinks() throws {
         let map = try crowded()
         let layout = MindMapLayout(map)
@@ -173,6 +235,22 @@ final class MindMapPresentationTests: PapertalkTestCase {
         XCTAssertEqual(MindMapPresentation.connections(map, of: "method").map(\.relation), ["Includes", "Includes"])
         XCTAssertEqual(MindMapPresentation.connections(map, of: "method").map(\.label), ["method part 0", "method part 1"])
         XCTAssertEqual(MindMapPresentation.connections(map, of: "nope"), [])
+    }
+
+    func testAnEdgeShowsBothConceptsTopToBottom() throws {
+        let links = #"[{"from":"evidence0","to":"method0","label":"validates"},{"from":"method1","to":"problem1","label":""}]"#
+        let map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(links: links)))
+        let layout = MindMapLayout(map)
+        func detail(_ from: String, _ to: String) -> MindMapPresentation.EdgeDetail? {
+            layout.selectableEdges.first { $0.from == from && $0.to == to }.flatMap { MindMapPresentation.edgeDetail(map, $0) }
+        }
+        let tree = try XCTUnwrap(detail("method", "method0"))
+        XCTAssertEqual([tree.top.id, tree.bottom.id, tree.relation], ["method", "method0", "includes"])
+        let link = try XCTUnwrap(detail("evidence0", "method0"))
+        XCTAssertEqual([link.top.id, link.bottom.id, link.relation], ["evidence0", "method0", "validates"])
+        XCTAssertEqual(MindMapPresentation.edgeHelp(link), "evidence part 0 validates method part 0")
+        XCTAssertEqual(try XCTUnwrap(detail("method1", "problem1")).relation, "linked to")
+        XCTAssertNil(MindMapPresentation.edgeDetail(map, MindMapLayout.Edge(from: "x", to: "method", label: nil)))
     }
 
     func testWordingAndTiers() throws {

@@ -778,13 +778,14 @@ struct LocalPipeline {
         """
         let user = "Title: \(title)\n\nPAPER:\n" + String(text.prefix(60_000))
         log("Mind map: asking for the paper's key concepts…")
-        let first = MindMap.parse(try await chat(system: system, user: user, maxTokens: 6000))
+        // Up to ~30 concepts with a few sentences each: leave room for all of it.
+        let first = MindMap.parse(try await chat(system: system, user: user, maxTokens: 9000))
         if let first, first.isExpanded {
             log("Mind map: \(first.nodes.count) concepts, \(first.links.count) links")
             return first
         }
         log("Mind map: \(first == nil ? "reply unusable" : "a main concept wasn't broken down") — asking again")
-        let second = MindMap.parse(try await chat(system: system, user: prompts.mindMapRetry + "\n\n" + user, maxTokens: 6000))
+        let second = MindMap.parse(try await chat(system: system, user: prompts.mindMapRetry + "\n\n" + user, maxTokens: 9000))
         guard let map = second ?? first else { throw PipelineError.llm("the mind map reply couldn't be read") }
         log("Mind map: \(map.nodes.count) concepts, \(map.links.count) links")
         return map

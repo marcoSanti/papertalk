@@ -793,15 +793,19 @@ struct CastSheet: View {
 
             HStack {
                 Spacer()
+                // One accent per outcome: discard (red), script only (indigo), voice it (app orange).
                 Button("Cancel import") { store.cancelCast() }
                     .buttonStyle(.glass)
+                    .tint(.red)
                     .keyboardShortcut(.cancelAction)
                 Button(CastForm.scriptOnlyTitle) { store.resolveCast(form.cast, voiceAudio: false) }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.glassProminent)
+                    .tint(.indigo)
                     .disabled(!form.canConfirm)
                     .help(CastForm.scriptOnlyHelp)
                 Button("Use these voices") { store.resolveCast(form.cast) }
                     .buttonStyle(.glassProminent)
+                    .tint(Color.appAccent)
                     .disabled(!form.canConfirm)
                     .keyboardShortcut(.defaultAction)
             }

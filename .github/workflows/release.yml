@@ -1,18 +1,18 @@
 name: Release
 
-# Two kinds of release, both: test, build the optimized app, publish a GitHub
-# release with the zipped Papertalk.app, the source it was built from
+# Every push to main builds and tests the app, then publishes a GitHub release
+# with the zipped Papertalk.app, the source it was built from
 # (Papertalk-<version>-source.tar.gz) and a SHA-256 for each. A second job
 # adds the Linux AppImage (Papertalk-<version>-x86_64.AppImage) to it.
 #
-#  - Stable: every push to main that bumps the VERSION file publishes a full
-#    release, marked Latest, tagged v<VERSION>. Versioning is CI-driven: bump
-#    the file, merge to main, and the release appears. No local tag tooling.
-#    Only these builds get the official icon (CHANNEL=stable).
-#  - Dev: every other push to main (i.e. a merged PR that didn't bump VERSION)
-#    publishes a pre-release v<VERSION>-dev.<short commit>, so the newest merged
-#    code is always downloadable. Only the newest few dev builds are kept. They
-#    carry the "DEV" stripe icon, like local builds.
+# Which kind of release is decided by one rule: does the tag v<VERSION> exist?
+#  - No  → Stable: a full release, marked Latest, tagged v<VERSION>, with the
+#          official icon (CHANNEL=stable). Bump VERSION, merge to main, done.
+#  - Yes → Dev: a pre-release v<VERSION>-dev.<short commit>, so the newest merged
+#          code is always downloadable. Only the newest few dev builds are kept.
+#          They carry the "DEV" stripe icon, like local builds.
+# If a stable run fails before its release is created, the tag doesn't exist
+# yet, so the next push to main simply tries the stable release again.
 on:
   push:
     branches: [main]
@@ -42,35 +42,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history for the version compare and release notes
+          fetch-depth: 0   # full history and tags for the release notes
 
       - name: Decide the version
         id: version
         run: |
           BASE="$(../app.sh version)"
           SHORT="$(git rev-parse --short HEAD)"
-          # A stable release (tag v<BASE>) exists already → this push isn't a bump.
-          if git cat-file -e "v${BASE}" >/dev/null 2>&1; then
-            KIND=dev
-          else
-            # The previous value of VERSION (before this push) vs now.
-            PREV_REF="$(git log -1 --format=%H HEAD~1 -- VERSION 2>/dev/null)"
-            PREV="$(git show "${PREV_REF}:VERSION" 2>/dev/null || echo "")"
-            if [ "${PREV}" != "${BASE}" ]; then
-              KIND=stable          # VERSION changed → publish the tag
-            else
-              KIND=dev
-            fi
+          if [ -z "${BASE}" ]; then
+            echo "::error::Could not read VERSION"; exit 1
           fi
-          if [ "$KIND" = "stable" ]; then
-            VERSION="${BASE}"
-          else
+          # Ask the remote directly, so a stale or missing local tag can't fool us.
+          if git ls-remote --exit-code --tags origin "refs/tags/v${BASE}" >/dev/null 2>&1; then
+            KIND=dev
             VERSION="${BASE}-dev.${SHORT}"
+          else
+            KIND=stable
+            VERSION="${BASE}"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "kind=${KIND}" >> "$GITHUB_OUTPUT"
-          echo "short=${SHORT}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}"    >> "$GITHUB_OUTPUT"
+          echo "kind=${KIND}"       >> "$GITHUB_OUTPUT"
+          echo "short=${SHORT}"     >> "$GITHUB_OUTPUT"
           echo "Publishing ${KIND} build ${VERSION}"
 
       - name: Toolchain
@@ -146,9 +139,9 @@ jobs:
             echo "> This app is vibecoded. I had the need not the time. bugs are expected and help is appreciated"
           } > notes.md
 
-          # gh release create makes the (lightweight) tag itself if missing, so a
-          # stable bump needs no local tag command; the tag just never re-triggers
-          # this workflow because tags aren't in the trigger list.
+          # gh release create makes the tag itself (on the commit that was built),
+          # so no local tag command is needed; the tag never re-triggers this
+          # workflow because tags aren't in the trigger list.
           if [ "$KIND" = "dev" ]; then
             gh release create "$TAG" "$ZIP" "${ZIP}.sha256" "$SRC" "${SRC}.sha256" \
               --target "$GITHUB_SHA" \
@@ -157,6 +150,7 @@ jobs:
               --prerelease
           else
             gh release create "$TAG" "$ZIP" "${ZIP}.sha256" "$SRC" "${SRC}.sha256" \
+              --target "$GITHUB_SHA" \
               --title "Papertalk ${VERSION}" \
               --notes-file notes.md \
               --generate-notes \
@@ -216,4 +210,3 @@ jobs:
           APPIMAGE="client/dist/Papertalk-${VERSION}-x86_64.AppImage"
           sha256sum "$APPIMAGE" | sed 's#  client/dist/#  #' | tee "${APPIMAGE}.sha256"
           gh release upload "$TAG" "$APPIMAGE" "${APPIMAGE}.sha256"
-

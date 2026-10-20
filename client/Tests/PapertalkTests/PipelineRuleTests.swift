@@ -66,12 +66,15 @@ final class PipelineRuleTests: PapertalkTestCase {
             // The model overshoots badly: 4,000 words for every segment.
             return (200, MockLLM.chatReply(dialogue(words: 4000)))
         }
-        _ = try await pipeline().generateTranscript(text: paper, depth: .summary)
+        let result = try await pipeline().generateTranscript(text: paper, depth: .summary)
 
-        // Planned 30 min (4,350 words) split three ways, then each later segment
-        // gets only what's left under the 35-minute ceiling (5,075 words),
-        // never less than a 120-word floor so the ending still exists.
-        XCTAssertEqual(targets(in: prompts.all), [1450, 537, 120])
+        // Planned 30 min (4,350 words) split three ways. Each 4,000-word reply
+        // is condensed (the mock won't) and then cut to its target, so later
+        // segments keep their share and the script stays under the 35-minute
+        // ceiling (5,075 words) — it used to come out at 12,000.
+        XCTAssertEqual(targets(in: prompts.all), [1450, 1450, 1450])
+        XCTAssertEqual(prompts.all.filter { $0.contains("too long for the episode") }.count, 3)
+        XCTAssertLessThanOrEqual(LocalPipeline.wordCount(result.transcript.segments.flatMap(\.turns)), 5075)
     }
 
     func testSummaryPlansThirtyMinutes() async throws {
@@ -109,10 +112,50 @@ final class PipelineRuleTests: PapertalkTestCase {
             prompts.append(text)
             return (200, MockLLM.chatReply(dialogue(words: 4000)))
         }
-        _ = try await pipeline().generateTranscript(text: paper, depth: .summary, summaryMinutes: 5)
+        let result = try await pipeline().generateTranscript(text: paper, depth: .summary, summaryMinutes: 5)
         // 5 minutes = 725 words: the 250-word segment floor gives way to the
-        // ceiling's share, and an overshoot leaves the rest only the 120-word floor.
-        XCTAssertEqual(targets(in: prompts.all), [241, 120, 120])
+        // ceiling's share, each segment is told its limit, and the overshoot is cut.
+        XCTAssertEqual(targets(in: prompts.all), [241, 242, 242])
+        XCTAssertTrue(prompts.all.contains { $0.contains("HARD LIMIT: at most 241 words") })
+        XCTAssertLessThanOrEqual(LocalPipeline.wordCount(result.transcript.segments.flatMap(\.turns)), 725)
+    }
+
+    func testCondensedSegmentIsKeptWhenItFits() async throws {
+        let plan = outline(segments: 1)
+        MockLLM.install { [self] request in
+            let text = MockLLM.allText(in: request)
+            if isOutline(text) { return (200, MockLLM.chatReply(plan)) }
+            return (200, MockLLM.chatReply(dialogue(words: text.contains("too long for the episode") ? 300 : 3000)))
+        }
+        let result = try await pipeline().generateTranscript(text: paper, depth: .summary, summaryMinutes: 5)
+        XCTAssertEqual(LocalPipeline.wordCount(result.transcript.segments.flatMap(\.turns)), 300)
+    }
+
+    func testInDepthIsNeverCondensed() async throws {
+        let prompts = Box<String>()
+        let plan = outline(segments: 2)
+        MockLLM.install { [self] request in
+            let text = MockLLM.allText(in: request)
+            if isOutline(text) { return (200, MockLLM.chatReply(plan)) }
+            prompts.append(text)
+            return (200, MockLLM.chatReply(dialogue(words: 9000)))
+        }
+        _ = try await pipeline().generateTranscript(text: paper, depth: .inDepth)
+        XCTAssertFalse(prompts.all.contains { $0.contains("too long for the episode") || $0.contains("HARD LIMIT") })
+    }
+
+    func testTrimTurnsKeepsWholeSentencesAndTheEnding() {
+        typealias T = Transcript.Turn
+        let turns = [T(speaker: "Jo", text: "One two three. Four five six."),
+                     T(speaker: "Ada", text: "Seven eight nine ten. Eleven twelve."),
+                     T(speaker: "Jo", text: "Thanks, Ada.")]
+        XCTAssertEqual(LocalPipeline.trimTurns(turns, toWords: 100).map(\.text), turns.map(\.text))   // fits: unchanged
+        let cut = LocalPipeline.trimTurns(turns, toWords: 9)
+        XCTAssertEqual(cut.map(\.text), ["One two three. Four five six.", "Thanks, Ada."])
+        XCTAssertLessThanOrEqual(LocalPipeline.wordCount(cut), 9)
+        // No sentence fits: the first turn is cut by words.
+        let long = [T(speaker: "Jo", text: Array(repeating: "w", count: 50).joined(separator: " "))]
+        XCTAssertEqual(LocalPipeline.wordCount(LocalPipeline.trimTurns(long, toWords: 10)), 10)
     }
 
     // MARK: editable prompts

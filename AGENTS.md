@@ -227,7 +227,10 @@ Still to do, in order:
 - Depth: only `.inDepth` may have full-length method monologues; `generateTranscript` forces
   every other depth to dialogue. Summary's ceiling is the import sheet's length
   (`SummaryLength`, 5–60 min, default 35, saved as `Paper.targetMinutes` for reruns); it aims
-  for 6/7 of it, and the ceiling is enforced segment by segment. In-depth has no cap and scales with the paper. Lengths
+  for 6/7 of it, and the ceiling is enforced segment by segment on what was *written*: each
+  segment is told its limit (`lengthLimit`), and one that runs >15% over is condensed by the LLM
+  once, then cut (`LocalPipeline.trimTurns`). Models overshoot short targets 2×, so never trust
+  the request alone. In-depth has no cap and scales with the paper. Lengths
   assume about 145 spoken words per minute at the default pace.
 - Cast: the interviewer keeps the signature voice for their gender (Heart / Michael); the guest
   gets `KokoroSpeech.guestVoice` (same gender, different voice, stable per name). Gender comes

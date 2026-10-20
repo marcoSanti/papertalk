@@ -196,7 +196,7 @@ struct LocalPipeline {
             plannedWords = max(Int(30 * wordsPerMinute), Int(Double(sourceWords) * 0.7))
         }
         let minutes = max(1, Int((Double(plannedWords) / wordsPerMinute).rounded()))
-        let minSeg = max(3, min(6, minutes / 5))
+        let minSeg = minutes < 10 ? 2 : max(3, min(6, minutes / 5))
         // A short summary gets few segments, or their minimum lengths alone would overrun it.
         let maxSeg = max(minSeg + 1, min(18, minutes / 2))
 
@@ -233,21 +233,29 @@ struct LocalPipeline {
             // segments, so an over-long early segment can't push the episode
             // past its length (and the ending still gets its share).
             if let cap = wordCap {
-                let written = history.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
+                let written = Self.wordCount(history)
                 let remainingWeight = plan.segments[k...].map(\.weight).reduce(0, +)
                 let share = remainingWeight > 0 ? seg.weight / remainingWeight : 1
                 let budget = Int(Double(max(0, cap - written)) * share)
-                targets[k] = max(120, min(targets[k], budget))
+                // The floor keeps an ending, but must not overrun a short episode by itself.
+                let floor = min(120, cap / max(1, 2 * total))
+                targets[k] = max(floor, min(targets[k], budget))
             }
             log("— Segment \(k + 1)/\(plan.segments.count): \"\(seg.title)\" (\(seg.monologue ? "monologue" : "dialogue"), ~\(targets[k]) words)")
-            let turns: [Transcript.Turn]
+            var turns: [Transcript.Turn]
             if seg.monologue {
                 turns = try await writeMonologue(seg, index: k, plan: plan, cleaned: cleaned, host: host,
                                                  expert: expert, history: history,
                                                  targetWords: targets[k])
             } else {
                 turns = try await writeDialogue(seg, index: k, plan: plan, cleaned: cleaned, host: host, expert: expert,
-                                                history: history, targetWords: targets[k], depthGuide: plan.depthGuide)
+                                                history: history, targetWords: targets[k], depthGuide: plan.depthGuide,
+                                                limited: wordCap != nil)
+                // The model often writes well past a short target, so a fixed-length
+                // episode checks what came back rather than trusting the request.
+                if wordCap != nil {
+                    turns = try await fitDialogue(turns, to: targets[k], host: host, expert: expert)
+                }
             }
             log("    ✓ wrote \(turns.count) turns (~\(turns.reduce(0) { $0 + $1.text.count }) chars); \(history.count + turns.count) turns so far")
             history.append(contentsOf: turns)
@@ -370,7 +378,7 @@ struct LocalPipeline {
     // ------------------------------------------------------ dialogue segment
     private func writeDialogue(_ seg: PlanSegment, index k: Int, plan: Plan, cleaned: String,
                                host: String, expert: String, history: [Transcript.Turn],
-                               targetWords: Int, depthGuide: String) async throws -> [Transcript.Turn] {
+                               targetWords: Int, depthGuide: String, limited: Bool = false) async throws -> [Transcript.Turn] {
 
         let n = plan.segments.count
         let position = positionRule(index: k, count: n, host: host, expert: expert)
@@ -389,8 +397,9 @@ struct LocalPipeline {
             "recentTurns": recent.isEmpty ? "No turns yet." : recent, "position": position,
             "host": host, "expert": expert,
         ])
+        let limit = limited ? "\n\n" + PromptSettings.fill(prompts.lengthLimit, ["maxWords": "\(targetWords)"]) : ""
         // The format is what `Parsers.dialogue` reads, so it isn't part of the editable prompt.
-        let segPrompt = request + """
+        let segPrompt = request + limit + """
 
 
         FORMAT: dialogue only, one turn per line, as
@@ -419,6 +428,83 @@ struct LocalPipeline {
                                  maxTokens: 9000)
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? [] : [Transcript.Turn(speaker: expert, text: text)]
+    }
+
+    /// A segment of a fixed-length episode that ran more than 15% over its
+    /// target: ask once for a condensed version, then cut whatever is still over.
+    private func fitDialogue(_ turns: [Transcript.Turn], to target: Int, host: String, expert: String) async throws -> [Transcript.Turn] {
+        let words = Self.wordCount(turns)
+        guard words > target + target * 15 / 100 else { return turns }
+        log("    segment ran long (\(words) of ~\(target) words) — condensing")
+        let tokens = ["targetWords": "\(target)", "host": host, "expert": expert]
+        let system = PromptSettings.fill(prompts.dialoguePersona, tokens) + "\n\n" + PromptSettings.fill(prompts.writeForEar, tokens)
+        let request = PromptSettings.fill(prompts.condense, tokens) + """
+
+
+        FORMAT: dialogue only, one turn per line, as
+        \(host): ...
+        \(expert): ...
+
+        DIALOGUE:
+        \(turns.map { "\($0.speaker): \($0.text)" }.joined(separator: "\n"))
+        """
+        var best = turns
+        let raw = try await chat(system: system, user: request, maxTokens: 9000)
+        let shorter = Parsers.dialogue(from: raw, names: [host, expert])
+        if shorter.count >= 2, Self.wordCount(shorter) < words { best = shorter }
+        guard Self.wordCount(best) > target + target * 15 / 100 else { return best }
+        let cut = Self.trimTurns(best, toWords: target)
+        log("    still long (\(Self.wordCount(best)) words) — cut to \(Self.wordCount(cut))")
+        return cut
+    }
+
+    static func wordCount(_ turns: [Transcript.Turn]) -> Int {
+        turns.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
+    }
+
+    /// Cut a dialogue to about `budget` words: whole turns from the start, the
+    /// turn that doesn't fit cut at a sentence, and the last turn (its ending
+    /// or hand-off) kept when there's room for it.
+    static func trimTurns(_ turns: [Transcript.Turn], toWords budget: Int) -> [Transcript.Turn] {
+        func count(_ s: String) -> Int { s.split(whereSeparator: \.isWhitespace).count }
+        /// The leading whole sentences of `text` within `maxWords` (nil if not even one fits).
+        func leading(_ text: String, _ maxWords: Int) -> String? {
+            var out = "", used = 0
+            text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { sentence, _, _, stop in
+                guard let sentence else { return }
+                let w = count(sentence)
+                if used + w > maxWords { stop = true; return }
+                out += sentence; used += w
+            }
+            let trimmed = out.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        guard wordCount(turns) > budget, let last = turns.last else { return turns }
+        let reserve = min(count(last.text), budget / 3)
+        var out: [Transcript.Turn] = []
+        var used = 0
+        for t in turns.dropLast() {
+            let room = budget - reserve - used
+            guard room > 0 else { break }
+            if count(t.text) <= room {
+                out.append(t); used += count(t.text)
+            } else {
+                if let s = leading(t.text, room) { out.append(Transcript.Turn(speaker: t.speaker, text: s)); used += count(s) }
+                break
+            }
+        }
+        if count(last.text) <= budget - used {
+            out.append(last)
+        } else if let s = leading(last.text, budget - used) {
+            out.append(Transcript.Turn(speaker: last.speaker, text: s))
+        }
+        if out.isEmpty, let first = turns.first {
+            // Not even one sentence fits: cut the first turn by words.
+            let text = leading(first.text, budget)
+                ?? first.text.split(whereSeparator: \.isWhitespace).prefix(max(1, budget)).joined(separator: " ")
+            out = [Transcript.Turn(speaker: first.speaker, text: text)]
+        }
+        return out
     }
 
     // --------------------------------------------- methodology monologue segment

@@ -268,6 +268,10 @@ struct PromptSettings: Codable, Equatable {
     var writeForEar: String
     /// The request for one dialogue segment (format and source appended).
     var segmentRequest: String
+    /// Added to the segment request when the episode has a fixed length (summaries).
+    var lengthLimit: String
+    /// Sent when a segment of a fixed-length episode came out too long (format appended).
+    var condense: String
     /// The segment's {position} in the episode.
     var positionOnly: String
     var positionFirst: String
@@ -351,6 +355,8 @@ struct PromptSettings: Codable, Equatable {
         POSITION IN THE EPISODE:
         {position}
         """,
+        lengthLimit: "HARD LIMIT: at most {maxWords} words for this segment. The episode has a fixed length, so cover the goal briefly and stop; leave out side points rather than run over.",
+        condense: "This dialogue segment is too long for the episode. Rewrite it in about {targetWords} words: keep the same speakers, the key facts and numbers, and how it ends; drop repetition, small talk and side points.",
         positionOnly: "This is the ONLY segment of the episode. {host} opens by introducing the paper, its authors and the topic, then you have a complete conversation from start to finish, landing a satisfying ending.",
         positionFirst: "This is the FIRST segment. {host} starts the episode by introducing the paper, its authors and the topic. Leave room for the later segments; do not jump to conclusions.",
         positionMiddle: "This is a MIDDLE segment. {host} briefly signals this part's goal, then keep going. Do not reintroduce the paper or wrap up the episode.",
@@ -382,6 +388,7 @@ extension PromptSettings {
                   depthCustom: try v(.depthCustom, d.depthCustom),
                   dialoguePersona: try v(.dialoguePersona, d.dialoguePersona), writeForEar: try v(.writeForEar, d.writeForEar),
                   segmentRequest: try v(.segmentRequest, d.segmentRequest),
+                  lengthLimit: try v(.lengthLimit, d.lengthLimit), condense: try v(.condense, d.condense),
                   positionOnly: try v(.positionOnly, d.positionOnly), positionFirst: try v(.positionFirst, d.positionFirst),
                   positionMiddle: try v(.positionMiddle, d.positionMiddle), positionLast: try v(.positionLast, d.positionLast),
                   monologuePersona: try v(.monologuePersona, d.monologuePersona),

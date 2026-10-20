@@ -17,6 +17,8 @@ class PapertalkTestCase: XCTestCase {
     override func setUp() {
         super.setUp()
         NetworkGuard.reset()
+        // Expected wording is English; a test that switches language switches back here.
+        Localization.language = .english
     }
 
     override func tearDown() {

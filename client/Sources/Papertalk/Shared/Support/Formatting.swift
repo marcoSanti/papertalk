@@ -10,14 +10,14 @@ func formatT(_ s: Double) -> String {
 /// Friendly label for a pipeline stage, shown in import progress bars.
 func stageLabel(_ stage: String) -> String {
     switch stage {
-    case "extract": return "Extracting text from PDF"
-    case "notes": return "Summarizing paper"
-    case "outline": return "Planning episode"
-    case "segments": return "Writing dialogue"
-    case "audio": return "Synthesizing audio"
-    case Paper.mindMapStage: return "Drawing mind map"
-    case "finalize": return "Finalizing"
-    default: return stage.isEmpty ? "Processing…" : stage.capitalized + "…"
+    case "extract": return L("Extracting text from PDF")
+    case "notes": return L("Summarizing paper")
+    case "outline": return L("Planning episode")
+    case "segments": return L("Writing dialogue")
+    case "audio": return L("Synthesizing audio")
+    case Paper.mindMapStage: return L("Drawing mind map")
+    case "finalize": return L("Finalizing")
+    default: return stage.isEmpty ? L("Processing…") : stage.capitalized + "…"
     }
 }
 
@@ -27,13 +27,14 @@ func formatDate(_ iso: String) -> String {
     let full = ISO8601DateFormatter()
     if let d = full.date(from: iso) {
         let df = DateFormatter(); df.dateStyle = .medium; df.timeStyle = .none
+        df.locale = Localization.language.locale
         return df.string(from: d)
     }
     let parse = DateFormatter()
     parse.locale = Locale(identifier: "en_US_POSIX")
     parse.calendar = Calendar(identifier: .gregorian)
     let out = DateFormatter()
-    out.locale = Locale(identifier: "en_US_POSIX")
+    out.locale = Localization.language.locale
     out.calendar = Calendar(identifier: .gregorian)
     switch iso.count {
     case 0...4: parse.dateFormat = "yyyy"; out.dateFormat = "yyyy"
@@ -46,8 +47,13 @@ func formatDate(_ iso: String) -> String {
 /// How the app refers to the machine it runs on, in user-facing copy.
 enum Device {
     #if os(Linux)
-    static let this = "this computer"
+    static var this: String { L("this computer") }
+    /// The machine as a choice or a place, e.g. the storage options.
+    static var thisTitle: String { L("This computer") }
+    static var on: String { L("On this computer") }
     #else
-    static let this = "this Mac"
+    static var this: String { L("this Mac") }
+    static var thisTitle: String { L("This Mac") }
+    static var on: String { L("On this Mac") }
     #endif
 }

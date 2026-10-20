@@ -27,19 +27,19 @@ struct SpeechSettingsFields: View {
     }
 
     @ViewBuilder private var remoteFields: some View {
-        field("Server URL") {
+        field(L("Server URL")) {
             TextField(SpeechSettingsForm.urlPlaceholder, text: $form.baseUrl).textFieldStyle(.roundedBorder)
             Text(SpeechSettingsForm.urlHelp).font(.caption2).foregroundStyle(.secondary)
         }
-        field("API key source") {
+        field(L("API key source")) {
             Picker("", selection: $form.keySource) {
-                ForEach(LLMKeySource.allCases) { s in Text(s.rawValue).tag(s) }
+                ForEach(LLMKeySource.allCases) { s in Text(s.label).tag(s) }
             }
             .labelsHidden()
             .pickerStyle(.segmented)
         }
         KeySourceFields(form: $form)
-        field("Model") {
+        field(L("Model")) {
             if form.showsModelPicker {
                 Picker("", selection: $form.model) {
                     ForEach(form.models, id: \.self) { Text($0).tag($0) }
@@ -49,12 +49,12 @@ struct SpeechSettingsFields: View {
                 TextField(SpeechSettingsForm.modelPlaceholder, text: $form.model).textFieldStyle(.roundedBorder)
             }
         }
-        field("Requests at a time") {
+        field(L("Requests at a time")) {
             Stepper(form.parallelLabel, value: $form.parallelRequests, in: SpeechSettings.parallelRange)
             Text(SpeechSettingsForm.parallelHelp).font(.caption2).foregroundStyle(.secondary)
         }
         HStack(spacing: 8) {
-            Button(loading ? "Asking the server…" : "Refresh models and voices") { loadCatalog() }
+            Button(loading ? L("Asking the server…") : L("Refresh models and voices")) { loadCatalog() }
                 .disabled(loading || !form.canFetchCatalog)
             if loading { ProgressView().controlSize(.small) }
         }

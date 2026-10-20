@@ -58,7 +58,7 @@ struct DetailView: View {
             if let t = item.transcript, !t.segments.isEmpty {
                 TranscriptView(transcript: t, title: paper.displayTitle)
             } else {
-                ContentUnavailableView("No transcript yet", systemImage: "text.quote", description: Text("The transcript for this paper isn’t available."))
+                ContentUnavailableView(L("No transcript yet"), systemImage: "text.quote", description: Text(L("The transcript for this paper isn’t available.")))
                     .frame(width: 700, height: 660)
             }
         }
@@ -104,7 +104,7 @@ struct DetailView: View {
                 .help(PaperPresentation.coverHelp(paper))
 
             VStack(spacing: 6) {
-                TextField("Untitled", text: $titleDraft, axis: .vertical)
+                TextField(L("Untitled"), text: $titleDraft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.title3.weight(.semibold))
                     .multilineTextAlignment(.center)
@@ -112,7 +112,7 @@ struct DetailView: View {
                     .focused($titleFocused)
                     .onSubmit { commitTitle(); titleFocused = false }
                     .onChange(of: titleFocused) { _, focused in if !focused { commitTitle() } }
-                    .help("Click to rename")
+                    .help(L("Click to rename"))
 
                 if !paper.authors.isEmpty {
                     Text(PaperPresentation.authorLine(paper.authors))
@@ -152,7 +152,7 @@ struct DetailView: View {
     private var authorsCard: some View {
         let visible = PaperPresentation.visibleAuthors(paper.authors, showAll: showAllAuthors)
         return VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "Authors", systemImage: "person.2", trailing: LibraryPresentation.badge(paper.authors.count))
+            SectionLabel(title: L("Authors"), systemImage: "person.2", trailing: LibraryPresentation.badge(paper.authors.count))
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(visible.enumerated()), id: \.offset) { _, name in
                     AuthorRow(name: name, paperCount: store.papersByAuthor[AuthorName.clean(name)]?.count ?? 1) {
@@ -175,10 +175,10 @@ struct DetailView: View {
 
     private var detailsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "Details", systemImage: "info.circle")
+            SectionLabel(title: L("Details"), systemImage: "info.circle")
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 9) {
                 if !paper.affiliations.isEmpty {
-                    detailRow("Affiliation") {
+                    detailRow(L("Affiliation")) {
                         VStack(alignment: .leading, spacing: 3) {
                             ForEach(Array(paper.affiliations.enumerated()), id: \.offset) { _, a in
                                 Text(a)
@@ -198,30 +198,30 @@ struct DetailView: View {
                         }
                     }
                     if let bib = paper.bibtex, !bib.isEmpty {
-                        detailRow("LaTeX") {
+                        detailRow(L("LaTeX")) {
                             Button {
                                 showCitation = true
                             } label: {
-                                Label("Show citation", systemImage: "chevron.left.forwardslash.chevron.right")
+                                Label(L("Show citation"), systemImage: "chevron.left.forwardslash.chevron.right")
                             }
                             .buttonStyle(.link)
                         }
                     }
                 }
-                detailRow("File") {
+                detailRow(L("File")) {
                     Text(paper.filename ?? "—").lineLimit(1).truncationMode(.middle)
                 }
                 if let date = PaperPresentation.publishedDate(paper) {
-                    detailRow("Published") { Text(date) }
+                    detailRow(L("Published")) { Text(date) }
                 }
                 if paper.duration > 0 {
-                    detailRow("Length") { Text(formatT(paper.duration)) }
+                    detailRow(L("Length")) { Text(formatT(paper.duration)) }
                 }
-                detailRow("Assets") {
+                detailRow(L("Assets")) {
                     HStack(spacing: 10) {
-                        asset("PDF", "doc.fill", paper.hasPdf)
-                        asset("Transcript", "text.quote", paper.hasScript)
-                        asset("Audio", "waveform", paper.hasAudio)
+                        asset(L("PDF"), "doc.fill", paper.hasPdf)
+                        asset(L("Transcript"), "text.quote", paper.hasScript)
+                        asset(L("Audio"), "waveform", paper.hasAudio)
                     }
                 }
             }
@@ -253,7 +253,7 @@ struct DetailView: View {
 
     private var tagsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "Tags", systemImage: "number", trailing: LibraryPresentation.badge(paper.tags.count))
+            SectionLabel(title: L("Tags"), systemImage: "number", trailing: LibraryPresentation.badge(paper.tags.count))
             FlowTags(
                 tags: paper.tags,
                 onSelect: { store.showTag($0) },
@@ -264,7 +264,7 @@ struct DetailView: View {
             let suggestedTags = PaperPresentation.suggestedTags(for: paper, tagCounts: store.tagCounts)
             if !suggestedTags.isEmpty {
                 HStack(spacing: 6) {
-                    Text("Suggested").font(.caption2).foregroundStyle(.tertiary)
+                    Text(L("Suggested")).font(.caption2).foregroundStyle(.tertiary)
                     FlowLayout(spacing: 4, lineSpacing: 4) {
                         ForEach(suggestedTags, id: \.self) { tag in
                             Button {
@@ -288,15 +288,15 @@ struct DetailView: View {
 
     private var manageCard: some View {
         VStack(alignment: .leading, spacing: 6) {
-            SectionLabel(title: "Manage", systemImage: "slider.horizontal.3")
+            SectionLabel(title: L("Manage"), systemImage: "slider.horizontal.3")
                 .padding(.bottom, 2)
             VStack(spacing: 0) {
-                ManageRow(title: "Regenerate audio", subtitle: "Re-voice the existing script",
+                ManageRow(title: L("Regenerate audio"), subtitle: L("Re-voice the existing script"),
                           icon: "waveform.badge.magnifyingglass", tint: .appAccent) {
                     store.regenerateAudio(paper.id)
                 }
                 .disabled(!PaperPresentation.canRegenerateAudio(paper, anyConversionRunning: store.activeRun != nil))
-                ManageRow(title: "Rerun episode", subtitle: "Write a new script from the PDF",
+                ManageRow(title: L("Rerun episode"), subtitle: L("Write a new script from the PDF"),
                           icon: "arrow.counterclockwise", tint: .indigo) {
                     store.requestRerun(paper)
                 }
@@ -308,7 +308,7 @@ struct DetailView: View {
                     store.createMindMap(paper.id)
                 }
                 .disabled(!store.canCreateMindMap(paper))
-                ManageRow(title: "Refresh metadata", subtitle: "Re-extract title, authors and DOI",
+                ManageRow(title: L("Refresh metadata"), subtitle: L("Re-extract title, authors and DOI"),
                           icon: "arrow.clockwise", tint: .teal) {
                     store.refreshMeta(paper.id)
                 }
@@ -317,17 +317,17 @@ struct DetailView: View {
                     store.toggleRead(paper.id)
                 }
                 if store.isStandalone {
-                    ManageRow(title: "Show in Finder", subtitle: nil, icon: "folder", tint: .blue) {
+                    ManageRow(title: L("Show in Finder"), subtitle: nil, icon: "folder", tint: .blue) {
                         store.revealInFinder(paper.id)
                     }
                 }
                 if PaperPresentation.canDeleteAudio(paper) {
-                    ManageRow(title: "Delete audio", subtitle: "Free the space; keep the script",
+                    ManageRow(title: L("Delete audio"), subtitle: L("Free the space; keep the script"),
                               icon: "waveform.slash", tint: .orange) {
                         store.pendingConfirmation = .deleteAudio(paper)
                     }
                 }
-                ManageRow(title: "Delete paper", subtitle: nil, icon: "trash", tint: .red, destructive: true) {
+                ManageRow(title: L("Delete paper"), subtitle: nil, icon: "trash", tint: .red, destructive: true) {
                     store.pendingConfirmation = .delete(paper)
                 }
             }
@@ -451,15 +451,15 @@ private struct QuickActionBar: View {
 
     private func secondaryActions(_ favorite: (title: String, icon: String)) -> some View {
         HStack(alignment: .top, spacing: 0) {
-            action("PDF", icon: "doc.text", enabled: paper.hasPdf, perform: onPDF)
-            action("Transcript", icon: "text.quote", enabled: paper.hasScript, perform: onTranscript)
-            action("Mind map", icon: "point.3.connected.trianglepath.dotted",
+            action(L("PDF"), icon: "doc.text", enabled: paper.hasPdf, perform: onPDF)
+            action(L("Transcript"), icon: "text.quote", enabled: paper.hasScript, perform: onTranscript)
+            action(L("Mind map"), icon: "point.3.connected.trianglepath.dotted",
                    enabled: PaperPresentation.hasMindMap(paper), perform: onMindMap)
             action(favorite.title, icon: favorite.icon,
                    iconColor: paper.favorite ? Color.yellow : nil) {
                 withAnimation(.snappy) { store.toggleFavorite(paper.id) }
             }
-            action("Edit", icon: "pencil", perform: onEdit)
+            action(L("Edit"), icon: "pencil", perform: onEdit)
         }
     }
 
@@ -505,7 +505,7 @@ private struct ConversionStatusCard: View {
 
     private var runningBody: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionLabel(title: "Converting", systemImage: "gearshape.2",
+            SectionLabel(title: L("Converting"), systemImage: "gearshape.2",
                          trailing: ConversionPresentation.percentLabel(paper.progress))
             ProgressView(value: ConversionPresentation.barValue(paper.progress))
                 .tint(.appAccent)
@@ -560,11 +560,11 @@ private struct ConversionStatusCard: View {
                 Button {
                     store.rerun(paper.id, fresh: false)
                 } label: {
-                    Label("Try again", systemImage: "arrow.counterclockwise")
+                    Label(L("Try again"), systemImage: "arrow.counterclockwise")
                 }
                 .buttonStyle(.glassProminent)
                 .tint(.red)
-                Button("Dismiss") { store.resetError(paper.id) }
+                Button(L("Dismiss")) { store.resetError(paper.id) }
                     .buttonStyle(.glass)
             }
         }
@@ -588,7 +588,7 @@ private struct EpisodeCard: View {
         let status = PlaybackStatus.forPaper(isLoaded: isLoaded, isRendering: player.isRendering,
                                              isBuffering: player.isBuffering, error: player.renderError)
         VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(title: "Episode", systemImage: "headphones", trailing: progress.percentLabel)
+            SectionLabel(title: L("Episode"), systemImage: "headphones", trailing: progress.percentLabel)
             HStack(alignment: .firstTextBaseline) {
                 Text(progress.headline)
                     .font(.title3.weight(.semibold))
@@ -657,7 +657,7 @@ private struct CopyButton: View {
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
-        .help("Copy")
+        .help(L("Copy"))
     }
 }
 
@@ -670,10 +670,10 @@ private struct CitationView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("LaTeX citation", systemImage: "chevron.left.forwardslash.chevron.right")
+                Label(L("LaTeX citation"), systemImage: "chevron.left.forwardslash.chevron.right")
                     .font(.headline)
                 Spacer()
-                Button { dismiss() } label: { Label("Close", systemImage: "xmark") }
+                Button { dismiss() } label: { Label(L("Close"), systemImage: "xmark") }
                     .buttonStyle(.plain)
                     .keyboardShortcut(.cancelAction)
             }
@@ -691,7 +691,7 @@ private struct CitationView: View {
                         copied = false
                     }
                 } label: {
-                    Label(copied ? "Copied" : "Copy citation", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    Label(copied ? L("Copied") : L("Copy citation"), systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
                 .buttonStyle(.glassProminent)
             }
@@ -758,7 +758,7 @@ private struct TagEntryField: View {
     var body: some View {
         Group {
             if editing {
-                TextField("tag", text: $text)
+                TextField(L("tag"), text: $text)
                     .textFieldStyle(.plain)
                     .font(.caption)
                     .frame(width: 90)
@@ -771,7 +771,7 @@ private struct TagEntryField: View {
                     editing = true
                     DispatchQueue.main.async { focused = true }
                 } label: {
-                    Label("Add tag", systemImage: "plus").font(.caption)
+                    Label(L("Add tag"), systemImage: "plus").font(.caption)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -818,9 +818,9 @@ private struct AuthorRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("Show all papers by \(name)")
+        .help(L("Show all papers by {0}", name))
         .contextMenu {
-            Button("Copy name") {
+            Button(L("Copy name")) {
                 Clipboard.copy(name)
             }
         }

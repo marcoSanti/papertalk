@@ -9,7 +9,7 @@ struct PapertalkGTK: App {
     typealias Backend = GtkBackend
     var backend: GtkBackend { GtkBackend(appIdentifier: "dev.papertalk.desktop") }
 
-    @State var bridge = StoreBridge(AppStore())
+    @State var bridge = StoreBridge(AppStore.launch())
 
     var body: some Scene {
         WindowGroup("Papertalk") {
@@ -17,9 +17,9 @@ struct PapertalkGTK: App {
         }
         .defaultSize(width: 1180, height: 740)
         .commands {
-            CommandMenu("File") {
-                Button("Import PDF…") { bridge.store.beginImport() }
-                Button("Settings…") { bridge.store.settingsPage = .llm; bridge.store.showSettings = true }
+            CommandMenu(L("File")) {
+                Button(L("Import PDF…")) { bridge.store.beginImport() }
+                Button(L("Settings…")) { bridge.store.settingsPage = .llm; bridge.store.showSettings = true }
             }
         }
     }
@@ -47,11 +47,11 @@ struct RootView: View {
                         if let pending = bridge.store.pendingConfirmation {
                             Button(ConfirmationText(pending).confirmLabel) { bridge.store.confirmPending(pending) }
                         }
-                        Button("Cancel") { bridge.store.pendingConfirmation = nil }
+                        Button(L("Cancel")) { bridge.store.pendingConfirmation = nil }
                     }
                     .alert(duplicateTitle, isPresented: duplicateShown) {
                         Button(duplicateText?.confirmLabel ?? "") { bridge.store.resolveDuplicate(true) }
-                        Button("Cancel") { bridge.store.resolveDuplicate(false) }
+                        Button(L("Cancel")) { bridge.store.resolveDuplicate(false) }
                     }
                     .sheet(isPresented: bridge.binding(\.showUpload)) {
                         ImportSheet(bridge: bridge)

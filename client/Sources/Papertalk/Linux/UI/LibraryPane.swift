@@ -14,11 +14,11 @@ struct LibraryPane: View {
                 Text(LibraryPresentation.title(view: store.view, tag: store.activeTag, author: store.activeAuthor))
                     .font(.title2)
                 Spacer()
-                Button("Import PDF…") { store.beginImport() }
+                Button(L("Import PDF…")) { store.beginImport() }
             }
             .padding(.horizontal, 12)
             .padding(.top, 12)
-            TextField("Search titles, authors, DOI (#tag for tags)", text: bridge.binding(\.search))
+            TextField(L("Search titles, authors, DOI (#tag for tags)"), text: bridge.binding(\.search))
                 .padding(.horizontal, 12)
             if papers.isEmpty {
                 let text = LibraryPresentation.emptyStateText(

@@ -4,13 +4,13 @@ import Foundation
 enum PaperPresentation {
     /// "Ada Lovelace, Grace Hopper, Alan Turing et al." (first three names).
     static func authorLine(_ authors: [String]) -> String {
-        authors.count > 3 ? authors.prefix(3).joined(separator: ", ") + " et al." : authors.joined(separator: ", ")
+        authors.count > 3 ? L("{0} et al.", authors.prefix(3).joined(separator: ", ")) : authors.joined(separator: ", ")
     }
 
     /// Grid card subtitle: the first author (+ "et al."), else depth or filename.
     static func cardSubtitle(_ p: Paper) -> String {
         if let first = p.authors.first {
-            return p.authors.count > 1 ? "\(first) et al." : first
+            return p.authors.count > 1 ? L("{0} et al.", first) : first
         }
         return p.depthTitle ?? p.filename ?? ""
     }
@@ -44,7 +44,7 @@ enum PaperPresentation {
     }
 
     /// Tooltip on the big cover in the details panel.
-    static func coverHelp(_ p: Paper) -> String { p.hasPdf ? "Double-click to open the PDF" : "" }
+    static func coverHelp(_ p: Paper) -> String { p.hasPdf ? L("Double-click to open the PDF") : "" }
 
     /// "3 papers" beside an author in the details panel, only when they have more than this one.
     static func otherPapersLabel(_ count: Int) -> String? { count > 1 ? LibraryPresentation.paperCount(count) : nil }
@@ -62,7 +62,7 @@ enum PaperPresentation {
 
     /// Tooltip for an asset (PDF / Transcript / Audio) in the details panel.
     static func assetHelp(_ label: String, present: Bool) -> String {
-        present ? "\(label) available" : "No \(label.lowercased()) yet"
+        present ? L("{0} available", label) : L("{0} not available yet", label)
     }
 
     // MARK: authors and tags
@@ -75,7 +75,7 @@ enum PaperPresentation {
 
     static func authorsToggleTitle(count: Int, showingAll: Bool) -> String? {
         guard count > authorPreviewLimit else { return nil }
-        return showingAll ? "Show fewer" : "Show all \(count) authors"
+        return showingAll ? L("Show fewer") : L("Show all {0} authors", count)
     }
 
     /// The library's most-used tags this paper doesn't have yet.
@@ -111,9 +111,9 @@ enum PaperPresentation {
 
     /// The Manage row that creates or redraws the mind map.
     static func mindMapRow(_ p: Paper, drawing: Bool) -> (title: String, subtitle: String) {
-        if drawing { return ("Drawing mind map…", "Asking the LLM for the paper's key concepts") }
-        return hasMindMap(p) ? ("Redraw mind map", "Map the paper's key concepts again")
-            : ("Create mind map", "Map the paper's key concepts and how they connect")
+        if drawing { return (L("Drawing mind map…"), L("Asking the LLM for the paper's key concepts")) }
+        return hasMindMap(p) ? (L("Redraw mind map"), L("Map the paper's key concepts again"))
+            : (L("Create mind map"), L("Map the paper's key concepts and how they connect"))
     }
 
     /// Baked audio can go once the paper isn't being converted; the script stays.
@@ -121,38 +121,38 @@ enum PaperPresentation {
 
     /// A converting paper can be stopped (and deleted) while it runs.
     static func canStop(_ p: Paper) -> Bool { p.isActive }
-    static let stopTitle = "Stop conversion"
+    static var stopTitle: String { L("Stop conversion") }
 
     /// Rerunning a paper that has an episode replaces it, so it's confirmed first.
     static func rerunNeedsConfirmation(_ p: Paper) -> Bool { p.hasScript || p.hasAudio }
 
     static func listenedToggle(_ p: Paper) -> (title: String, icon: String) {
-        p.read ? ("Mark as unlistened", "circle") : ("Mark as listened", "checkmark.circle")
+        p.read ? (L("Mark as unlistened"), "circle") : (L("Mark as listened"), "checkmark.circle")
     }
 
     static func favoriteToggle(_ p: Paper) -> (title: String, icon: String) {
-        p.favorite ? ("Remove from favorites", "star.fill") : ("Add to favorites", "star")
+        p.favorite ? (L("Remove from favorites"), "star.fill") : (L("Add to favorites"), "star")
     }
 
     /// The favourite button in the details panel's action bar.
     static func favoriteButton(_ p: Paper) -> (title: String, icon: String) {
-        p.favorite ? ("Favorited", "star.fill") : ("Favorite", "star")
+        p.favorite ? (L("Favorited"), "star.fill") : (L("Favorite"), "star")
     }
 
     /// The play button in the details panel's action bar.
     static func playButton(_ p: Paper, isPlaying: Bool) -> (title: String, icon: String) {
-        if isPlaying { return ("Pause", "pause.fill") }
-        return (p.progress > 1 ? "Resume" : "Play", "play.fill")
+        if isPlaying { return (L("Pause"), "pause.fill") }
+        return (p.progress > 1 ? L("Resume") : L("Play"), "play.fill")
     }
 
     // MARK: status
 
     static func statusText(_ p: Paper) -> String {
         switch p.statusKind {
-        case .running: return p.state == "queued" ? "Queued" : "Converting"
-        case .done: return p.read ? "Listened" : "Ready"
-        case .error: return "Failed"
-        case .unknown: return p.state.isEmpty || p.state == "draft" ? "Not converted" : p.state.capitalized
+        case .running: return p.state == "queued" ? L("Queued") : L("Converting")
+        case .done: return p.read ? L("Listened") : L("Ready")
+        case .error: return L("Failed")
+        case .unknown: return p.state.isEmpty || p.state == "draft" ? L("Not converted") : p.state.capitalized
         }
     }
 
@@ -167,27 +167,34 @@ enum PaperPresentation {
 
     /// The error card's heading: a stop the user asked for isn't a failure.
     static func failureTitle(_ p: Paper) -> String {
-        p.statusError == ConversionPresentation.stoppedMessage ? "Conversion stopped" : "Conversion failed"
+        ConversionPresentation.isStopped(p) ? L("Conversion stopped") : L("Conversion failed")
     }
 
     static func failureMessage(_ p: Paper) -> String {
-        p.statusError ?? p.message ?? "Something went wrong while converting this paper."
+        p.statusError ?? p.message ?? L("Something went wrong while converting this paper.")
     }
 }
 
 /// The conversion checklist shown while a paper converts.
 enum ConversionPresentation {
     /// Left on a paper whose conversion was stopped.
-    static let stoppedMessage = "Stopped. The script and any voiced sections are kept: Try again continues from there."
+    static var stoppedMessage: String { stopped(in: Localization.language) }
 
-    static let stages: [(key: String, label: String)] = [
-        ("extract", "Extract text"),
-        ("notes", "Summarize"),
-        ("outline", "Plan episode"),
-        ("segments", "Write dialogue"),
-        ("audio", "Synthesize voices"),
-        ("finalize", "Finalize"),
-    ]
+    private static func stopped(in language: AppLanguage) -> String {
+        Localization.text("Stopped. The script and any voiced sections are kept: Try again continues from there.", [], in: language)
+    }
+
+    /// The paper was stopped, whatever language the interface had then (the message is saved with the paper).
+    static func isStopped(_ p: Paper) -> Bool { AppLanguage.allCases.contains { stopped(in: $0) == p.statusError } }
+
+    static var stages: [(key: String, label: String)] { [
+        ("extract", L("Extract text")),
+        ("notes", L("Summarize")),
+        ("outline", L("Plan episode")),
+        ("segments", L("Write dialogue")),
+        ("audio", L("Synthesize voices")),
+        ("finalize", L("Finalize")),
+    ] }
 
     /// Index of the stage in progress (0 when unknown).
     static func currentStage(_ stage: String?) -> Int {
@@ -230,16 +237,16 @@ struct EpisodeProgress: Equatable {
     var remainingLabel: String { length > 0 ? "−" + formatT(max(0, length - position)) : "–:––" }
 
     var headline: String {
-        if length <= 0 { return hasAudio ? "Ready to play" : "Script ready" }
-        if isRead && position <= 0.5 { return "Listened" }
-        if position <= 0.5 { return "\(Int((length / 60).rounded())) min episode" }
+        if length <= 0 { return hasAudio ? L("Ready to play") : L("Script ready") }
+        if isRead && position <= 0.5 { return L("Listened") }
+        if position <= 0.5 { return L("{0} min episode", Int((length / 60).rounded())) }
         let left = max(0, length - position)
-        return left < 60 ? "Almost done" : "\(Int((left / 60).rounded())) min left"
+        return left < 60 ? L("Almost done") : L("{0} min left", Int((left / 60).rounded()))
     }
 
     /// "Turn 3 of 40" while this paper is loaded and playing a turn.
     static func turnLabel(activeTurn: Int, turnCount: Int) -> String? {
         guard turnCount > 0, activeTurn >= 0 else { return nil }
-        return "Turn \(activeTurn + 1) of \(turnCount)"
+        return L("Turn {0} of {1}", activeTurn + 1, turnCount)
     }
 }

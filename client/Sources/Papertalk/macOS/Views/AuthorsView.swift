@@ -14,9 +14,9 @@ struct AuthorsView: View {
         Group {
             if store.authorCounts.isEmpty {
                 ContentUnavailableView {
-                    Label("No authors yet", systemImage: "person.crop.circle.badge.questionmark")
+                    Label(L("No authors yet"), systemImage: "person.crop.circle.badge.questionmark")
                 } description: {
-                    Text("Authors appear once a paper's metadata has been extracted.")
+                    Text(L("Authors appear once a paper's metadata has been extracted."))
                 }
             } else if sections.isEmpty {
                 ContentUnavailableView.search(text: store.search)
@@ -46,7 +46,7 @@ struct AuthorsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AmbientBackground())
-        .navigationTitle("Authors")
+        .navigationTitle(L("Authors"))
         .navigationSubtitle(LibraryPresentation.authorsSubtitle(store.authorCounts.count))
     }
 
@@ -78,7 +78,7 @@ struct AuthorsView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Jump to \(l)")
+                .help(L("Jump to {0}", l))
             }
         }
         .padding(.vertical, 6)
@@ -123,7 +123,7 @@ private struct AuthorCard: View {
         }
         .buttonStyle(.plain)
         .onHover { h in withAnimation(.snappy(duration: 0.2)) { hovering = h } }
-        .help("Show \(name)’s papers")
+        .help(L("Show {0}’s papers", name))
     }
 
     /// Up to three of the author's newest paper covers, fanned out.
@@ -184,7 +184,7 @@ struct AuthorHeader: View {
                                 .glassEffect(.regular.interactive(), in: Capsule())
                             }
                             .buttonStyle(.plain)
-                            .help("Show \(co)’s papers")
+                            .help(L("Show {0}’s papers", co))
                         }
                     }
                     .padding(.top, 2)

@@ -56,7 +56,7 @@ struct LibraryView: View {
                     .strokeBorder(Color.appAccent, style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
                     .background(Color.appAccent.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay {
-                        Label("Drop a PDF to import it", systemImage: "arrow.down.doc")
+                        Label(L("Drop a PDF to import it"), systemImage: "arrow.down.doc")
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(Color.appAccent)
                     }
@@ -83,9 +83,9 @@ struct LibraryView: View {
                             store.view = .authors; store.activeAuthor = nil
                         }
                     } label: {
-                        Label("All authors", systemImage: "chevron.left")
+                        Label(L("All authors"), systemImage: "chevron.left")
                     }
-                    .help("Back to all authors")
+                    .help(L("Back to all authors"))
                 }
             }
         }
@@ -171,11 +171,11 @@ struct LibraryView: View {
         switch LibraryPresentation.emptyState(libraryIsEmpty: store.papers.isEmpty, search: store.search) {
         case .emptyLibrary:
             ContentUnavailableView {
-                Label("Your library is empty", systemImage: "doc.badge.plus")
+                Label(L("Your library is empty"), systemImage: "doc.badge.plus")
             } description: {
-                Text("Import a PDF and Papertalk will turn it into a podcast episode, right on this Mac.")
+                Text(L("Import a PDF and Papertalk will turn it into a podcast episode, right on this Mac."))
             } actions: {
-                Button("Import a paper…", action: onImport)
+                Button(L("Import a paper…"), action: onImport)
                     .buttonStyle(.glassProminent)
                     .controlSize(.large)
             }
@@ -183,11 +183,11 @@ struct LibraryView: View {
             ContentUnavailableView.search(text: text)
         case .filteredOut:
             ContentUnavailableView {
-                Label("Nothing here", systemImage: "line.3.horizontal.decrease.circle")
+                Label(L("Nothing here"), systemImage: "line.3.horizontal.decrease.circle")
             } description: {
-                Text("No papers match the current filters.")
+                Text(L("No papers match the current filters."))
             } actions: {
-                Button("Show all papers") {
+                Button(L("Show all papers")) {
                     withAnimation(.snappy) { store.statusFilter = "all" }
                 }
                 .buttonStyle(.glass)

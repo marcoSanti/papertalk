@@ -12,7 +12,7 @@ struct LogPane: View {
                 withAnimation(.snappy) { isOpen.toggle() }
             } label: {
                 HStack(spacing: 6) {
-                    SectionLabel(title: "Activity", systemImage: "terminal",
+                    SectionLabel(title: L("Activity"), systemImage: "terminal",
                                  trailing: LibraryPresentation.badge(lines.count))
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
@@ -22,7 +22,7 @@ struct LogPane: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(isOpen ? "Hide activity log" : "Show activity log")
+            .help(isOpen ? L("Hide activity log") : L("Show activity log"))
 
             if isOpen {
                 ScrollViewReader { proxy in

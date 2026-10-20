@@ -34,8 +34,8 @@ enum PipelineError: Error, LocalizedError {
     case noText, llm(String)
     var errorDescription: String? {
         switch self {
-        case .noText: return "Could not extract text from PDF"
-        case .llm(let m): return "LLM: \(m)"
+        case .noText: return L("Could not extract text from PDF")
+        case .llm(let m): return L("LLM: {0}", m)
         }
     }
 }
@@ -71,6 +71,9 @@ struct LocalPipeline {
     var model: String
     /// Editable prompts (only the reply schemas and dialogue format stay hardcoded).
     var prompts: PromptSettings = .defaults
+    /// The language the episode and the mind map are written in. Metadata and
+    /// the cast are always asked for in English.
+    var outputLanguage: AppLanguage = .english
     /// Optional hook for emitting progress lines; no-ops when unset.
     var log: (String) -> Void = { _ in }
     /// Optional hook for live progress: fraction (0...1) + current stage label.
@@ -228,7 +231,7 @@ struct LocalPipeline {
         let total = plan.segments.count
         for (k, seg) in plan.segments.enumerated() {
             onProgress(Double(k) / Double(max(total, 1)),
-                       "Segment \(k + 1)/\(total): \(seg.title)")
+                       L("Segment {0}/{1}: {2}", k + 1, total, seg.title))
             // Summary: re-split what's left of the ceiling over the remaining
             // segments, so an over-long early segment can't push the episode
             // past its length (and the ending still gets its share).
@@ -305,7 +308,7 @@ struct LocalPipeline {
         \n\nRespond with ONLY a JSON object, no markdown, exactly:
         {"tags": [short keywords], "sections": [{"title": string, "min_sec": int}], "segments": [{"title": string, "goal": string, "sections": [int], "key_points": [string], "weight": number, "monologue": boolean}]}
         """
-        let system = prompts.outlineSystem
+        let system = inOutputLanguage(prompts.outlineSystem)
         log("Outline: requesting section index + segment plan for \(title)…")
 
         var raw = try await chat(system: system, user: outlineInstructions + "\n\n=== PAPER ===\n" + cleaned, maxTokens: 9000)
@@ -412,8 +415,8 @@ struct LocalPipeline {
         \(cleaned)
         """
 
-        let system = PromptSettings.fill(prompts.dialoguePersona, ["host": host, "expert": expert])
-            + "\n\n" + PromptSettings.fill(spoken, ["host": host, "expert": expert])
+        let system = inOutputLanguage(PromptSettings.fill(prompts.dialoguePersona, ["host": host, "expert": expert])
+            + "\n\n" + PromptSettings.fill(spoken, ["host": host, "expert": expert]))
 
         for _ in 0..<2 {
             let raw = try await chat(system: system, user: segPrompt, maxTokens: 9000)
@@ -437,7 +440,7 @@ struct LocalPipeline {
         guard words > target + target * 15 / 100 else { return turns }
         log("    segment ran long (\(words) of ~\(target) words) — condensing")
         let tokens = ["targetWords": "\(target)", "host": host, "expert": expert]
-        let system = PromptSettings.fill(prompts.dialoguePersona, tokens) + "\n\n" + PromptSettings.fill(prompts.writeForEar, tokens)
+        let system = inOutputLanguage(PromptSettings.fill(prompts.dialoguePersona, tokens) + "\n\n" + PromptSettings.fill(prompts.writeForEar, tokens))
         let request = PromptSettings.fill(prompts.condense, tokens) + """
 
 
@@ -535,9 +538,9 @@ struct LocalPipeline {
             else { position = prompts.blockMiddle }
             let tokens = ["expert": expert, "host": hostName, "position": position]
 
-            let system = PromptSettings.fill(prompts.monologuePersona, tokens)
+            let system = inOutputLanguage(PromptSettings.fill(prompts.monologuePersona, tokens)
                 + "\n\n" + PromptSettings.fill(prompts.monologueRules, tokens)
-                + "\n\nOutput ONLY the narration text — no speaker name, no notes."
+                + "\n\nOutput ONLY the narration text — no speaker name, no notes.")
 
             let raw = try await chat(system: system, user: "METHOD TEXT (block \(i + 1)):\n" + block, maxTokens: 9000)
             let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -571,6 +574,13 @@ struct LocalPipeline {
     }
 
     // ------------------------------------------------------------- helpers
+
+    /// `system` with the language instruction, unless the episode is in English
+    /// (the prompts are, so English needs no instruction).
+    func inOutputLanguage(_ system: String) -> String {
+        guard outputLanguage != .english else { return system }
+        return system + "\n\n" + PromptSettings.fill(prompts.outputLanguage, ["language": outputLanguage.englishName])
+    }
 
     /// Perform an OpenAI request with a generous timeout and a small number of
     /// retries (with backoff). Retries on transport-level failures (connection
@@ -771,12 +781,12 @@ struct LocalPipeline {
     /// isn't broken down; throws only when no usable map comes back at all.
     func mindMap(title: String, text: String) async throws -> MindMap {
         // An object, not a bare array: `extractJSON` cuts from the first "{" to the last "}".
-        let system = prompts.mindMap + """
+        let system = inOutputLanguage(prompts.mindMap + """
         \n\nReturn ONLY a JSON object, no markdown or prose:
         {"summary": string,
          "nodes": [{"id": string, "label": string, "branch": "problem"|"method"|"evidence", "parent": string|null, "description": string, "core": string}],
          "links": [{"from": string, "to": string, "label": string}]}
-        """
+        """)
         let user = "Title: \(title)\n\nPAPER:\n" + String(text.prefix(60_000))
         log("Mind map: asking for the paper's key concepts…")
         // Up to ~30 concepts with a few sentences each: leave room for all of it.

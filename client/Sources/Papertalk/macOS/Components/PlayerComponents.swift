@@ -251,7 +251,7 @@ struct BottomBar: View {
                         .lineLimit(1)
                     Spacer(minLength: 6)
                     if p.isError {
-                        Button("Dismiss") { store.resetError(p.id) }
+                        Button(L("Dismiss")) { store.resetError(p.id) }
                             .buttonStyle(.glass)
                             .controlSize(.small)
                     } else {
@@ -283,7 +283,7 @@ struct BottomBar: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(delta < 0 ? "Previous import" : "Next import")
+        .help(delta < 0 ? L("Previous import") : L("Next import"))
     }
 }
 

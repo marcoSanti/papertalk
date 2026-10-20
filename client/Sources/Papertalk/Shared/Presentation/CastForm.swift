@@ -57,17 +57,17 @@ struct CastForm: Equatable {
     /// (the LLM's suggestion, or nothing yet).
     func authorPlaceholder(_ row: Row) -> String? {
         guard !authors.contains(row.name) else { return nil }
-        return row.name.isEmpty ? "Choose an author…" : row.name
+        return row.name.isEmpty ? L("Choose an author…") : row.name
     }
 
     static func avatarName(_ row: Row) -> String { row.name.isEmpty ? row.role : row.name }
 
     static func genderHelp(_ row: Row) -> String {
-        row.gender == nil ? "Gender unknown — pick one so the voice fits" : "Switching gender picks a matching voice"
+        row.gender == nil ? L("Gender unknown — pick one so the voice fits") : L("Switching gender picks a matching voice")
     }
 
     static func voiceHelp(_ voice: String) -> String {
-        "\(KokoroSpeech.accent(voice)) · \(KokoroSpeech.voiceGender(voice) ?? "voice")"
+        "\(KokoroSpeech.accentLabel(voice)) · \(KokoroSpeech.genderLabel(KokoroSpeech.voiceGender(voice)) ?? L("voice"))"
     }
 
     // MARK: edits
@@ -124,12 +124,12 @@ struct CastForm: Equatable {
     /// The line under the speaker cards.
     var note: (text: String, severity: Severity) {
         switch issue {
-        case .emptyName: return ("Every speaker needs a name.", .error)
-        case .duplicateName: return ("Each speaker needs a different name.", .error)
+        case .emptyName: return (L("Every speaker needs a name."), .error)
+        case .duplicateName: return (L("Each speaker needs a different name."), .error)
         case .unknownGender(let who):
-            return ("Couldn't tell \(who)'s gender — choose Female or Male so the voice fits.", .warning)
-        case .sharedVoice: return ("Speakers share a voice, so they'll be hard to tell apart.", .warning)
-        case nil: return ("Each person's voice is used whenever they speak. Choosing a voice plays a short sample.", .info)
+            return (L("Couldn't tell {0}'s gender — choose Female or Male so the voice fits.", who), .warning)
+        case .sharedVoice: return (L("Speakers share a voice, so they'll be hard to tell apart."), .warning)
+        case nil: return (L("Each person's voice is used whenever they speak. Choosing a voice plays a short sample."), .info)
         }
     }
 
@@ -139,8 +139,8 @@ struct CastForm: Equatable {
     }
 
     /// The second confirm button: write the script with these names, but no audio yet.
-    static let scriptOnlyTitle = "Skip audio"
-    static let scriptOnlyHelp = "Write the script without voicing it. You can voice it later with Regenerate audio."
+    static var scriptOnlyTitle: String { L("Skip audio") }
+    static var scriptOnlyHelp: String { L("Write the script without voicing it. You can voice it later with Regenerate audio.") }
 
     /// The confirmed cast: trimmed names with their voices.
     var cast: [SpeakerConfig] {
@@ -162,8 +162,7 @@ enum SpeakingPacePresentation {
     static func warning(_ speed: Double) -> String? {
         guard speed > slurThreshold else { return nil }
         let minutes = Int((30 * PlayerController.defaultSpeed / speed).rounded())
-        return "Kokoro is trained on natural-pace speech, so words may slur above 1.5× — listen to a sample first. "
-            + "Episodes also get shorter: a 30-minute summary plays in about \(minutes) minutes at this pace."
+        return L("Kokoro is trained on natural-pace speech, so words may slur above 1.5× — listen to a sample first. Episodes also get shorter: a 30-minute summary plays in about {0} minutes at this pace.", minutes)
     }
 }
 
@@ -176,19 +175,19 @@ enum VoiceSamplePresentation {
 
     static func label(_ phase: PlayerController.PreviewPhase?, loadingModel: Bool) -> String {
         switch phase {
-        case .generating: return loadingModel ? "Loading voices…" : "Generating…"
-        case .playing: return "Playing"
-        case .failed: return "Retry"
-        case nil: return "Sample"
+        case .generating: return loadingModel ? L("Loading voices…") : L("Generating…")
+        case .playing: return L("Playing")
+        case .failed: return L("Retry")
+        case nil: return L("Sample")
         }
     }
 
     static func help(_ phase: PlayerController.PreviewPhase?, voice: String) -> String {
         switch phase {
-        case .generating: return "Synthesizing a sample of \(KokoroSpeech.displayName(voice)) — click to cancel"
-        case .playing: return "Stop the sample"
-        case .failed(_, let msg): return "Couldn't play the sample: \(msg)"
-        case nil: return "Hear \(KokoroSpeech.displayName(voice))"
+        case .generating: return L("Synthesizing a sample of {0} — click to cancel", KokoroSpeech.displayName(voice))
+        case .playing: return L("Stop the sample")
+        case .failed(_, let msg): return L("Couldn't play the sample: {0}", msg)
+        case nil: return L("Hear {0}", KokoroSpeech.displayName(voice))
         }
     }
 

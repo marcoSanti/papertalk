@@ -9,15 +9,19 @@ struct ImportForm {
     var depthNote = ""
     /// The summary length slider's value (a Double, as sliders bind to one).
     var summaryMinutes = Double(SummaryLength.defaultMinutes)
+    /// The interface language when the sheet opened: an episode can be written in it.
+    var appLanguage = Localization.language
+    /// Write the episode in `appLanguage` instead of English. Off unless chosen.
+    var writeInAppLanguage = false
 
     /// Only a summary has a length to choose; the other depths run as long as the paper needs.
     var showsLengthSlider: Bool { depth == .summary }
     var lengthLabel: String { SummaryLength.label(SummaryLength.clamped(summaryMinutes)) }
     static let lengthRange = Double(SummaryLength.range.lowerBound)...Double(SummaryLength.range.upperBound)
     static let lengthStep = Double(SummaryLength.step)
-    static let lengthMinLabel = "\(SummaryLength.range.lowerBound) min"
-    static let lengthMaxLabel = "\(SummaryLength.range.upperBound) min"
-    static let lengthHelp = "The episode is written to fit in this time at the default speaking pace."
+    static var lengthMinLabel: String { L("{0} min", SummaryLength.range.lowerBound) }
+    static var lengthMaxLabel: String { L("{0} min", SummaryLength.range.upperBound) }
+    static var lengthHelp: String { L("The episode is written to fit in this time at the default speaking pace.") }
 
     var hasFile: Bool { fileData != nil }
 
@@ -26,13 +30,23 @@ struct ImportForm {
 
     private var hasDepthNote: Bool { !depthNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
+    /// English needs no choice, and Direct read writes nothing.
+    var showsLanguageToggle: Bool { appLanguage != .english && needsLLM }
+    static var languageToggleTitle: String { L("Write the episode in this language") }
+    static var languageToggleHelp: String {
+        L("Experimental. Off, the script, transcript and mind map are written in English. The voices are English Kokoro voices, so they read other languages with an English accent.")
+    }
+
+    /// The language the LLM writes in: English unless the toggle asks for the app's.
+    var scriptLanguage: AppLanguage { showsLanguageToggle && writeInAppLanguage ? appLanguage : .english }
+
     /// A file, and for Custom a description of what's wanted.
     var canStart: Bool { hasFile && (depth != .custom || hasDepthNote) }
 
     /// Why Start is disabled ("" when it isn't).
     var startHelp: String {
         if canStart { return "" }
-        return hasFile ? "Describe the depth you want first" : "Choose a PDF first"
+        return hasFile ? L("Describe the depth you want first") : L("Choose a PDF first")
     }
 
     /// Only a non-empty custom description can be saved as a preset.
@@ -52,18 +66,20 @@ struct ImportForm {
     }
 
     /// What `AppStore.upload` needs, once the form is complete.
-    var submission: (data: Data, filename: String, depth: Depth, depthNote: String, targetMinutes: Int?)? {
+    var submission: (data: Data, filename: String, depth: Depth, depthNote: String, targetMinutes: Int?,
+                     scriptLanguage: AppLanguage)? {
         guard canStart, let fileData, let fileName else { return nil }
-        return (fileData, fileName, depth, depthNote, showsLengthSlider ? SummaryLength.clamped(summaryMinutes) : nil)
+        return (fileData, fileName, depth, depthNote, showsLengthSlider ? SummaryLength.clamped(summaryMinutes) : nil,
+                scriptLanguage)
     }
 
     /// The file button and the label beside it.
-    var chooseButtonTitle: String { hasFile ? "Change…" : "Choose PDF…" }
-    var fileLabel: String { fileName ?? "No file chosen" }
+    var chooseButtonTitle: String { hasFile ? L("Change…") : L("Choose PDF…") }
+    var fileLabel: String { fileName ?? L("No file chosen") }
 
-    static let heading = "New episode"
-    static let subheading = "Turn a paper into a podcast, converted on \(Device.this)."
-    static let noLLMWarning = "No LLM is configured, so this paper will be read out as-is instead of as a discussion."
+    static var heading: String { L("New episode") }
+    static var subheading: String { L("Turn a paper into a podcast, converted on {0}.", Device.this) }
+    static var noLLMWarning: String { L("No LLM is configured, so this paper will be read out as-is instead of as a discussion.") }
 
     static func icon(for depth: Depth) -> String {
         switch depth {
@@ -79,7 +95,7 @@ struct ImportForm {
 enum PDFFile {
     struct ReadError: LocalizedError {
         let name: String
-        var errorDescription: String? { "Could not read \(name)" }
+        var errorDescription: String? { L("Could not read {0}", name) }
     }
 
     static func read(_ url: URL) throws -> Data {

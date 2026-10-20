@@ -4,16 +4,16 @@ enum Depth: String, CaseIterable, Identifiable {
     case inDepth = "in_depth", summary, direct, custom
     var id: String { rawValue }
     var label: String { switch self {
-        case .inDepth: "In-depth"
-        case .summary: "Summary"
-        case .custom: "Custom"
-        case .direct: "Direct read"
+        case .inDepth: L("In-depth")
+        case .summary: L("Summary")
+        case .custom: L("Custom")
+        case .direct: L("Direct read")
     } }
     var blurb: String { switch self {
-        case .inDepth: "Full technical detail; method sections are read through faithfully. As long as the paper needs."
-        case .summary: "High-level overview; nothing read verbatim, easier to follow. You choose the length."
-        case .custom: "Describe the depth you want."
-        case .direct: "Read the extracted text out loud as-is. No LLM rewriting — only text-extraction fixes."
+        case .inDepth: L("Full technical detail; method sections are read through faithfully. As long as the paper needs.")
+        case .summary: L("High-level overview; nothing read verbatim, easier to follow. You choose the length.")
+        case .custom: L("Describe the depth you want.")
+        case .direct: L("Read the extracted text out loud as-is. No LLM rewriting — only text-extraction fixes.")
     } }
 }
 
@@ -29,5 +29,5 @@ enum SummaryLength {
         return min(range.upperBound, max(range.lowerBound, stepped))
     }
 
-    static func label(_ minutes: Int) -> String { "Up to \(minutes) minutes" }
+    static func label(_ minutes: Int) -> String { L("Up to {0} minutes", minutes) }
 }

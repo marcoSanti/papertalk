@@ -68,7 +68,7 @@ struct AppBuild: Equatable {
 
     /// "0.0.1 (a1b2c3d)", as About Papertalk shows it.
     var display: String {
-        guard let version else { return "an unknown version" }
+        guard let version else { return L("an unknown version") }
         guard let commit, release?.devCommit == nil else { return version }
         return "\(version) (\(commit))"
     }
@@ -180,14 +180,14 @@ enum UpdateCheck {
     static func failureMessage(httpStatus: Int?) -> String {
         switch httpStatus {
         case nil:
-            return "Papertalk couldn’t reach GitHub. Check your internet connection and try again."
+            return L("Papertalk couldn’t reach GitHub. Check your internet connection and try again.")
         case 403, 429:
-            return "GitHub is limiting requests from this network for now. Try again in an hour."
+            return L("GitHub is limiting requests from this network for now. Try again in an hour.")
         case let code?:
-            return "GitHub answered with an error (HTTP \(code)). Try again later."
+            return L("GitHub answered with an error (HTTP {0}). Try again later.", code)
         }
     }
-    static let unreadableMessage = "GitHub’s answer couldn’t be read. Try again later, or look at the releases page."
+    static var unreadableMessage: String { L("GitHub’s answer couldn’t be read. Try again later, or look at the releases page.") }
 }
 
 /// What the update alert says, and where its button leads.
@@ -200,38 +200,39 @@ struct UpdateAlert: Identifiable, Equatable {
     var id: String { title + message }
 
     init(_ outcome: UpdateCheck.Outcome, channel: ReleaseChannel, build: AppBuild) {
-        let kind = channel == .stable ? "release" : "dev build"
         switch outcome {
         case .available(let c):
             title = channel == .stable
-                ? "Papertalk \(c.version.text) is available"
-                : "A newer dev build is available"
+                ? L("Papertalk {0} is available", c.version.text)
+                : L("A newer dev build is available")
             message = channel == .stable
-                ? "You have \(build.display). Download the new version from its release page, unzip it and replace Papertalk in Applications."
-                : "Dev build \(c.version.text) has the newest changes from main; you have \(build.display). Dev builds may have rough edges."
-            actionLabel = "View Release"
+                ? L("You have {0}. Download the new version from its release page, unzip it and replace Papertalk in Applications.", build.display)
+                : L("Dev build {0} has the newest changes from main; you have {1}. Dev builds may have rough edges.", c.version.text, build.display)
+            actionLabel = L("View Release")
             link = c.release.htmlURL
         case .upToDate(let c):
-            title = "Papertalk is up to date"
+            title = L("Papertalk is up to date")
             message = channel == .stable
-                ? "\(c.version.text) is the latest release. You have \(build.display)."
-                : "Dev build \(c.version.text) is the newest; you have \(build.display)."
+                ? L("{0} is the latest release. You have {1}.", c.version.text, build.display)
+                : L("Dev build {0} is the newest; you have {1}.", c.version.text, build.display)
             actionLabel = nil
             link = nil
         case .noRelease:
-            title = channel == .stable ? "No releases yet" : "No dev builds yet"
+            title = channel == .stable ? L("No releases yet") : L("No dev builds yet")
             message = channel == .stable
-                ? "There is no stable release of Papertalk yet. Dev builds of main may be available: use Check for Dev Builds."
-                : "There are no dev builds of Papertalk on GitHub right now."
-            actionLabel = "Open Releases"
+                ? L("There is no stable release of Papertalk yet. Dev builds of main may be available: use Check for Dev Builds.")
+                : L("There are no dev builds of Papertalk on GitHub right now.")
+            actionLabel = L("Open Releases")
             link = UpdateCheck.releasesPage
         case .unknownBuild(let c):
-            title = "Can’t tell which version this is"
-            message = "This copy of Papertalk wasn’t built as an app, so it has no version to compare. The newest \(kind) is \(c.version.text)."
-            actionLabel = "View Release"
+            title = L("Can’t tell which version this is")
+            message = channel == .stable
+                ? L("This copy of Papertalk wasn’t built as an app, so it has no version to compare. The newest release is {0}.", c.version.text)
+                : L("This copy of Papertalk wasn’t built as an app, so it has no version to compare. The newest dev build is {0}.", c.version.text)
+            actionLabel = L("View Release")
             link = c.release.htmlURL
         case .failed(let reason):
-            title = "Couldn’t check for updates"
+            title = L("Couldn’t check for updates")
             message = reason
             actionLabel = nil
             link = nil

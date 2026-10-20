@@ -47,6 +47,10 @@ ideas. It's a native macOS app written in SwiftUI.
   llama.cpp, Ollama behind Open WebUI, or a hosted API. With a local one, nothing about your
   papers leaves your Mac. Every prompt it's sent can be edited. Keep the library on your Mac or
   share it between Macs with a small storage server.
+- **In your language.** The app speaks English, Italian, Spanish, German and French: it follows
+  your Mac's language, or pick one in **Settings → Language**. Episodes are written in English
+  unless you turn on **Write the episode in this language** when importing (experimental: the
+  Kokoro voices are English, so they read other languages with an English accent).
 
 ## Getting started
 

@@ -23,8 +23,8 @@ enum PlaybackStatus: Equatable {
     var message: String? {
         switch self {
         case .idle: return nil
-        case .preparingFirstSection: return "Preparing the first section…"
-        case .preparingNextSection: return "Preparing the next section…"
+        case .preparingFirstSection: return L("Preparing the first section…")
+        case .preparingNextSection: return L("Preparing the next section…")
         case .failed(let e): return e
         }
     }
@@ -48,14 +48,14 @@ enum PlayerBarPresentation {
     static func turnLabel(activeTurn: Int, turnCount: Int, renderedCount: Int,
                           isBuffering: Bool, hasError: Bool) -> String {
         guard turnCount > 0 else { return "" }
-        if isBuffering { return "· preparing the next section…" }
-        let base = "· \(max(activeTurn + 1, 1)) of \(turnCount)"
-        if renderedCount < turnCount, !hasError { return base + " · voiced \(renderedCount)" }
+        if isBuffering { return "· " + L("preparing the next section…") }
+        let base = "· " + L("{0} of {1}", max(activeTurn + 1, 1), turnCount)
+        if renderedCount < turnCount, !hasError { return base + " · " + L("voiced {0}", renderedCount) }
         return base
     }
 
     static func playButton(isPlaying: Bool) -> (icon: String, help: String) {
-        isPlaying ? ("pause.fill", "Pause") : ("play.fill", "Play")
+        isPlaying ? ("pause.fill", L("Pause")) : ("play.fill", L("Play"))
     }
 
     static func canSkipBack(activeTurn: Int) -> Bool { max(activeTurn, 0) > 0 }
@@ -106,13 +106,13 @@ enum PlayerPane: Equatable {
         if !paper.isActive && PaperPresentation.isPlayable(paper) {
             let detail: String
             if paper.progress > 1, paper.duration > 0 {
-                detail = "Resume at \(formatT(paper.progress)) of \(formatT(paper.duration))"
+                detail = L("Resume at {0} of {1}", formatT(paper.progress), formatT(paper.duration))
             } else {
-                detail = paper.duration > 0 ? "\(formatT(paper.duration)) episode" : "Ready to play"
+                detail = paper.duration > 0 ? L("{0} episode", formatT(paper.duration)) : L("Ready to play")
             }
-            self = .ready(playTitle: paper.progress > 1 ? "Resume" : "Play", detail: detail)
+            self = .ready(playTitle: paper.progress > 1 ? L("Resume") : L("Play"), detail: detail)
         } else {
-            self = .unavailable(paper.isActive ? "Episode is being produced…" : "No episode for this paper yet")
+            self = .unavailable(paper.isActive ? L("Episode is being produced…") : L("No episode for this paper yet"))
         }
     }
 }

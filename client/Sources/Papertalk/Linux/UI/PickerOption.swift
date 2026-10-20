@@ -11,12 +11,12 @@ struct PickerOption<Value: Equatable>: Equatable, CustomStringConvertible {
 }
 
 extension PickerOption where Value == Depth {
-    static let depths = Depth.allCases.map { PickerOption(value: $0, description: $0.label) }
+    static var depths: [PickerOption] { Depth.allCases.map { PickerOption(value: $0, description: $0.label) } }
 }
 
 extension PickerOption where Value == String {
-    static let voices = KokoroSpeech.allVoices.map { PickerOption(value: $0, description: KokoroSpeech.label($0)) }
-    static let genders = [PickerOption(value: "female", description: "Female"),
-                          PickerOption(value: "male", description: "Male")]
+    static var voices: [PickerOption] { KokoroSpeech.allVoices.map { PickerOption(value: $0, description: KokoroSpeech.label($0)) } }
+    static var genders: [PickerOption] { [PickerOption(value: "female", description: L("Female")),
+                                          PickerOption(value: "male", description: L("Male"))] }
 }
 #endif

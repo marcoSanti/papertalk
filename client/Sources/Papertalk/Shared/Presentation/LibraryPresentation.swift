@@ -10,29 +10,30 @@ enum SidebarItem: Hashable {
 enum LibraryPresentation {
     static func title(view: AppStore.ViewMode, tag: String?, author: String?) -> String {
         switch view {
-        case .all: return "All Papers"
-        case .fav: return "Favorites"
-        case .authors: return "Authors"
-        case .tag: return tag.map { "#\($0)" } ?? "Tag"
-        case .author: return author ?? "Author"
+        case .all: return L("All Papers")
+        case .fav: return L("Favorites")
+        case .authors: return L("Authors")
+        case .tag: return tag.map { "#\($0)" } ?? L("Tag")
+        case .author: return author ?? L("Author")
         }
     }
 
     /// A sidebar row's name (tags without the "#" the library title adds).
     static func sidebarTitle(_ item: SidebarItem) -> String {
         switch item {
-        case .all: return "All Papers"
-        case .favorites: return "Favorites"
-        case .authors: return "Authors"
+        case .all: return L("All Papers")
+        case .favorites: return L("Favorites")
+        case .authors: return L("Authors")
         case .tag(let tag): return tag
         }
     }
 
-    static func count(_ n: Int, _ singular: String, _ plural: String) -> String {
-        n == 1 ? "1 \(singular)" : "\(n) \(plural)"
+    /// `one` for 1, else `other` with {0} replaced by the count ("{0} papers").
+    static func count(_ n: Int, _ one: String, _ other: String) -> String {
+        n == 1 ? one : other.replacingOccurrences(of: "{0}", with: "\(n)")
     }
-    static func paperCount(_ n: Int) -> String { count(n, "paper", "papers") }
-    static func authorCount(_ n: Int) -> String { count(n, "author", "authors") }
+    static func paperCount(_ n: Int) -> String { count(n, L("1 paper"), L("{0} papers")) }
+    static func authorCount(_ n: Int) -> String { count(n, L("1 author"), L("{0} authors")) }
 
     /// A count shown beside a section title, hidden when there's nothing.
     static func badge(_ n: Int) -> String? { n > 0 ? "\(n)" : nil }
@@ -42,7 +43,7 @@ enum LibraryPresentation {
 
     /// The sidebar footer: where the library lives.
     static func storageLocation(isStandalone: Bool) -> (icon: String, title: String) {
-        isStandalone ? ("desktopcomputer", "On \(Device.this)") : ("server.rack", "Library server")
+        isStandalone ? ("desktopcomputer", Device.on) : ("server.rack", L("Library server"))
     }
 
     /// The status filter capsules above the library. `value` is the store's
@@ -51,12 +52,12 @@ enum LibraryPresentation {
         let value: String, title: String, icon: String
         var id: String { value }
     }
-    static let statusFilters: [StatusFilter] = [
-        .init(value: "all", title: "All", icon: "square.stack"),
-        .init(value: "running", title: "Converting", icon: "hourglass"),
-        .init(value: "done", title: "Ready", icon: "waveform"),
-        .init(value: "error", title: "Failed", icon: "exclamationmark.triangle"),
-    ]
+    static var statusFilters: [StatusFilter] { [
+        .init(value: "all", title: L("All"), icon: "square.stack"),
+        .init(value: "running", title: L("Converting"), icon: "hourglass"),
+        .init(value: "done", title: L("Ready"), icon: "waveform"),
+        .init(value: "error", title: L("Failed"), icon: "exclamationmark.triangle"),
+    ] }
 
     /// What the library shows when no paper matches.
     enum EmptyState: Equatable {
@@ -68,16 +69,18 @@ enum LibraryPresentation {
     static func emptyStateText(_ state: EmptyState) -> (title: String, message: String) {
         switch state {
         case .emptyLibrary:
-            return ("Your library is empty",
-                    "Import a PDF and Papertalk will turn it into a podcast episode, right on \(Device.this).")
+            return (L("Your library is empty"),
+                    L("Import a PDF and Papertalk will turn it into a podcast episode, right on {0}.", Device.this))
         case .noSearchResults(let text):
-            return ("No results for “\(text.trimmingCharacters(in: .whitespaces))”", "Check the spelling or try a new search.")
+            return (L("No results for “{0}”", text.trimmingCharacters(in: .whitespaces)), L("Check the spelling or try a new search."))
         case .filteredOut:
-            return ("Nothing here", "No papers match the current filters.")
+            return (L("Nothing here"), L("No papers match the current filters."))
         }
     }
 
-    static let noSelection = (title: "No paper selected", message: "Select a paper to see its details and episode.")
+    static var noSelection: (title: String, message: String) {
+        (L("No paper selected"), L("Select a paper to see its details and episode."))
+    }
 
     static func emptyState(libraryIsEmpty: Bool, search: String) -> EmptyState {
         if libraryIsEmpty { return .emptyLibrary }

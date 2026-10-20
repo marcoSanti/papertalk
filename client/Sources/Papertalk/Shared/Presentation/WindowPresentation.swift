@@ -5,44 +5,45 @@ struct ConfirmationText: Equatable {
     let title: String
     let confirmLabel: String
     let message: String
-    var cancelLabel = "Cancel"
+    var cancelLabel = L("Cancel")
     /// A third choice, besides confirming and cancelling.
     var secondaryLabel: String?
 
     init(_ pending: AppStore.PendingConfirmation) {
         switch pending {
         case .delete(let p):
-            title = "Delete “\(p.displayTitle)”?"
-            confirmLabel = "Delete paper"
-            message = (p.isActive ? "Its conversion is stopped first. " : "")
-                + "The PDF, transcript and generated audio are removed from the library. This can’t be undone."
+            title = L("Delete “{0}”?", p.displayTitle)
+            confirmLabel = L("Delete paper")
+            message = (p.isActive ? L("Its conversion is stopped first.") + " " : "")
+                + L("The PDF, transcript and generated audio are removed from the library. This can’t be undone.")
         case .rerun(let p):
-            title = "Rerun “\(p.displayTitle)”?"
-            confirmLabel = "Rerun episode"
-            message = "The current script and audio are replaced with a newly written episode."
+            title = L("Rerun “{0}”?", p.displayTitle)
+            confirmLabel = L("Rerun episode")
+            message = L("The current script and audio are replaced with a newly written episode.")
         case .deleteAudio(let p):
-            title = "Delete the audio of “\(p.displayTitle)”?"
-            confirmLabel = "Delete audio"
+            title = L("Delete the audio of “{0}”?", p.displayTitle)
+            confirmLabel = L("Delete audio")
             message = Self.keptAfterAudio
         case .finishedListening(let p):
-            title = "You finished “\(p.displayTitle)”"
-            confirmLabel = "Delete audio"
-            message = "Delete its audio to free up space? " + Self.keptAfterAudio
-            cancelLabel = "Keep audio"
-            secondaryLabel = "Keep, and don’t ask again"
+            title = L("You finished “{0}”", p.displayTitle)
+            confirmLabel = L("Delete audio")
+            message = L("Delete its audio to free up space?") + " " + Self.keptAfterAudio
+            cancelLabel = L("Keep audio")
+            secondaryLabel = L("Keep, and don’t ask again")
         }
     }
 
-    private static let keptAfterAudio = "The script and PDF stay. You can still play the episode with live voices, "
-        + "or voice it again with Regenerate audio."
+    private static var keptAfterAudio: String {
+        L("The script and PDF stay. You can still play the episode with live voices, or voice it again with Regenerate audio.")
+    }
 
     /// Title and message together, for alerts that only show a title (Linux).
     var combined: String { "\(title)\n\(message)" }
 
     /// The "already in your library" question during an import.
     static func duplicate(of existing: Paper) -> ConfirmationText {
-        ConfirmationText(title: "Already in library", confirmLabel: "Import anyway",
-                         message: "“\(existing.displayTitle)” already exists with the same title or DOI. Import it anyway?")
+        ConfirmationText(title: L("Already in library"), confirmLabel: L("Import anyway"),
+                         message: L("“{0}” already exists with the same title or DOI. Import it anyway?", existing.displayTitle))
     }
 
     private init(title: String, confirmLabel: String, message: String) {
@@ -53,10 +54,10 @@ struct ConfirmationText: Equatable {
 extension SortOption {
     var label: String {
         switch self {
-        case .newest: return "Newest first"
-        case .oldest: return "Oldest first"
-        case .title: return "Title"
-        case .recent: return "Recently converted"
+        case .newest: return L("Newest first")
+        case .oldest: return L("Oldest first")
+        case .title: return L("Title")
+        case .recent: return L("Recently converted")
         }
     }
 }

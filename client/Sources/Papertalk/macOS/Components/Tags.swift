@@ -44,7 +44,7 @@ struct TagChip: View {
                     .lineLimit(1)
             }
             .buttonStyle(.plain)
-            .help(onSelect == nil ? "" : "Show all papers tagged #\(tag)")
+            .help(onSelect == nil ? "" : L("Show all papers tagged #{0}", tag))
             Button(action: onRemove) {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
@@ -52,8 +52,8 @@ struct TagChip: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .opacity(hovering ? 1 : 0.35)
-            .help("Remove tag")
-            .accessibilityLabel("Remove tag \(tag)")
+            .help(L("Remove tag"))
+            .accessibilityLabel(L("Remove tag {0}", tag))
         }
         .foregroundStyle(Color.appAccent)
         .padding(.leading, 9)

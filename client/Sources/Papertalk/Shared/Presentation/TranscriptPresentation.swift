@@ -12,7 +12,7 @@ enum TranscriptPresentation {
     }
 
     static func segmentCount(_ t: Transcript) -> String {
-        LibraryPresentation.count(t.segments.count, "segment", "segments")
+        LibraryPresentation.count(t.segments.count, L("1 segment"), L("{0} segments"))
     }
 
     /// "01", "02"… beside each segment title.
@@ -30,6 +30,6 @@ enum TranscriptPresentation {
 
     /// The activity log pane's text.
     static func logText(_ lines: [String]) -> String {
-        lines.isEmpty ? "No activity yet." : lines.joined(separator: "\n")
+        lines.isEmpty ? L("No activity yet.") : lines.joined(separator: "\n")
     }
 }

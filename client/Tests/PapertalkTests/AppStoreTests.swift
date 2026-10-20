@@ -574,6 +574,18 @@ final class AppStoreTests: PapertalkTestCase {
 
     // MARK: prompts, imports, log, toasts
 
+    func testMindMapIsReadFromThePaperFolder() async throws {
+        let store = await makeStore([Fixtures.paper(id: "m")])
+        let none = await store.mindMap(for: "m")
+        XCTAssertNil(none)
+        let map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply()))
+        await storage.save(map, K.mindMap("m"))
+        let loaded = await store.mindMap(for: "m")
+        XCTAssertEqual(loaded, map)
+        XCTAssertEqual(K.mindMap("m"), "papers/m/mindmap.json")
+        XCTAssertTrue(store.drawingMindMaps.isEmpty)
+    }
+
     func testResolvingWithNothingPendingIsHarmless() async {
         let store = await makeStore()
         store.resolveDuplicate(true)

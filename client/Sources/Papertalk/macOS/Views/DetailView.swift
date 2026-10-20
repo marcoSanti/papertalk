@@ -23,6 +23,11 @@ struct DetailView: View {
         let transcript: Transcript?
     }
     @State private var transcriptSheet: TranscriptSheet?
+    private struct MindMapSheet: Identifiable {
+        let id = UUID()
+        let map: MindMap?
+    }
+    @State private var mindMapSheet: MindMapSheet?
     @State private var shownID: String?
     @State private var titleDraft = ""
     @FocusState private var titleFocused: Bool
@@ -35,7 +40,7 @@ struct DetailView: View {
             VStack(alignment: .leading, spacing: 14) {
                 hero
                 QuickActionBar(player: store.player, paper: paper,
-                               onPDF: openPDF, onTranscript: openTranscript, onEdit: onEdit)
+                               onPDF: openPDF, onTranscript: openTranscript, onMindMap: openMindMap, onEdit: onEdit)
                 if PaperPresentation.showsConversionCard(paper) {
                     ConversionStatusCard(paper: paper)
                         .transition(.blurReplace)
@@ -60,6 +65,15 @@ struct DetailView: View {
             } else {
                 ContentUnavailableView("No transcript yet", systemImage: "text.quote", description: Text("The transcript for this paper isn’t available."))
                     .frame(width: 700, height: 660)
+            }
+        }
+        .sheet(item: $mindMapSheet) { item in
+            if let map = item.map {
+                MindMapView(map: map, title: paper.displayTitle)
+            } else {
+                ContentUnavailableView(MindMapPresentation.emptyTitle, systemImage: "point.3.connected.trianglepath.dotted",
+                                       description: Text(MindMapPresentation.emptyMessage))
+                    .frame(width: 700, height: 500)
             }
         }
         .sheet(isPresented: $showCitation) {
@@ -301,6 +315,13 @@ struct DetailView: View {
                     store.requestRerun(paper)
                 }
                 .disabled(!PaperPresentation.canRerun(paper))
+                let drawing = store.drawingMindMaps.contains(paper.id)
+                let mindMap = PaperPresentation.mindMapRow(paper, drawing: drawing)
+                ManageRow(title: mindMap.title, subtitle: mindMap.subtitle,
+                          icon: "point.3.connected.trianglepath.dotted", tint: .purple) {
+                    store.createMindMap(paper.id)
+                }
+                .disabled(!store.canCreateMindMap(paper))
                 ManageRow(title: "Refresh metadata", subtitle: "Re-extract title, authors and DOI",
                           icon: "arrow.clockwise", tint: .teal) {
                     store.refreshMeta(paper.id)
@@ -345,6 +366,10 @@ struct DetailView: View {
             transcriptSheet = TranscriptSheet(transcript: await store.transcript(for: paper.id))
         }
     }
+
+    private func openMindMap() {
+        Task { mindMapSheet = MindMapSheet(map: await store.mindMap(for: paper.id)) }
+    }
 }
 
 // MARK: - Backdrop
@@ -387,6 +412,7 @@ private struct QuickActionBar: View {
     let paper: Paper
     var onPDF: () -> Void
     var onTranscript: () -> Void
+    var onMindMap: () -> Void
     var onEdit: () -> Void
 
     private var isLoaded: Bool { store.playingPaperId == paper.id }
@@ -402,6 +428,8 @@ private struct QuickActionBar: View {
                        perform: togglePlay)
                 action("PDF", icon: "doc.text", enabled: paper.hasPdf, perform: onPDF)
                 action("Transcript", icon: "text.quote", enabled: paper.hasScript, perform: onTranscript)
+                action("Mind map", icon: "point.3.connected.trianglepath.dotted",
+                       enabled: PaperPresentation.hasMindMap(paper), perform: onMindMap)
                 action(favorite.title, icon: favorite.icon,
                        iconColor: paper.favorite ? Color.yellow : nil) {
                     withAnimation(.snappy) { store.toggleFavorite(paper.id) }

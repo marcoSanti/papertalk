@@ -59,6 +59,8 @@ struct Paper: Identifiable, Codable, Equatable {
     /// Summary only: the longest the episode may run, in minutes (nil: the
     /// default, `SummaryLength.defaultMinutes`). Kept so reruns match.
     var targetMinutes: Int? = nil
+    /// Whether `mindmap.json` was written (nil in records from before mind maps).
+    var hasMindMap: Bool? = nil
     var progress: Double
     var duration: Double
     var progressTs: String?
@@ -75,6 +77,7 @@ struct Paper: Identifiable, Codable, Equatable {
         case statusError = "status_error"
         case storedSpeakers = "speakers"
         case targetMinutes = "target_minutes"
+        case hasMindMap = "has_mind_map"
     }
 
     /// The episode's cast (names + chosen voices); empty when never set.

@@ -722,7 +722,7 @@ struct LocalPipeline {
         return out
     }
 
-    private static func extractJSON(_ raw: String) -> String? {
+    static func extractJSON(_ raw: String) -> String? {
         let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         // Take everything from the first "{" to the last "}", ignoring any
         // prose the model added before/after and code fences.
@@ -767,6 +767,29 @@ struct LocalPipeline {
     /// ponytail: the reported "how many voices" is capped at the interviewer +
     /// scientist pair the dialogue generator supports; a future N-speaker rewrite
     /// of planScript/writeDialogue would lift that ceiling.
+    /// Ask the LLM for the paper's mind map. Asks once more when a main concept
+    /// isn't broken down; throws only when no usable map comes back at all.
+    func mindMap(title: String, text: String) async throws -> MindMap {
+        // An object, not a bare array: `extractJSON` cuts from the first "{" to the last "}".
+        let system = prompts.mindMap + """
+        \n\nReturn ONLY a JSON object, no markdown or prose:
+        {"nodes": [{"id": string, "label": string, "branch": "problem"|"method"|"evidence", "parent": string|null, "description": string, "core": string}],
+         "links": [{"from": string, "to": string, "label": string}]}
+        """
+        let user = "Title: \(title)\n\nPAPER:\n" + String(text.prefix(60_000))
+        log("Mind map: asking for the paper's key concepts…")
+        let first = MindMap.parse(try await chat(system: system, user: user, maxTokens: 6000))
+        if let first, first.isExpanded {
+            log("Mind map: \(first.nodes.count) concepts, \(first.links.count) links")
+            return first
+        }
+        log("Mind map: \(first == nil ? "reply unusable" : "a main concept wasn't broken down") — asking again")
+        let second = MindMap.parse(try await chat(system: system, user: prompts.mindMapRetry + "\n\n" + user, maxTokens: 6000))
+        guard let map = second ?? first else { throw PipelineError.llm("the mind map reply couldn't be read") }
+        log("Mind map: \(map.nodes.count) concepts, \(map.links.count) links")
+        return map
+    }
+
     func proposeCast(title: String, authors: [String], cleaned: String, depthNote: String) async -> CastProposal {
         let scientistName = authors.first.flatMap(firstGivenName) ?? "Sam"
         let fallback = CastProposal(

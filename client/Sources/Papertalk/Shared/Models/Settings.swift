@@ -252,6 +252,10 @@ struct PromptSettings: Codable, Equatable {
     var metadata: String
     /// Casting the interviewer and guest (schema appended).
     var cast: String
+    /// The paper's mind map: its key concepts and how they connect (schema appended).
+    var mindMap: String
+    /// Sent when the mind map's three main concepts weren't each broken down.
+    var mindMapRetry: String
     /// System prompt for the outline call.
     var outlineSystem: String
     /// Prose planning rules appended to the outline request (before the schema).
@@ -306,6 +310,17 @@ struct PromptSettings: Codable, Equatable {
         "speakers": exactly two — the interviewer (female by default, propose a realistic first name) and the interviewed scientist, who is one of the paper's real authors; use their given first name and their real gender.
         "authors": every author exactly as listed, each with their most likely gender based on their name.
         """,
+        mindMap: """
+        You build a mind map (in Italian, a "mappa mentale") of a research paper: its most important concepts and how they connect, for a reader who wants to understand the paper at a glance.
+        - Exactly three main concepts, with no parent: the PROBLEM the paper tackles (branch "problem"), the METHOD or approach it takes (branch "method"), and the DEMONSTRATION, the experiments and evidence that show it works (branch "evidence").
+        - Break each main concept into 2 to 5 more specific concepts (their parent is its id), and break those down further where it helps. Aim for 12 to 30 concepts in all.
+        - label: the concept's name, at most 4 words. A name, never a sentence.
+        - description: 1 to 3 sentences on what the concept means in this paper.
+        - core: one sentence with its key feature, finding or number.
+        - links: a few connections between concepts on different branches (for example, a method step that answers part of the problem, or a result that validates a step), each with a label of 1 to 3 words.
+        - Use only what the paper states.
+        """,
+        mindMapRetry: "Your mind map must break each of the three main concepts (problem, method, evidence) into at least two more specific concepts. Return the whole mind map again.",
         outlineSystem: "You are an expert science-podcast editor. You respond with strict JSON only.",
         outlineRules: """
         You are planning a two-speaker podcast episode about a research paper. First break the paper into an ordered, numbered SECTION INDEX of its major sections (Abstract, Introduction, Related Work, Method/Model/Approach, Experiments/Evaluation, Results, Discussion, Conclusion, ... Keep the paper's own titles where clear). Then design an OUTLINE of listening segments covering the whole paper.
@@ -382,6 +397,7 @@ extension PromptSettings {
             try c.decodeIfPresent(String.self, forKey: key) ?? fallback
         }
         self.init(metadata: try v(.metadata, d.metadata), cast: try v(.cast, d.cast),
+                  mindMap: try v(.mindMap, d.mindMap), mindMapRetry: try v(.mindMapRetry, d.mindMapRetry),
                   outlineSystem: try v(.outlineSystem, d.outlineSystem), outlineRules: try v(.outlineRules, d.outlineRules),
                   outlineRepair: try v(.outlineRepair, d.outlineRepair),
                   depthSummary: try v(.depthSummary, d.depthSummary), depthInDepth: try v(.depthInDepth, d.depthInDepth),

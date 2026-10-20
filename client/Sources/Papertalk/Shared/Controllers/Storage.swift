@@ -35,6 +35,7 @@ enum K {
     static func paper(_ id: String) -> String { "papers/\(id)/paper.json" }
     static func script(_ id: String) -> String { "papers/\(id)/script.json" }
     static func transcript(_ id: String) -> String { "papers/\(id)/transcript.json" }
+    static func mindMap(_ id: String) -> String { "papers/\(id)/mindmap.json" }
     static func captions(_ id: String) -> String { "papers/\(id)/captions.json" }
     static func audio(_ id: String) -> String { "papers/\(id)/podcast.m4a" }
     static func pdf(_ id: String) -> String { "papers/\(id)/source.pdf" }

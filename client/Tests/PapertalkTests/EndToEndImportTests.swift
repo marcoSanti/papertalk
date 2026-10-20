@@ -108,6 +108,9 @@ final class EndToEndImportTests: PapertalkTestCase {
         let files = try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("papers/\(paper.id)").path)
         XCTAssertTrue(files.contains("transcript.json"))
         XCTAssertFalse(files.contains("turns"))
+        // The mind map is drawn even without audio.
+        XCTAssertTrue(files.contains("mindmap.json"))
+        XCTAssertEqual(saved.hasMindMap, true)
     }
 
     /// Canned replies for each pipeline prompt, matched like the other pipeline tests.
@@ -126,6 +129,7 @@ final class EndToEndImportTests: PapertalkTestCase {
             if request.url?.path.hasSuffix("/models") == true { return (200, MockLLM.modelsReply(["m"])) }
             if text.contains("bibliographic metadata") { return (200, MockLLM.chatReply(meta)) }
             if text.contains("You are casting") { return (200, MockLLM.chatReply(cast)) }
+            if text.contains("mappa mentale") { return (200, MockLLM.chatReply(MindMapFixtures.reply())) }
             if text.contains(#""segments": [{"title""#) || text.contains(#""sections": [{"title""#) {
                 return (200, MockLLM.chatReply(outline))
             }

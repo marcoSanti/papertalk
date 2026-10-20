@@ -101,6 +101,21 @@ enum PaperPresentation {
 
     static func canRerun(_ p: Paper) -> Bool { !p.isActive }
 
+    static func hasMindMap(_ p: Paper) -> Bool { p.hasMindMap == true }
+
+    /// A mind map needs the PDF and the LLM, and waits for the paper's import
+    /// (which draws one itself) and for a drawing already under way.
+    static func canCreateMindMap(_ p: Paper, llmConfigured: Bool, drawing: Bool) -> Bool {
+        p.hasPdf && llmConfigured && !p.isActive && !drawing
+    }
+
+    /// The Manage row that creates or redraws the mind map.
+    static func mindMapRow(_ p: Paper, drawing: Bool) -> (title: String, subtitle: String) {
+        if drawing { return ("Drawing mind map…", "Asking the LLM for the paper's key concepts") }
+        return hasMindMap(p) ? ("Redraw mind map", "Map the paper's key concepts again")
+            : ("Create mind map", "Map the paper's key concepts and how they connect")
+    }
+
     /// Baked audio can go once the paper isn't being converted; the script stays.
     static func canDeleteAudio(_ p: Paper) -> Bool { p.hasAudio && !p.isActive }
 

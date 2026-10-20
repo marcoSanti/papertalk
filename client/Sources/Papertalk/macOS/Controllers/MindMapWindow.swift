@@ -38,9 +38,7 @@ final class MindMapWindow: NSObject, NSWindowDelegate {
 
     private func show(map: MindMap, title: String) {
         window.title = "\(MindMapPresentation.heading) — \(title)"
-        window.contentView = NSHostingView(rootView: MindMapView(map: map, title: title) { [weak self] in
-            self?.window.performClose(nil)
-        })
+        window.contentView = NSHostingView(rootView: MindMapView(map: map, title: title))
         window.makeKeyAndOrderFront(nil)
     }
 

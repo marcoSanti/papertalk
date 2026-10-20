@@ -17,16 +17,29 @@ struct MindMapLayout: Equatable {
     /// Edges that join two concepts (not the paper to a main concept): these can be selected.
     var selectableEdges: [Edge] { edges.filter { $0.from != Self.centerId } }
 
-    /// A link's curve control point: links bow sideways, away from the centre,
-    /// so a link between opposite branches doesn't run (with its label) under
-    /// the paper node. nil for straight tree edges.
+    /// How far each link bows, as a share of its length: positive away from
+    /// the centre, negative towards it. Chosen so its label clears every node.
+    private var bend: [String: Double] = [:]
+    private static let bends = [0.3, 0.45, 0.6, 0.15, -0.3, -0.45]
+
+    /// A link's curve control point: links bow sideways (away from the centre
+    /// unless that puts the label on a node). nil for straight tree edges.
     func control(_ e: Edge) -> Point? {
         guard e.label != nil, let a = positions[e.from], let b = positions[e.to] else { return nil }
         let mid = Point(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
         let dx = b.x - a.x, dy = b.y - a.y, length = max(hypot(dx, dy), 1)
         var nx = -dy / length, ny = dx / length
         if let c = positions[Self.centerId], nx * (c.x - mid.x) + ny * (c.y - mid.y) > 0 { nx = -nx; ny = -ny }
-        return Point(x: mid.x + nx * 0.3 * length, y: mid.y + ny * 0.3 * length)
+        let f = bend[e.id] ?? Self.bends[0]
+        return Point(x: mid.x + nx * f * length, y: mid.y + ny * f * length)
+    }
+
+    /// Whether a link label at `p` would cover a node.
+    func labelOverlapsNode(_ p: Point) -> Bool {
+        positions.values.contains {
+            abs($0.x - p.x) < (Self.nodeWidth + Self.linkLabelWidth) / 2
+                && abs($0.y - p.y) < (Self.nodeHeight + Self.linkLabelHeight) / 2
+        }
     }
 
     /// Where an edge's handle sits: halfway along the line or curve.
@@ -126,6 +139,12 @@ struct MindMapLayout: Equatable {
         // The canvas holds every node, and every link's curve and label: a link
         // bows outward, and its furthest point is its handle.
         positions = raw
+        for e in edges where e.label != nil {
+            bend[e.id] = Self.bends.first { f in
+                bend[e.id] = f
+                return handle(e).map { !labelOverlapsNode($0) } ?? true
+            } ?? Self.bends[0]
+        }
         let handles = edges.filter { $0.label != nil }.compactMap { handle($0) }
         let xs = raw.values.map { [$0.x - Self.nodeWidth / 2, $0.x + Self.nodeWidth / 2] }.flatMap { $0 }
             + handles.map { [$0.x - Self.linkLabelWidth / 2, $0.x + Self.linkLabelWidth / 2] }.flatMap { $0 }
@@ -141,7 +160,12 @@ struct MindMapLayout: Equatable {
 /// The mind map sheet's wording and the side panel's content.
 enum MindMapPresentation {
     static let heading = "Mind map"
-    static let hint = "Click a concept to see what it means, its core idea and how it connects."
+    static let paperHeading = "The paper"
+    static let mainConceptsTitle = "Main concepts"
+    static let hint = "Click a concept or a connection to see it here; click the paper to come back."
+    static let noSummary = "This map was drawn before maps had a summary. Redraw mind map (under Manage) adds one."
+
+    static func summary(_ map: MindMap) -> String { map.summary ?? noSummary }
     static let coreTitle = "Core"
     static let descriptionTitle = "What it is"
     static let connectionsTitle = "Connections"

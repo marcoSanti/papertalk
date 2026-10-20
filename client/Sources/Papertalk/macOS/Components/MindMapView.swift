@@ -6,8 +6,6 @@ import SwiftUI
 struct MindMapView: View {
     let map: MindMap
     let title: String
-    /// Closes the window it's in.
-    var onClose: () -> Void = {}
     /// What the side panel shows: a concept, or an edge with both its concepts.
     private enum Selection: Equatable { case node(String), edge(String) }
     @State private var selection: Selection?
@@ -33,11 +31,9 @@ struct MindMapView: View {
     private let nodes: [String: MindMap.Node]
     private let ids: [String]
 
-    init(map: MindMap, title: String, selected: String? = nil, selectedEdge: String? = nil,
-         onClose: @escaping () -> Void = {}) {
+    init(map: MindMap, title: String, selected: String? = nil, selectedEdge: String? = nil) {
         self.map = map
         self.title = title
-        self.onClose = onClose
         layout = MindMapLayout(map)
         nodes = Dictionary(map.nodes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         ids = layout.positions.keys.sorted()
@@ -46,30 +42,8 @@ struct MindMapView: View {
 
     var body: some View {
         let scale = MindMapLayout.clampScale(zoom ?? fit)
+        // No toolbar: the window's title bar names the map and closes it.
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "point.3.connected.trianglepath.dotted")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(Color.appAccent.gradient, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(MindMapPresentation.heading).font(.headline)
-                    Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                }
-                Spacer()
-                HStack(spacing: 4) {
-                    Button { zoom = MindMapLayout.clampScale(scale / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }
-                    Button { zoom = nil } label: { Text("\(Int((scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 40) }
-                        .help("Fit the whole map")
-                    Button { zoom = MindMapLayout.clampScale(scale * 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
-                }
-                .buttonStyle(.borderless)
-                Button("Close") { onClose() }
-                    .keyboardShortcut(.cancelAction)
-            }
-            .padding(12)
-            Divider()
             HStack(spacing: 0) {
                 GeometryReader { geo in
                     ScrollView([.horizontal, .vertical]) {
@@ -100,6 +74,7 @@ struct MindMapView: View {
                     .onChange(of: geo.size) { _, size in fit = layout.fitScale(width: size.width - 40, height: size.height - 40) }
                 }
                 .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+                .overlay(alignment: .bottomTrailing) { zoomControls(scale) }
                 .gesture(MagnifyGesture().updating($pinch) { value, state, _ in state = value.magnification }
                     .onEnded { zoom = MindMapLayout.clampScale((zoom ?? fit) * $0.magnification) })
                 Divider()
@@ -108,6 +83,30 @@ struct MindMapView: View {
             }
         }
         .frame(minWidth: 760, maxWidth: .infinity, minHeight: 480, maxHeight: .infinity)
+    }
+
+    private func zoomControls(_ scale: Double) -> some View {
+        HStack(spacing: 2) {
+            Button { zoom = MindMapLayout.clampScale(scale / 1.25) } label: {
+                Image(systemName: "minus.magnifyingglass").frame(width: 26, height: 24)
+            }
+            .help("Zoom out")
+            Button { zoom = nil } label: {
+                Text("\(Int((scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 44, minHeight: 24)
+            }
+            .help("Fit the whole map")
+            Button { zoom = MindMapLayout.clampScale(scale * 1.25) } label: {
+                Image(systemName: "plus.magnifyingglass").frame(width: 26, height: 24)
+            }
+            .help("Zoom in")
+        }
+        .buttonStyle(.borderless)
+        .font(.callout)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1))
+        .padding(12)
     }
 
     // MARK: graph
@@ -161,7 +160,8 @@ struct MindMapView: View {
         let tier = MindMapPresentation.tier(layout, id)
         let node = nodes[id]
         let color = node.map { Self.color($0.branch) } ?? Color.appAccent
-        let isSelected = selection == .node(id)
+        // Nothing selected means the paper is: its summary is the panel's default.
+        let isSelected = selection == .node(id) || (selection == nil && id == MindMapLayout.centerId)
         let shape = RoundedRectangle(cornerRadius: tier == .detail ? 10 : 14, style: .continuous)
         Button {
             withAnimation(.snappy) { selection = node == nil ? nil : .node(id) }
@@ -248,15 +248,25 @@ struct MindMapView: View {
                       let d = MindMapPresentation.edgeDetail(map, e) {
                 edgeDetail(d)
             } else {
-                overview
+                paperOverview
             }
         }
         .background(.bar)
     }
 
-    private var overview: some View {
+    /// The default panel: the paper, its summary, then its three main concepts.
+    private var paperOverview: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(MindMapPresentation.hint).font(.callout).foregroundStyle(.secondary)
+            Label(MindMapPresentation.paperHeading, systemImage: "doc.text")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.appAccent)
+            Text(title).font(.title3.weight(.semibold)).textSelection(.enabled)
+            Text(MindMapPresentation.summary(map))
+                .font(.callout)
+                .foregroundStyle(map.summary == nil ? .secondary : .primary)
+                .textSelection(.enabled)
+            Divider()
+            SectionLabel(title: MindMapPresentation.mainConceptsTitle, systemImage: "point.3.connected.trianglepath.dotted")
             ForEach(MindMap.Branch.allCases, id: \.self) { b in
                 if let root = map.root(b) {
                     Button { withAnimation(.snappy) { selection = .node(root.id) } } label: {
@@ -276,6 +286,7 @@ struct MindMapView: View {
                     .buttonStyle(.plain)
                 }
             }
+            Text(MindMapPresentation.hint).font(.caption).foregroundStyle(.tertiary)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)

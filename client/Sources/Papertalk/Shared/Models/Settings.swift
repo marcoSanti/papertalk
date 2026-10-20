@@ -312,6 +312,7 @@ struct PromptSettings: Codable, Equatable {
         """,
         mindMap: """
         You build a mind map (in Italian, a "mappa mentale") of a research paper: its most important concepts and how they connect, for a reader who wants to understand the paper at a glance.
+        - summary: 3 to 5 sentences that restate the paper's abstract in plain words: the problem, the approach and what it shows.
         - Exactly three main concepts, with no parent: the PROBLEM the paper tackles (branch "problem"), the METHOD or approach it takes (branch "method"), and the DEMONSTRATION, the experiments and evidence that show it works (branch "evidence").
         - Break each main concept into 2 to 5 more specific concepts (their parent is its id), and break those down further where it helps. Aim for 12 to 30 concepts in all.
         - label: the concept's name, at most 4 words. A name, never a sentence.

@@ -9,13 +9,14 @@ enum MindMapFixtures {
         return #"{"id":"\#(id)","label":"\#(label)",\#(b)"parent":\#(p),"description":"About \#(label).","core":"Key: \#(label)."}"#
     }
 
-    static func reply(parts: Int = 2, extraNodes: [String] = [], links: String = "[]") -> String {
+    static func reply(parts: Int = 2, extraNodes: [String] = [], links: String = "[]",
+                      summary: String = "A plain summary.") -> String {
         var nodes: [String] = []
         for b in ["problem", "method", "evidence"] {
             nodes.append(node(b, b.capitalized, b, parent: nil))
             for i in 0..<parts { nodes.append(node("\(b)\(i)", "\(b) part \(i)", b, parent: b)) }
         }
-        return #"{"nodes":[\#((nodes + extraNodes).joined(separator: ","))],"links":\#(links)}"#
+        return #"{"summary":"\#(summary)","nodes":[\#((nodes + extraNodes).joined(separator: ","))],"links":\#(links)}"#
     }
 }
 
@@ -88,6 +89,18 @@ final class MindMapParseTests: PapertalkTestCase {
         let map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(links: links)))
         XCTAssertEqual(map.links, [MindMap.Link(from: "problem0", to: "method1", label: "solved by"),
                                    MindMap.Link(from: "evidence1", to: "method0", label: "validates")])
+    }
+
+    func testTheSummaryIsKeptAndOlderMapsStillLoad() throws {
+        XCTAssertEqual(try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(summary: "  It shows X.  "))).summary, "It shows X.")
+        let none = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(summary: " ")))
+        XCTAssertNil(none.summary)
+        XCTAssertEqual(MindMapPresentation.summary(none), MindMapPresentation.noSummary)
+        // A mindmap.json saved before summaries existed.
+        let old = #"{"nodes":[{"id":"a","label":"A","branch":"problem","description":"d","core":"c"}],"links":[]}"#
+        let map = try JSONDecoder().decode(MindMap.self, from: Data(old.utf8))
+        XCTAssertNil(map.summary)
+        XCTAssertEqual(map.nodes.count, 1)
     }
 
     func testRoundTrip() throws {
@@ -202,6 +215,16 @@ final class MindMapLayoutTests: PapertalkTestCase {
             let h = try XCTUnwrap(layout.handle(link))
             let clear = abs(h.x - c.x) > MindMapLayout.nodeWidth / 2 || abs(h.y - c.y) > MindMapLayout.nodeHeight / 2
             XCTAssertTrue(clear, "\(link.id) handle under the paper node")
+        }
+    }
+
+    func testLinkLabelsDontCoverNodes() throws {
+        // problem1 → method0 bowed outward used to put "fixes" right on top of problem2.
+        let links = #"[{"from":"problem1","to":"method0","label":"fixes"},{"from":"problem0","to":"evidence1","label":"shown by"},"#
+            + #"{"from":"method2","to":"evidence0","label":"tested by"}]"#
+        let layout = MindMapLayout(try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(parts: 3, links: links))))
+        for link in layout.selectableEdges where link.label != nil {
+            XCTAssertFalse(layout.labelOverlapsNode(try XCTUnwrap(layout.handle(link))), link.id)
         }
     }
 

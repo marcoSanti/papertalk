@@ -28,6 +28,9 @@ struct MindMap: Codable, Equatable {
 
     var nodes: [Node]
     var links: [Link]
+    /// The paper in a few plain sentences (its abstract restated). nil in maps
+    /// drawn before summaries, which still decode.
+    var summary: String? = nil
 
     /// The branch's main concept.
     func root(_ branch: Branch) -> Node? { nodes.first { $0.branch == branch && $0.parent == nil } }
@@ -119,6 +122,7 @@ struct MindMap: Codable, Equatable {
             let dup = links.contains { Set([$0.from, $0.to]) == Set([from, to]) }
             if !tree && !dup { links.append(Link(from: from, to: to, label: shortLabel(str(l["label"])))) }
         }
-        return MindMap(nodes: nodes, links: links)
+        let summary = str(obj["summary"])
+        return MindMap(nodes: nodes, links: links, summary: summary.isEmpty ? nil : summary)
     }
 }

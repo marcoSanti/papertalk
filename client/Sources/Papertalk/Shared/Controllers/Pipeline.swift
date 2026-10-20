@@ -773,7 +773,8 @@ struct LocalPipeline {
         // An object, not a bare array: `extractJSON` cuts from the first "{" to the last "}".
         let system = prompts.mindMap + """
         \n\nReturn ONLY a JSON object, no markdown or prose:
-        {"nodes": [{"id": string, "label": string, "branch": "problem"|"method"|"evidence", "parent": string|null, "description": string, "core": string}],
+        {"summary": string,
+         "nodes": [{"id": string, "label": string, "branch": "problem"|"method"|"evidence", "parent": string|null, "description": string, "core": string}],
          "links": [{"from": string, "to": string, "label": string}]}
         """
         let user = "Title: \(title)\n\nPAPER:\n" + String(text.prefix(60_000))

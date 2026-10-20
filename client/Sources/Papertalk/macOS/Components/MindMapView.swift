@@ -6,24 +6,31 @@ import SwiftUI
 struct MindMapView: View {
     let map: MindMap
     let title: String
-    @Environment(\.dismiss) private var dismiss
+    /// Closes the window it's in.
+    var onClose: () -> Void = {}
     @State private var selected: String?
-
-    init(map: MindMap, title: String, selected: String? = nil) {
-        self.map = map
-        self.title = title
-        _selected = State(initialValue: selected)
-    }
     /// nil: fit the whole map in the window.
     @State private var zoom: Double?
     @State private var fit = 1.0
     @GestureState private var pinch = 1.0
 
-    private var layout: MindMapLayout { MindMapLayout(map) }
+    // Computed once: rebuilding them on every redraw (each pinch frame) made the graph lag.
+    private let layout: MindMapLayout
+    private let nodes: [String: MindMap.Node]
+    private let ids: [String]
+
+    init(map: MindMap, title: String, selected: String? = nil, onClose: @escaping () -> Void = {}) {
+        self.map = map
+        self.title = title
+        self.onClose = onClose
+        layout = MindMapLayout(map)
+        nodes = Dictionary(map.nodes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        ids = layout.positions.keys.sorted()
+        _selected = State(initialValue: selected)
+    }
 
     var body: some View {
-        let layout = layout
-        let scale = MindMapLayout.clampScale((zoom ?? fit) * pinch)
+        let scale = MindMapLayout.clampScale(zoom ?? fit)
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
@@ -43,7 +50,7 @@ struct MindMapView: View {
                     Button { zoom = MindMapLayout.clampScale(scale * 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
                 }
                 .buttonStyle(.borderless)
-                Button("Done") { dismiss() }
+                Button("Close") { onClose() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(12)
@@ -52,6 +59,8 @@ struct MindMapView: View {
                 GeometryReader { geo in
                     ScrollView([.horizontal, .vertical]) {
                         graph(layout, scale: scale)
+                            // A pinch in progress only scales the drawn graph; it's laid out again once, at the end.
+                            .scaleEffect(MindMapLayout.clampScale(scale * pinch) / scale)
                             .padding(20)
                             .frame(minWidth: geo.size.width, minHeight: geo.size.height)
                     }
@@ -66,7 +75,7 @@ struct MindMapView: View {
                     .frame(width: 290)
             }
         }
-        .frame(width: 1080, height: 720)
+        .frame(minWidth: 760, maxWidth: .infinity, minHeight: 480, maxHeight: .infinity)
     }
 
     // MARK: graph
@@ -96,7 +105,7 @@ struct MindMapView: View {
             }
             .frame(width: layout.width * scale, height: layout.height * scale)
 
-            ForEach(Array(layout.positions.keys.sorted()), id: \.self) { id in
+            ForEach(ids, id: \.self) { id in
                 if let p = layout.positions[id] {
                     nodeView(id, layout: layout)
                         .scaleEffect(scale)
@@ -112,7 +121,7 @@ struct MindMapView: View {
     @ViewBuilder
     private func nodeView(_ id: String, layout: MindMapLayout) -> some View {
         let tier = MindMapPresentation.tier(layout, id)
-        let node = map.node(id)
+        let node = nodes[id]
         let color = node.map { Self.color($0.branch) } ?? Color.appAccent
         let isSelected = selected == id
         let shape = RoundedRectangle(cornerRadius: tier == .detail ? 10 : 14, style: .continuous)
@@ -127,7 +136,6 @@ struct MindMapView: View {
                     .font(tier == .detail ? .callout.weight(.medium) : .callout.weight(.bold))
                     .lineLimit(tier == .paper ? 3 : 2)
                     .multilineTextAlignment(.center)
-                    .minimumScaleFactor(0.8)
             }
             .foregroundStyle(tier == .detail ? Color.primary : Color.white)
             .padding(.horizontal, 10)
@@ -137,7 +145,8 @@ struct MindMapView: View {
             .background(shape.fill(Color(nsColor: .windowBackgroundColor)))
             .overlay(shape.strokeBorder(isSelected ? Color.primary : color.opacity(tier == .detail ? 0.7 : 0),
                                         lineWidth: isSelected ? 2.5 : 1))
-            .shadow(color: .black.opacity(isSelected ? 0.25 : 0.08), radius: isSelected ? 8 : 3, y: 2)
+            // Only the selected node gets a shadow: one per node was costly to draw.
+            .shadow(color: .black.opacity(isSelected ? 0.25 : 0), radius: isSelected ? 8 : 0, y: 2)
             .contentShape(shape)
         }
         .buttonStyle(.plain)
@@ -146,7 +155,7 @@ struct MindMapView: View {
 
     private func edgeColor(_ e: MindMapLayout.Edge) -> Color {
         if e.label != nil { return .secondary }
-        return map.node(e.to).map { Self.color($0.branch) } ?? .secondary
+        return nodes[e.to].map { Self.color($0.branch) } ?? .secondary
     }
 
     static func color(_ b: MindMap.Branch) -> Color {
@@ -162,7 +171,7 @@ struct MindMapView: View {
     @ViewBuilder
     private var panel: some View {
         ScrollView {
-            if let id = selected, let node = map.node(id) {
+            if let id = selected, let node = nodes[id] {
                 detail(node)
             } else {
                 overview

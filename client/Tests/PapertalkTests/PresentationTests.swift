@@ -403,6 +403,27 @@ final class PlayerPresentationTests: PapertalkTestCase {
         XCTAssertEqual(BottomBarContent(activeImport: nil, playing: nil, selected: nil), .hidden)
     }
 
+    func testDrawingAMindMapKeepsThatPapersPlayer() {
+        let playing = Fixtures.paper(id: "p")
+        var drawing = playing
+        drawing.state = "running"; drawing.stage = Paper.mindMapStage
+        XCTAssertEqual(BottomBarContent(activeImport: drawing, playing: playing, selected: nil),
+                       .playerAndImport(playing: playing, importing: drawing))
+        XCTAssertEqual(stageLabel(Paper.mindMapStage), "Drawing mind map")
+    }
+
+    func testMindMapProgressCreepsTowardsItsCeiling() {
+        var p = 0.08
+        for _ in 0..<400 {
+            let next = ImportProgressPresentation.creep(p)
+            XCTAssertGreaterThanOrEqual(next, p)
+            p = next
+        }
+        XCTAssertLessThanOrEqual(p, ImportProgressPresentation.creepCeiling)
+        XCTAssertGreaterThan(p, 0.9)
+        XCTAssertEqual(ImportProgressPresentation.creep(1), 1)              // done stays done
+    }
+
     func testPlayerPane() {
         var p = Fixtures.paper()
         XCTAssertEqual(PlayerPane(paper: p, playerHasAudio: true), .loaded)

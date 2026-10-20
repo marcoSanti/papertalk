@@ -33,8 +33,10 @@ as-is.
 
 It also draws a **mind map** of the paper: its key concepts as a graph around three branches,
 the problem, the approach and the demonstration, each broken into its parts. Open it with
-**Mind map** in the paper's details; clicking a concept shows what it means, its core idea and
-what it connects to. Papers imported earlier get one with **Create mind map** under Manage.
+**Mind map** in the paper's details: it opens in its own window, which you can resize or
+maximise. Clicking a concept shows what it means, its core idea and what it connects to. Papers
+imported earlier get one with **Create mind map** under Manage, with its progress in the bottom
+bar like an import.
 
 Finally every line is voiced with [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), running
 on the Neural Engine through [FluidAudio](https://github.com/FluidInference/FluidAudio), or

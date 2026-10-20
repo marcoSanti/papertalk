@@ -122,7 +122,7 @@ struct BottomBar: View {
     @ObservedObject var player: PlayerController
 
     var body: some View {
-        let content = BottomBarContent(activeImport: store.activeRun,
+        let content = BottomBarContent(activeImport: store.shownProgress,
                                        playing: store.playingPaperId.flatMap { store.papers[$0] },
                                        selected: store.selectedPaper())
         Group {
@@ -220,7 +220,7 @@ struct BottomBar: View {
 
     private func importProgress(_ p: Paper) -> some View {
         HStack(spacing: 12) {
-            if let counter = ImportProgressPresentation.counter(index: store.activeRunIndex, count: store.activeRuns.count) {
+            if let counter = ImportProgressPresentation.counter(index: store.activeRunIndex, count: store.progressItems.count) {
                 VStack(spacing: 8) {
                     arrowButton("chevron.up", -1)
                     arrowButton("chevron.down", 1)

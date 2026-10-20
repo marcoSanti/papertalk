@@ -23,11 +23,6 @@ struct DetailView: View {
         let transcript: Transcript?
     }
     @State private var transcriptSheet: TranscriptSheet?
-    private struct MindMapSheet: Identifiable {
-        let id = UUID()
-        let map: MindMap?
-    }
-    @State private var mindMapSheet: MindMapSheet?
     @State private var shownID: String?
     @State private var titleDraft = ""
     @FocusState private var titleFocused: Bool
@@ -65,15 +60,6 @@ struct DetailView: View {
             } else {
                 ContentUnavailableView("No transcript yet", systemImage: "text.quote", description: Text("The transcript for this paper isn’t available."))
                     .frame(width: 700, height: 660)
-            }
-        }
-        .sheet(item: $mindMapSheet) { item in
-            if let map = item.map {
-                MindMapView(map: map, title: paper.displayTitle)
-            } else {
-                ContentUnavailableView(MindMapPresentation.emptyTitle, systemImage: "point.3.connected.trianglepath.dotted",
-                                       description: Text(MindMapPresentation.emptyMessage))
-                    .frame(width: 700, height: 500)
             }
         }
         .sheet(isPresented: $showCitation) {
@@ -368,7 +354,14 @@ struct DetailView: View {
     }
 
     private func openMindMap() {
-        Task { mindMapSheet = MindMapSheet(map: await store.mindMap(for: paper.id)) }
+        Task {
+            // Always read the current file: Redraw may have replaced it.
+            if let map = await store.mindMap(for: paper.id) {
+                MindMapWindow.present(map: map, title: paper.displayTitle, paperId: paper.id)
+            } else {
+                store.show(MindMapPresentation.missingMessage)
+            }
+        }
     }
 }
 

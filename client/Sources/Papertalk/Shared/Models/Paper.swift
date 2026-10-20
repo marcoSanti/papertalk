@@ -111,6 +111,9 @@ struct Paper: Identifiable, Codable, Equatable {
 enum StatusKind: String { case running, done, error, unknown }
 
 extension Paper {
+    /// The progress stage of a mind map being drawn.
+    static let mindMapStage = "mindmap"
+
     var depthTitle: String? {
         guard let d = depth else { return nil }
         return Depth(rawValue: d)?.label

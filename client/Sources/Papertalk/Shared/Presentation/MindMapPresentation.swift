@@ -106,8 +106,7 @@ enum MindMapPresentation {
     static let coreTitle = "Core"
     static let descriptionTitle = "What it is"
     static let connectionsTitle = "Connections"
-    static let emptyTitle = "No mind map yet"
-    static let emptyMessage = "Create one from the paper's Manage section."
+    static let missingMessage = "Couldn't open the mind map. Create it again from Manage."
 
     static func branchTitle(_ b: MindMap.Branch) -> String {
         switch b {

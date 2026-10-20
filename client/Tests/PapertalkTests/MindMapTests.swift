@@ -258,8 +258,8 @@ final class MindMapLayoutTests: PapertalkTestCase {
     func testZoomStopsAtTheEdgesAndLeavesASmallMapCentred() throws {
         typealias P = MindMapLayout.Point
         let big = MindMapLayout(try crowded()), viewport = (width: 900.0, height: 700.0)
-        // Zooming out around the top-left corner can't scroll past the start.
-        let o = big.zoomedOffset(offset: P(x: 10, y: 10), anchor: P(x: 0, y: 0), from: 1, to: 0.5, viewport: viewport, padding: 20)
+        // Near the start, zooming out would need a negative offset: it stops at the start instead.
+        let o = big.zoomedOffset(offset: P(x: 10, y: 10), anchor: P(x: 400, y: 300), from: 1, to: 0.5, viewport: viewport, padding: 20)
         XCTAssertEqual(o, P(x: 0, y: 0))
         // Nor past the end.
         let far = big.zoomedOffset(offset: P(x: 50_000, y: 50_000), anchor: P(x: 900, y: 700), from: 1, to: 1.25,

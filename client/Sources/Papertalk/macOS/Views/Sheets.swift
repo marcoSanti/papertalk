@@ -11,30 +11,30 @@ struct ClearDataPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Clear data").font(.title3).fontWeight(.semibold)
+            Text(L("Clear data")).font(.title3).fontWeight(.semibold)
 
-            section(title: "Library and settings",
-                    detail: "Deletes every paper in the library and resets all settings (server, LLM, API keys, prompts, presets). Voice models are kept.") {
+            section(title: L("Library and settings"),
+                    detail: L("Deletes every paper in the library and resets all settings (server, LLM, API keys, prompts, presets). Voice models are kept.")) {
                 Text(LibraryPresentation.paperCount(store.papers.count))
                     .font(.callout).foregroundStyle(.secondary)
                 Spacer()
-                Button("Erase library and settings…", role: .destructive) { confirmErase = true }
+                Button(L("Erase library and settings…"), role: .destructive) { confirmErase = true }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
             }
 
-            section(title: "Audio of finished episodes",
-                    detail: "When an episode has been listened to the end, ask whether to delete its audio. The script is always kept.") {
-                Toggle("Ask after listening", isOn: $store.askToDeleteListenedAudio)
+            section(title: L("Audio of finished episodes"),
+                    detail: L("When an episode has been listened to the end, ask whether to delete its audio. The script is always kept.")) {
+                Toggle(L("Ask after listening"), isOn: $store.askToDeleteListenedAudio)
                 Spacer()
             }
 
-            section(title: "Voice models",
-                    detail: "The Kokoro voices used to speak episodes. Deleting them frees disk space; they download again the next time audio is generated.") {
+            section(title: L("Voice models"),
+                    detail: L("The Kokoro voices used to speak episodes. Deleting them frees disk space; they download again the next time audio is generated.")) {
                 Text(ClearDataPresentation.voiceModels(bytes: modelBytes))
                     .font(.callout).foregroundStyle(.secondary)
                 Spacer()
-                Button("Delete voice models…", role: .destructive) { confirmModels = true }
+                Button(L("Delete voice models…"), role: .destructive) { confirmModels = true }
                     .disabled(!ClearDataPresentation.canDeleteVoiceModels(bytes: modelBytes, conversionRunning: store.activeRun != nil))
                     .help(ClearDataPresentation.deleteVoiceModelsHelp(conversionRunning: store.activeRun != nil))
             }
@@ -43,20 +43,20 @@ struct ClearDataPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(20)
         .onAppear { modelBytes = store.voiceModelsSize() }
-        .confirmationDialog("Erase the library and all settings?", isPresented: $confirmErase, titleVisibility: .visible) {
-            Button("Erase everything", role: .destructive) { store.clearAll() }
-            Button("Cancel", role: .cancel) {}
+        .confirmationDialog(L("Erase the library and all settings?"), isPresented: $confirmErase, titleVisibility: .visible) {
+            Button(L("Erase everything"), role: .destructive) { store.clearAll() }
+            Button(L("Cancel"), role: .cancel) {}
         } message: {
-            Text("This can’t be undone.")
+            Text(L("This can’t be undone."))
         }
-        .confirmationDialog("Delete the voice models?", isPresented: $confirmModels, titleVisibility: .visible) {
-            Button("Delete voice models", role: .destructive) {
+        .confirmationDialog(L("Delete the voice models?"), isPresented: $confirmModels, titleVisibility: .visible) {
+            Button(L("Delete voice models"), role: .destructive) {
                 store.clearVoiceModels()
                 modelBytes = store.voiceModelsSize()
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L("Cancel"), role: .cancel) {}
         } message: {
-            Text("They’ll be downloaded again (about \(ClearDataPresentation.voiceModels(bytes: modelBytes))) the next time audio is generated.")
+            Text(L("They’ll be downloaded again (about {0}) the next time audio is generated.", ClearDataPresentation.voiceModels(bytes: modelBytes)))
         }
     }
 
@@ -93,8 +93,8 @@ struct UploadSheet: View {
                     .frame(width: 40, height: 40)
                     .background(Color.appAccent.gradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("New episode").font(.title3.weight(.semibold))
-                    Text("Turn a paper into a podcast, converted on this Mac.")
+                    Text(ImportForm.heading).font(.title3.weight(.semibold))
+                    Text(ImportForm.subheading)
                         .font(.callout).foregroundStyle(.secondary)
                 }
             }
@@ -102,10 +102,10 @@ struct UploadSheet: View {
             dropZone
 
             VStack(alignment: .leading, spacing: 8) {
-                SectionLabel(title: "Depth", systemImage: "dial.medium")
+                SectionLabel(title: L("Depth"), systemImage: "dial.medium")
                 ForEach(Depth.allCases) { depthChoice($0) }
                 if form.depth == .custom {
-                    TextField("Describe the depth you want…", text: $form.depthNote, axis: .vertical)
+                    TextField(L("Describe the depth you want…"), text: $form.depthNote, axis: .vertical)
                         .lineLimit(3, reservesSpace: true)
                         .textFieldStyle(.roundedBorder)
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -115,13 +115,13 @@ struct UploadSheet: View {
                                 Button(preset.name) { form.depthNote = preset.text }
                             }
                         } label: {
-                            Label("Load preset", systemImage: "bookmark")
+                            Label(L("Load preset"), systemImage: "bookmark")
                         }
                         .disabled(store.customPresets.entries.isEmpty)
                         Button {
                             promptName = true
                         } label: {
-                            Label("Save as preset", systemImage: "bookmark.badge.plus")
+                            Label(L("Save as preset"), systemImage: "bookmark.badge.plus")
                         }
                         .disabled(!form.canSavePreset)
                         Spacer()
@@ -133,12 +133,12 @@ struct UploadSheet: View {
                 if form.showsLengthSlider {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text("Length").font(.callout.weight(.medium))
+                            Text(L("Length")).font(.callout.weight(.medium))
                             Spacer()
                             Text(form.lengthLabel).font(.callout).foregroundStyle(.secondary).monospacedDigit()
                         }
                         Slider(value: $form.summaryMinutes, in: ImportForm.lengthRange, step: ImportForm.lengthStep) {
-                            Text("Length")
+                            Text(L("Length"))
                         } minimumValueLabel: {
                             Text(ImportForm.lengthMinLabel).font(.caption)
                         } maximumValueLabel: {
@@ -153,14 +153,27 @@ struct UploadSheet: View {
             }
             .animation(.snappy, value: form.depth)
 
+            if form.showsLanguageToggle {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(ImportForm.languageToggleTitle, isOn: $form.writeInAppLanguage)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .font(.callout.weight(.medium))
+                    Text(ImportForm.languageToggleHelp)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 4)
+            }
+
             if form.showsNoLLMWarning(llmBaseURL: store.llm.baseUrl) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("No LLM is configured, so this paper will be read out as-is instead of as a discussion.")
+                        Text(ImportForm.noLLMWarning)
                             .font(.callout)
                             .fixedSize(horizontal: false, vertical: true)
-                        Button("Open LLM Settings…") {
+                        Button(L("Open LLM Settings…")) {
                             dismiss()
                             store.settingsPage = .llm
                             store.showSettings = true
@@ -176,13 +189,13 @@ struct UploadSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button(L("Cancel")) { dismiss() }
                     .buttonStyle(.tinted(.gray))
                     .keyboardShortcut(.cancelAction)
-                Button("Start episode") {
+                Button(L("Start episode")) {
                     if let s = form.submission {
                         store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
-                                     targetMinutes: s.targetMinutes)
+                                     targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage)
                         dismiss()
                     }
                 }
@@ -207,15 +220,15 @@ struct UploadSheet: View {
             case .success(let url):
                 load(url)
             case .failure(let e):
-                store.show("Could not read file: \(e.localizedDescription)")
+                store.show(L("Could not read file: {0}", e.localizedDescription))
             }
         }
-        .alert("Save custom depth preset", isPresented: $promptName) {
-            TextField("Preset name", text: $presetName)
-            Button("Save") { store.saveCustomPreset(name: presetName, text: form.depthNote) }
-            Button("Cancel", role: .cancel) {}
+        .alert(L("Save custom depth preset"), isPresented: $promptName) {
+            TextField(L("Preset name"), text: $presetName)
+            Button(L("Save")) { store.saveCustomPreset(name: presetName, text: form.depthNote) }
+            Button(L("Cancel"), role: .cancel) {}
         } message: {
-            Text("Give this prompt a name so you can reload it later.")
+            Text(L("Give this prompt a name so you can reload it later."))
         }
     }
 
@@ -247,7 +260,7 @@ struct UploadSheet: View {
                             }
                         }
                         Spacer()
-                        Text("Change…").font(.callout).foregroundStyle(Color.appAccent)
+                        Text(L("Change…")).font(.callout).foregroundStyle(Color.appAccent)
                     }
                     .padding(14)
                 } else {
@@ -256,8 +269,8 @@ struct UploadSheet: View {
                             .font(.system(size: 30, weight: .light))
                             .foregroundStyle(isTargeted ? Color.appAccent : Color.secondary)
                             .symbolEffect(.bounce, value: isTargeted)
-                        Text("Drop a PDF here").font(.callout.weight(.medium))
-                        Text("or click to choose a file").font(.caption).foregroundStyle(.secondary)
+                        Text(L("Drop a PDF here")).font(.callout.weight(.medium))
+                        Text(L("or click to choose a file")).font(.caption).foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 26)
@@ -333,7 +346,7 @@ struct EditMetaSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                     .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Edit paper").font(.title3.weight(.semibold))
+                    Text(L("Edit paper")).font(.title3.weight(.semibold))
                     Text(paper.filename ?? paper.displayTitle)
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -344,20 +357,20 @@ struct EditMetaSheet: View {
 
             Form {
                 Section {
-                    TextField("Title", text: $form.title)
-                    TextField("Filename", text: $form.filename, prompt: Text("Shown in the library list"))
-                    TextField("DOI", text: $form.doi, prompt: Text("10.xxxx/xxxxx"))
+                    TextField(L("Title"), text: $form.title)
+                    TextField(L("Filename"), text: $form.filename, prompt: Text(L("Shown in the library list")))
+                    TextField(L("DOI"), text: $form.doi, prompt: Text("10.xxxx/xxxxx"))
                 }
                 Section {
-                    TextField("Authors", text: $form.authors, prompt: Text("One per line"), axis: .vertical)
+                    TextField(L("Authors"), text: $form.authors, prompt: Text(L("One per line")), axis: .vertical)
                         .lineLimit(3...8)
                 } header: {
-                    Text("Authors")
+                    Text(L("Authors"))
                 } footer: {
-                    Text("One author per line.").font(.caption).foregroundStyle(.secondary)
+                    Text(L("One author per line.")).font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Affiliations") {
-                    TextField("Affiliations", text: $form.affiliations, prompt: Text("One per line"), axis: .vertical)
+                Section(L("Affiliations")) {
+                    TextField(L("Affiliations"), text: $form.affiliations, prompt: Text(L("One per line")), axis: .vertical)
                         .lineLimit(2...6)
                 }
             }
@@ -366,10 +379,10 @@ struct EditMetaSheet: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button(L("Cancel")) { dismiss() }
                     .buttonStyle(.glass)
                     .keyboardShortcut(.cancelAction)
-                Button("Save") {
+                Button(L("Save")) {
                     store.saveMetadata(paper.id, form)
                     dismiss()
                 }
@@ -392,15 +405,15 @@ struct ServerSettingsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Connection settings").font(.title3).fontWeight(.semibold)
+            Text(L("Connection settings")).font(.title3).fontWeight(.semibold)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Storage server URL").font(.caption)
+                Text(L("Storage server URL")).font(.caption)
                 TextField("http://host:9170", text: $form.apiBase).textFieldStyle(.roundedBorder)
-                Text("Optional storage_server.py for sharing the library between Macs. Leave empty to keep papers on this Mac. Conversion always runs in the app.").font(.caption2).foregroundStyle(.secondary)
+                Text(L("Optional storage_server.py for sharing the library between Macs. Leave empty to keep papers on this Mac. Conversion always runs in the app.")).font(.caption2).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text("API token").font(.caption)
-                SecureField("token (optional)", text: $form.token).textFieldStyle(.roundedBorder)
+                Text(L("API token")).font(.caption)
+                SecureField(L("token (optional)"), text: $form.token).textFieldStyle(.roundedBorder)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -423,26 +436,26 @@ struct LLMSettingsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("LLM Settings").font(.title3).fontWeight(.semibold)
-            Text("The in-app pipeline calls this OpenAI-compatible chat endpoint to turn a PDF into a podcast script; audio is synthesized on this Mac with on-device Kokoro voices.")
+            Text(L("LLM Settings")).font(.title3).fontWeight(.semibold)
+            Text(L("The in-app pipeline calls this OpenAI-compatible chat endpoint to turn a PDF into a podcast script; audio is synthesized on this Mac with on-device Kokoro voices."))
                 .font(.caption).foregroundStyle(.secondary)
-            field("LLM base URL") { TextField("http://localhost:3000/api", text: $form.baseUrl).textFieldStyle(.roundedBorder) }
+            field(L("LLM base URL")) { TextField("http://localhost:3000/api", text: $form.baseUrl).textFieldStyle(.roundedBorder) }
 
-            field("API key source") {
+            field(L("API key source")) {
                 Picker("", selection: $form.keySource) {
-                    ForEach(LLMKeySource.allCases) { s in Text(s.rawValue).tag(s) }
+                    ForEach(LLMKeySource.allCases) { s in Text(s.label).tag(s) }
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
             }
             KeySourceFields(form: $form)
 
-            field("Model") { modelPicker }
+            field(L("Model")) { modelPicker }
             if let err = modelError {
                 Text(err).font(.caption).foregroundStyle(.red)
             }
             HStack {
-                Button("Refresh models") { loadModels() }
+                Button(L("Refresh models")) { loadModels() }
                     .disabled(loadingModels || !form.canFetchModels)
                 Spacer()
             }
@@ -464,7 +477,7 @@ struct LLMSettingsPage: View {
         if loadingModels {
             ProgressView().controlSize(.small)
         } else if models.isEmpty {
-            TextField("llama3.1:70b (manual)", text: $form.model).textFieldStyle(.roundedBorder)
+            TextField(L("llama3.1:70b (manual)"), text: $form.model).textFieldStyle(.roundedBorder)
         } else {
             Picker("", selection: $form.model) {
                 ForEach(models, id: \.self) { m in
@@ -508,7 +521,7 @@ struct VoicesSettingsPage: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Voices").font(.title3).fontWeight(.semibold)
+                Text(L("Voices")).font(.title3).fontWeight(.semibold)
                 if loaded { SpeechSettingsFields(form: $form) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -533,10 +546,10 @@ struct KeySourceFields<Form: KeySourceEditing>: View {
         switch form.keySource {
         case .env:
             if form.envOptions.isEmpty {
-                Text("No API-key env vars are set. Add one (e.g. OPENWEBUI_API_KEY) and reopen this window.")
+                Text(L("No API-key env vars are set. Add one (e.g. OPENWEBUI_API_KEY) and reopen this window."))
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Picker("Environment var", selection: $form.selectedEnv) {
+                Picker(L("Environment var"), selection: $form.selectedEnv) {
                     ForEach(form.envOptions, id: \.self) { v in Text(v).tag(v) }
                 }
                 .pickerStyle(.menu)
@@ -559,12 +572,12 @@ struct PromptsSettingsPage: View {
     var body: some View {
         let entry = PromptCatalog.entry(selected)
         VStack(alignment: .leading, spacing: 14) {
-            Text("Query prompts").font(.title3).fontWeight(.semibold)
+            Text(L("Query prompts")).font(.title3).fontWeight(.semibold)
             Text(PromptCatalog.intro)
                 .font(.caption).foregroundStyle(.secondary)
 
             HStack {
-                Picker("Prompt", selection: $selected) {
+                Picker(L("Prompt"), selection: $selected) {
                     ForEach(PromptCatalog.groups, id: \.name) { group in
                         Section(group.name) {
                             ForEach(group.entries) { Text($0.title).tag($0.id) }
@@ -616,12 +629,12 @@ struct CustomPresetsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Prompt presets").font(.title3).fontWeight(.semibold)
-            Text("Custom depth prompts selectable from the upload sheet's Custom mode. Each preset is a named set of extra instructions sent to the LLM.")
+            Text(L("Prompt presets")).font(.title3).fontWeight(.semibold)
+            Text(L("Custom depth prompts selectable from the upload sheet's Custom mode. Each preset is a named set of extra instructions sent to the LLM."))
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
-                Button { entries.append(Entry(name: "New prompt", text: "")) } label: {
-                    Label("Add preset", systemImage: "plus")
+                Button { entries.append(Entry(name: L("New prompt"), text: "")) } label: {
+                    Label(L("Add preset"), systemImage: "plus")
                 }
                 Spacer()
             }
@@ -631,8 +644,8 @@ struct CustomPresetsPage: View {
                         card($e)
                     }
                     if entries.isEmpty {
-                        ContentUnavailableView("No presets yet", systemImage: "slider.horizontal.3",
-                                               description: Text("Add one with the + button above."))
+                        ContentUnavailableView(L("No presets yet"), systemImage: "slider.horizontal.3",
+                                               description: Text(L("Add one with the + button above.")))
                             .padding(.top, 40)
                     }
                 }
@@ -648,7 +661,7 @@ struct CustomPresetsPage: View {
     private func card(_ e: Binding<Entry>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                TextField("Prompt name", text: e.name)
+                TextField(L("Prompt name"), text: e.name)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 280)
                 Spacer()
@@ -668,6 +681,34 @@ struct CustomPresetsPage: View {
 
     private func save() {
         store.savePresets(PresetsForm.clean(entries.map { ($0.name, $0.text) }))
+    }
+}
+
+// MARK: - Interface language (applies at once; episodes keep their own)
+struct LanguageSettingsPage: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(LanguagePresentation.title).font(.title3).fontWeight(.semibold)
+            Text(LanguagePresentation.intro)
+                .font(.caption).foregroundStyle(.secondary)
+            LanguagePicker()
+                .pickerStyle(.radioGroup)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+    }
+}
+
+/// The interface language menu (shared by Settings and setup).
+struct LanguagePicker: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        Picker(LanguagePresentation.pickerLabel, selection: Binding(get: { store.language }, set: { store.setLanguage($0) })) {
+            ForEach(LanguagePresentation.options, id: \.language) { Text($0.title).tag($0.language) }
+        }
     }
 }
 
@@ -693,12 +734,13 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             NavigationSplitView {
                 List(selection: selectedIndex) {
-                    Label("LLM Settings", systemImage: "waveform").tag(0)
-                    Label("Voices", systemImage: "person.wave.2").tag(AppStore.SettingsPage.voices.rawValue)
-                    Label("Server Settings", systemImage: "server.rack").tag(1)
-                    Label("Query Prompts", systemImage: "quote.bubble").tag(2)
-                    Label("Prompt Presets", systemImage: "slider.horizontal.3").tag(3)
-                    Label("Clear Data", systemImage: "trash").tag(4)
+                    Label(L("LLM Settings"), systemImage: "waveform").tag(0)
+                    Label(L("Voices"), systemImage: "person.wave.2").tag(AppStore.SettingsPage.voices.rawValue)
+                    Label(L("Server Settings"), systemImage: "server.rack").tag(1)
+                    Label(L("Query Prompts"), systemImage: "quote.bubble").tag(2)
+                    Label(L("Prompt Presets"), systemImage: "slider.horizontal.3").tag(3)
+                    Label(LanguagePresentation.title, systemImage: "globe").tag(AppStore.SettingsPage.language.rawValue)
+                    Label(L("Clear Data"), systemImage: "trash").tag(4)
                 }
                 .listStyle(.sidebar)
                 .frame(minWidth: 190)
@@ -711,24 +753,25 @@ struct SettingsView: View {
                     case .prompts: PromptsSettingsPage()
                     case .presets: CustomPresetsPage()
                     case .clear: ClearDataPage()
+                    case .language: LanguageSettingsPage()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             SettingsActionBar {
                 if store.settingsPage == .prompts {
-                    Button("Restore prompt defaults") { restorePrompts() }
+                    Button(L("Restore prompt defaults")) { restorePrompts() }
                 }
                 Spacer()
                 if showSaved {
-                    Label("Saved", systemImage: "checkmark.circle.fill")
+                    Label(L("Saved"), systemImage: "checkmark.circle.fill")
                         .font(.callout)
                         .foregroundStyle(.green)
                         .transition(.opacity)
                 }
-                Button("Close") { dismiss() }
+                Button(L("Close")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button("Save") { saveCurrent() }.buttonStyle(.borderedProminent)
+                Button(L("Save")) { saveCurrent() }.buttonStyle(.borderedProminent)
             }
         }
         .frame(width: 720, height: 560)
@@ -794,14 +837,14 @@ struct CastSheet: View {
             HStack {
                 Spacer()
                 // One accent per outcome: discard (red), script only (indigo), voice it (app orange).
-                Button("Cancel import") { store.cancelCast() }
+                Button(L("Cancel import")) { store.cancelCast() }
                     .buttonStyle(.tinted(.red))
                     .keyboardShortcut(.cancelAction)
                 Button(CastForm.scriptOnlyTitle) { store.resolveCast(form.cast, voiceAudio: false) }
                     .buttonStyle(.tinted(.indigo, prominent: true))
                     .disabled(!form.canConfirm)
                     .help(CastForm.scriptOnlyHelp)
-                Button("Use these voices") { store.resolveCast(form.cast) }
+                Button(L("Use these voices")) { store.resolveCast(form.cast) }
                     .buttonStyle(.tinted(Color.appAccent, prominent: true))
                     .disabled(!form.canConfirm)
                     .keyboardShortcut(.defaultAction)
@@ -822,7 +865,7 @@ struct CastSheet: View {
                 .frame(width: 40, height: 40)
                 .background(Color.appAccent.gradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text("Who should speak?").font(.title3.weight(.semibold))
+                Text(L("Who should speak?")).font(.title3.weight(.semibold))
                 Text(paperTitle)
                     .font(.callout).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
@@ -863,7 +906,7 @@ struct CastSheet: View {
 
     @ViewBuilder private func nameField(_ row: CastForm.Row) -> some View {
         if form.picksFromAuthors(row) {
-            Picker("Author", selection: nameBinding(row)) {
+            Picker(L("Author"), selection: nameBinding(row)) {
                 if let placeholder = form.authorPlaceholder(row) {
                     Text(placeholder).tag(row.name)
                 }
@@ -872,15 +915,15 @@ struct CastSheet: View {
             .labelsHidden()
             .pickerStyle(.menu)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .help("The interviewed scientist is one of the paper's authors")
+            .help(L("The interviewed scientist is one of the paper's authors"))
         } else {
-            TextField("Name", text: nameBinding(row))
+            TextField(L("Name"), text: nameBinding(row))
                 .textFieldStyle(.roundedBorder)
         }
     }
 
     private func voicePicker(_ row: CastForm.Row) -> some View {
-        Picker("Voice", selection: Binding(
+        Picker(L("Voice"), selection: Binding(
             get: { row.voice },
             set: { v in
                 form.setVoice(row.id, v)
@@ -899,12 +942,12 @@ struct CastSheet: View {
     }
 
     private func genderPicker(_ row: CastForm.Row) -> some View {
-        Picker("Gender", selection: Binding(
+        Picker(L("Gender"), selection: Binding(
             get: { row.gender ?? "" },
             set: { if !$0.isEmpty { form.setGender(row.id, $0) } }
         )) {
-            Text("Female").tag("female")
-            Text("Male").tag("male")
+            Text(L("Female")).tag("female")
+            Text(L("Male")).tag("male")
         }
         .pickerStyle(.segmented)
         .labelsHidden()
@@ -942,10 +985,10 @@ private struct SpeakingPaceControl: View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Speaking pace").font(.callout.weight(.medium))
+                Text(L("Speaking pace")).font(.callout.weight(.medium))
                 Spacer()
                 if !SpeakingPacePresentation.isDefault(player.voiceSpeed) {
-                    Button("Reset") {
+                    Button(L("Reset")) {
                         player.voiceSpeed = PlayerController.defaultSpeed
                         playSample()
                     }
@@ -959,17 +1002,17 @@ private struct SpeakingPaceControl: View {
             }
             HStack(spacing: 10) {
                 Image(systemName: "tortoise.fill").foregroundStyle(.secondary)
-                    .help("Slower")
+                    .help(L("Slower"))
                 Slider(value: $player.voiceSpeed, in: PlayerController.speedRange, step: 0.05) {
-                    Text("Speaking pace")
+                    Text(L("Speaking pace"))
                 } onEditingChanged: { editing in
                     if !editing { playSample() }
                 }
                 .labelsHidden()
                 Image(systemName: "hare.fill").foregroundStyle(.secondary)
-                    .help("Faster")
+                    .help(L("Faster"))
             }
-            Text("Used for this episode's voices and remembered for the next import. Release the slider to hear it.")
+            Text(L("Used for this episode's voices and remembered for the next import. Release the slider to hear it."))
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let warning = SpeakingPacePresentation.warning(player.voiceSpeed) {

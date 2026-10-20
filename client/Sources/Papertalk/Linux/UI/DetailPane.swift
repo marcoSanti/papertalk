@@ -46,7 +46,7 @@ struct PaperDetail: View {
 
             if PaperPresentation.showsConversionCard(paper) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Conversion").font(.headline)
+                    Text(L("Conversion")).font(.headline)
                     if paper.isError {
                         Text(PaperPresentation.failureMessage(paper)).foregroundColor(.red)
                     } else {
@@ -65,7 +65,7 @@ struct PaperDetail: View {
                                                playerDuration: player.duration, playerIsPlaying: player.isPlaying)
                 let play = PaperPresentation.playButton(paper, isPlaying: isLoaded && player.isPlaying)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Episode").font(.headline)
+                    Text(L("Episode")).font(.headline)
                     HStack {
                         Text(progress.headline)
                         Spacer()
@@ -80,16 +80,16 @@ struct PaperDetail: View {
             HStack(spacing: 8) {
                 Button(PaperPresentation.favoriteButton(paper).title) { store.toggleFavorite(paper.id) }
                 Button(PaperPresentation.listenedToggle(paper).title) { store.toggleRead(paper.id) }
-                Button("Open PDF") { store.openPDF(paper.id) }
+                Button(L("Open PDF")) { store.openPDF(paper.id) }
                     .disabled(!paper.hasPdf)
                 if store.isStandalone {
-                    Button("Show in Files") { store.revealInFinder(paper.id) }
+                    Button(L("Show in Files")) { store.revealInFinder(paper.id) }
                 }
             }
             HStack(spacing: 8) {
-                Button("Rerun…") { store.requestRerun(paper) }
+                Button(L("Rerun…")) { store.requestRerun(paper) }
                     .disabled(!PaperPresentation.canRerun(paper))
-                Button("Delete…") { store.pendingConfirmation = .delete(paper) }
+                Button(L("Delete…")) { store.pendingConfirmation = .delete(paper) }
             }
         }
         .padding(20)

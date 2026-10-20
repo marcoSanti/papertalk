@@ -19,36 +19,40 @@ struct ImportSheet: View {
             HStack(spacing: 8) {
                 Button(form.chooseButtonTitle) {
                     Task {
-                        if let url = await chooseFile(title: "Choose a PDF") { load(url) }
+                        if let url = await chooseFile(title: L("Choose a PDF")) { load(url) }
                     }
                 }
                 Text(form.fileLabel)
                 Text(form.fileSizeLabel ?? "").foregroundColor(.gray)
             }
             HStack(spacing: 8) {
-                Text("Depth")
+                Text(L("Depth"))
                 Picker(of: PickerOption.depths, selection: depth)
             }
             if form.depth == .custom {
-                TextField("Describe the depth you want…", text: $form.depthNote)
+                TextField(L("Describe the depth you want…"), text: $form.depthNote)
             }
             if form.showsLengthSlider {
                 HStack(spacing: 8) {
-                    Text("Length")
+                    Text(L("Length"))
                     Slider(value: $form.summaryMinutes, in: ImportForm.lengthRange)
                     Text(form.lengthLabel)
                 }
+            }
+            if form.showsLanguageToggle {
+                Toggle(ImportForm.languageToggleTitle, isOn: $form.writeInAppLanguage)
+                Text(ImportForm.languageToggleHelp).font(.caption).foregroundColor(.gray)
             }
             if form.showsNoLLMWarning(llmBaseURL: store.llm.baseUrl) {
                 Text(ImportForm.noLLMWarning).foregroundColor(.orange)
             }
             HStack(spacing: 8) {
                 Spacer()
-                Button("Cancel") { store.showUpload = false }
-                Button("Start episode") {
+                Button(L("Cancel")) { store.showUpload = false }
+                Button(L("Start episode")) {
                     if let s = form.submission {
                         store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
-                                     targetMinutes: s.targetMinutes)
+                                     targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage)
                         store.showUpload = false
                     }
                 }

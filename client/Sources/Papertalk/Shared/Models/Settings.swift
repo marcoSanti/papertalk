@@ -290,6 +290,8 @@ struct PromptSettings: Codable, Equatable {
     var blockFirst: String
     var blockMiddle: String
     var blockLast: String
+    /// Added to the prompts whose replies are heard or read when an episode isn't in English.
+    var outputLanguage: String
 
     /// Replace each `{token}` in `template`; unknown tokens are left as typed.
     static func fill(_ template: String, _ values: [String: String]) -> String {
@@ -384,7 +386,10 @@ struct PromptSettings: Codable, Equatable {
         blockOnly: "This is the only block.",
         blockFirst: "This is block 1 (the first part).",
         blockMiddle: "This block continues the monologue; keep the same voice and flow.",
-        blockLast: "This is the final block."
+        blockLast: "This is the final block.",
+        outputLanguage: """
+        LANGUAGE: Write everything the listener hears or reads in {language}: the dialogue, the narration, segment titles, goals and key points, the summary, concept labels and descriptions. The paper and these instructions may be in English; write in {language} anyway, using the usual {language} terms for technical concepts. Keep the speaker names, the reply format, JSON keys and fixed values (such as "problem", "method" and "evidence") exactly as specified.
+        """
     )
 }
 
@@ -411,7 +416,8 @@ extension PromptSettings {
                   monologuePersona: try v(.monologuePersona, d.monologuePersona),
                   monologueRules: try v(.monologueRules, d.monologueRules),
                   blockOnly: try v(.blockOnly, d.blockOnly), blockFirst: try v(.blockFirst, d.blockFirst),
-                  blockMiddle: try v(.blockMiddle, d.blockMiddle), blockLast: try v(.blockLast, d.blockLast))
+                  blockMiddle: try v(.blockMiddle, d.blockMiddle), blockLast: try v(.blockLast, d.blockLast),
+                  outputLanguage: try v(.outputLanguage, d.outputLanguage))
     }
     static func load() -> PromptSettings {
         if let raw = UserDefaults.standard.string(forKey: "papertalk.prompts.json"),

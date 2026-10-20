@@ -37,7 +37,7 @@ final class PDFViewerWindow: NSObject {
         scroll.backgroundColor = .textBackgroundColor
 
         // Show a lightweight placeholder immediately; pages arrive as they render.
-        let busy = NSTextField(labelWithString: "Rendering pages…")
+        let busy = NSTextField(labelWithString: L("Rendering pages…"))
         busy.frame = NSRect(x: 0, y: 0, width: contentRect.width, height: 200)
         busy.alignment = .center
         busy.textColor = .secondaryLabelColor
@@ -58,7 +58,7 @@ final class PDFViewerWindow: NSObject {
         label.autoresizingMask = [.width]
         bar.addSubview(label)
 
-        let close = NSButton(title: "Close", target: self, action: #selector(closeWindow))
+        let close = NSButton(title: L("Close"), target: self, action: #selector(closeWindow))
         close.bezelStyle = .rounded
         close.keyEquivalent = "\u{1b}" // Escape
         close.autoresizingMask = [.minXMargin]

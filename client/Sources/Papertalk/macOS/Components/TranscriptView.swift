@@ -19,7 +19,7 @@ struct TranscriptView: View {
                         segment(si, seg)
                     }
                     if transcript.segments.isEmpty {
-                        ContentUnavailableView("No transcript yet", systemImage: "text.quote")
+                        ContentUnavailableView(L("No transcript yet"), systemImage: "text.quote")
                             .padding(.top, 60)
                     }
                 }
@@ -63,7 +63,7 @@ struct TranscriptView: View {
                             .glassEffect(.regular.interactive(), in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .help("Copy transcript")
+                    .help(L("Copy transcript"))
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
                             .frame(width: 28, height: 28)
@@ -71,7 +71,7 @@ struct TranscriptView: View {
                     }
                     .buttonStyle(.plain)
                     .keyboardShortcut(.cancelAction)
-                    .help("Close")
+                    .help(L("Close"))
                 }
             }
         }

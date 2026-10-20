@@ -237,7 +237,7 @@ final class PaperPresentationTests: PapertalkTestCase {
         XCTAssertEqual(PaperPresentation.publishedDate(p), "June 2018")
         p.publishedIso = "garbage"
         XCTAssertNil(PaperPresentation.publishedDate(p))
-        XCTAssertEqual(PaperPresentation.assetHelp("Audio", present: false), "No audio yet")
+        XCTAssertEqual(PaperPresentation.assetHelp("Audio", present: false), "Audio not available yet")
         XCTAssertEqual(PaperPresentation.coverHelp(Fixtures.paper()), "Double-click to open the PDF")
         XCTAssertEqual(PaperPresentation.otherPapersLabel(3), "3 papers")
         XCTAssertNil(PaperPresentation.otherPapersLabel(1))

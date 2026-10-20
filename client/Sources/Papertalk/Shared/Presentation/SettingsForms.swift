@@ -7,6 +7,14 @@ enum LLMKeySource: String, CaseIterable, Identifiable {
     case manual = "Type a key"
     var id: String { rawValue }
 
+    var label: String {
+        switch self {
+        case .none: return L("No key")
+        case .env: return L("From environment")
+        case .manual: return L("Type a key")
+        }
+    }
+
     /// The source a saved key implies: an env var name wins, then a typed key.
     init(keyEnv: String, apiKey: String) {
         self = !keyEnv.isEmpty ? .env : !apiKey.isEmpty ? .manual : .none
@@ -87,7 +95,7 @@ struct LLMSettingsForm: Equatable, KeySourceEditing {
     /// offered, else pick the first. Returns a message when the list is empty.
     mutating func applyModels(_ ids: [String]) -> String? {
         if !ids.contains(model) { model = ids.first ?? model }
-        return ids.isEmpty ? "No models returned by /models" : nil
+        return ids.isEmpty ? L("No models returned by /models") : nil
     }
 
     /// Ask the endpoint for its models.
@@ -127,20 +135,20 @@ struct ServerSettingsForm: Equatable {
 
     /// Review line in the setup wizard.
     var summary: String {
-        guard mode == .remote else { return "This Mac" }
+        guard mode == .remote else { return Device.thisTitle }
         let url = apiBase.trimmingCharacters(in: .whitespaces)
-        return url.isEmpty ? "Remote (no URL)" : url
+        return url.isEmpty ? L("Remote (no URL)") : url
     }
 }
 
 /// Wording for the single-page settings sheet (Linux), which doubles as
 /// first-run setup.
 enum SettingsSheetPresentation {
-    static func title(isSetup: Bool) -> String { isSetup ? "Welcome to Papertalk" : "Settings" }
-    static func saveTitle(isSetup: Bool) -> String { isSetup ? "Finish setup" : "Save" }
-    static let intro = "Papertalk writes each episode with an OpenAI-compatible LLM, then synthesizes the voices on \(Device.this) with Kokoro."
-    static let noEnvVars = "No API-key environment variables are set. Add one (e.g. OPENWEBUI_API_KEY) and reopen this window."
-    static let serverHelp = "Optional storage_server.py for sharing the library. Leave empty to keep papers on \(Device.this)."
+    static func title(isSetup: Bool) -> String { isSetup ? L("Welcome to Papertalk") : L("Settings") }
+    static func saveTitle(isSetup: Bool) -> String { isSetup ? L("Finish setup") : L("Save") }
+    static var intro: String { L("Papertalk writes each episode with an OpenAI-compatible LLM, then synthesizes the voices on {0} with Kokoro.", Device.this) }
+    static var noEnvVars: String { L("No API-key environment variables are set. Add one (e.g. OPENWEBUI_API_KEY) and reopen this window.") }
+    static var serverHelp: String { L("Optional storage_server.py for sharing the library. Leave empty to keep papers on {0}.", Device.this) }
 }
 
 /// The first-run setup wizard's steps.
@@ -170,16 +178,16 @@ enum SetupStep: Equatable {
 
     var nextTitle: String {
         switch self {
-        case .storage, .llm: return "Continue"
-        case .voices: return "Review"
-        case .review: return "Finish"
+        case .storage, .llm: return L("Continue")
+        case .voices: return L("Review")
+        case .review: return L("Finish")
         }
     }
 
     /// Review lines for the LLM part.
     static func llmSummary(_ s: LLMSettings) -> [(label: String, value: String)] {
-        guard !s.baseUrl.isEmpty else { return [("LLM endpoint", "Not configured (read-through)")] }
-        return [("LLM endpoint", s.baseUrl), ("Model", s.model.isEmpty ? "—" : s.model)]
+        guard !s.baseUrl.isEmpty else { return [(L("LLM endpoint"), L("Not configured (read-through)"))] }
+        return [(L("LLM endpoint"), s.baseUrl), (L("Model"), s.model.isEmpty ? "—" : s.model)]
     }
 }
 
@@ -203,11 +211,11 @@ enum PresetsForm {
 /// Settings → Clear Data.
 enum ClearDataPresentation {
     static func voiceModels(bytes: Int64) -> String {
-        bytes > 0 ? ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) : "Not downloaded"
+        bytes > 0 ? ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) : L("Not downloaded")
     }
 
     static func deleteVoiceModelsHelp(conversionRunning: Bool) -> String {
-        conversionRunning ? "Wait for conversions to finish" : ""
+        conversionRunning ? L("Wait for conversions to finish") : ""
     }
 
     static func canDeleteVoiceModels(bytes: Int64, conversionRunning: Bool) -> Bool {

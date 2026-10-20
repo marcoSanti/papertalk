@@ -213,7 +213,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
                     }
                 } catch {
                     if generation != gen { return }
-                    renderError = "Couldn't voice section \(i + 1) of \(turns.count): \(error.localizedDescription)"
+                    renderError = L("Couldn't voice section {0} of {1}: {2}", i + 1, turns.count, error.localizedDescription)
                     isRendering = false
                     if isBuffering { isBuffering = false; isPlaying = false; stopTimer() }
                     return

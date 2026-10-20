@@ -45,7 +45,7 @@ extension SpeechBackend {
 
 /// Kokoro on this machine (Core ML on macOS, ONNX on Linux): the one shared engine.
 struct LocalSpeechBackend: SpeechBackend {
-    var preparingMessage: String { "Preparing Kokoro…" }
+    var preparingMessage: String { L("Preparing Kokoro…") }
     var preparationShare: Double { 0.5 }
     var loadsModel: Bool { true }
     /// One model, one call at a time (see `KokoroEngine`, `AppStore.audioGate`).
@@ -57,9 +57,9 @@ struct LocalSpeechBackend: SpeechBackend {
         try await KokoroAneResourceDownloader.ensureModels(variant: .english) { p in
             let phase: String = {
                 switch p.phase {
-                case .listing: return "Contacting model server…"
-                case .downloading: return "Downloading Kokoro model…"
-                case .compiling: return "Compiling Kokoro model…"
+                case .listing: return L("Contacting model server…")
+                case .downloading: return L("Downloading Kokoro model…")
+                case .compiling: return L("Compiling Kokoro model…")
                 }
             }()
             progress(p.fractionCompleted, phase)
@@ -84,7 +84,7 @@ struct RemoteSpeechBackend: SpeechBackend {
         self.apiKey = apiKey ?? settings.resolvedKey()
     }
 
-    var preparingMessage: String { "Connecting to the speech server…" }
+    var preparingMessage: String { L("Connecting to the speech server…") }
     var preparationShare: Double { 0 }
     var loadsModel: Bool { false }
     var parallelRequests: Int { settings.parallelRequests }
@@ -108,20 +108,19 @@ enum RemoteSpeechError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .noURL:
-            return "No speech server is set. Add its URL in Settings → Voices, or switch to voices on \(Device.this)."
+            return L("No speech server is set. Add its URL in Settings → Voices, or switch to voices on {0}.", Device.this)
         case .badURL:
-            return "The speech server URL isn't valid. It should look like http://localhost:3000/api/v1."
+            return L("The speech server URL isn't valid. It should look like http://localhost:3000/api/v1.")
         case .unreachable(let base):
-            return "Couldn't reach the speech server at \(base). Check the URL and that the server is running."
+            return L("Couldn't reach the speech server at {0}. Check the URL and that the server is running.", base)
         case .unauthorized:
-            return "The speech server rejected the API key. Check the key in Settings → Voices."
+            return L("The speech server rejected the API key. Check the key in Settings → Voices.")
         case .http(let code, let detail):
-            return "The speech server answered HTTP \(code)" + (detail.map { ": \($0)" } ?? ".")
+            return L("The speech server answered HTTP {0}", code) + (detail.map { ": \($0)" } ?? ".")
         case .notAudio(let detail):
-            return "The speech server didn't send audio" + (detail.map { ": \($0)" } ?? ".")
+            return L("The speech server didn't send audio") + (detail.map { ": \($0)" } ?? ".")
         case .noSpeechEndpoint(let base):
-            return "There's no /audio/speech under \(base). Check the speech server URL: "
-                + "for Open WebUI it's the server's address followed by /api/v1."
+            return L("There's no /audio/speech under {0}. Check the speech server URL: for Open WebUI it's the server's address followed by /api/v1.", base)
         }
     }
 }

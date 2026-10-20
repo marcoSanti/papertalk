@@ -20,7 +20,7 @@ struct SidebarPane: View {
         let selection = Binding<SidebarItem?>(get: { store.sidebarSelection },
                                               set: { if let item = $0 { store.selectSidebar(item) } })
         VStack(alignment: .leading, spacing: 6) {
-            Text("Library").font(.caption).foregroundColor(.gray).padding(.horizontal, 12).padding(.top, 12)
+            Text(L("Library")).font(.caption).foregroundColor(.gray).padding(.horizontal, 12).padding(.top, 12)
             List(store.sidebarItems, id: \.self, selection: selection) { item in
                 HStack {
                     Text(LibraryPresentation.sidebarTitle(item))
@@ -34,7 +34,7 @@ struct SidebarPane: View {
             HStack {
                 Text(LibraryPresentation.storageLocation(isStandalone: store.isStandalone).title).font(.caption)
                 Spacer()
-                Button("Settings") { store.settingsPage = .llm; store.showSettings = true }
+                Button(L("Settings")) { store.settingsPage = .llm; store.showSettings = true }
             }
             .padding(12)
             PaneWidth(230)

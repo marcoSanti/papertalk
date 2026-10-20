@@ -82,48 +82,49 @@ struct SpeechSettingsForm: Equatable, KeySourceEditing {
         return Self.note(models: models.count, voices: serverVoices.count)
     }
 
-    static let notKokoroVoices = "This server doesn't list Kokoro's voices (like af_heart). "
-        + "The cast's voices are sent by name, so set the server's speech engine to Kokoro."
+    static var notKokoroVoices: String {
+        L("This server doesn't list Kokoro's voices (like af_heart). The cast's voices are sent by name, so set the server's speech engine to Kokoro.")
+    }
 
     static func note(models: Int, voices: Int) -> FormNote {
-        let found = [models > 0 ? LibraryPresentation.count(models, "model", "models") : nil,
-                     voices > 0 ? LibraryPresentation.count(voices, "voice", "voices") : nil].compactMap { $0 }
+        let found = [models > 0 ? LibraryPresentation.count(models, L("1 model"), L("{0} models")) : nil,
+                     voices > 0 ? LibraryPresentation.count(voices, L("1 voice"), L("{0} voices")) : nil].compactMap { $0 }
         guard !found.isEmpty else {
-            return FormNote(text: "The server didn't list models or voices. Type the model name.", isError: false)
+            return FormNote(text: L("The server didn't list models or voices. Type the model name."), isError: false)
         }
-        let more = models == 0 ? " Type the model name." : ""
-        return FormNote(text: "Found \(found.joined(separator: " and ")).\(more)", isError: false)
+        let more = models == 0 ? " " + L("Type the model name.") : ""
+        return FormNote(text: L("Found {0}.", found.joined(separator: L(" and "))) + more, isError: false)
     }
 
     var showsModelPicker: Bool { !models.isEmpty }
 
     /// Stepper text, e.g. "4 at a time".
-    var parallelLabel: String { "\(parallelRequests) at a time" }
+    var parallelLabel: String { L("{0} at a time", parallelRequests) }
 
     static func engineTitle(_ engine: SpeechSettings.Engine) -> String {
         switch engine {
-        case .local: return "On \(Device.this)"
-        case .remote: return "Speech server"
+        case .local: return Device.on
+        case .remote: return L("Speech server")
         }
     }
 
     static func engineDescription(_ engine: SpeechSettings.Engine) -> String {
         switch engine {
-        case .local: return "Kokoro voices, synthesized on \(Device.this). Downloads the model once and uses about half a gigabyte of memory while voicing."
-        case .remote: return "An OpenAI-compatible text-to-speech server running Kokoro, such as Open WebUI or Kokoro-FastAPI. Nothing is loaded on \(Device.this)."
+        case .local: return L("Kokoro voices, synthesized on {0}. Downloads the model once and uses about half a gigabyte of memory while voicing.", Device.this)
+        case .remote: return L("An OpenAI-compatible text-to-speech server running Kokoro, such as Open WebUI or Kokoro-FastAPI. Nothing is loaded on {0}.", Device.this)
         }
     }
 
     static let urlPlaceholder = "http://localhost:3000/api/v1"
-    static let urlHelp = "Papertalk calls /audio/speech under this URL. For Open WebUI, use its address followed by /api/v1."
-    static let modelPlaceholder = "\(SpeechSettings.fallbackModel) (manual)"
-    static let parallelHelp = "How many sections are sent to the server at once while voicing a paper. More is faster if the server can keep up."
+    static var urlHelp: String { L("Papertalk calls /audio/speech under this URL. For Open WebUI, use its address followed by /api/v1.") }
+    static var modelPlaceholder: String { L("{0} (manual)", SpeechSettings.fallbackModel) }
+    static var parallelHelp: String { L("How many sections are sent to the server at once while voicing a paper. More is faster if the server can keep up.") }
 
     /// Review lines in the setup wizard.
     var summary: [(label: String, value: String)] {
         let s = settings
-        guard s.engine == .remote else { return [("Voices", Self.engineTitle(.local))] }
-        return [("Voices", s.baseUrl.isEmpty ? "Speech server (no URL)" : s.baseUrl),
-                ("Voice model", s.model.isEmpty ? SpeechSettings.fallbackModel : s.model)]
+        guard s.engine == .remote else { return [(L("Voices"), Self.engineTitle(.local))] }
+        return [(L("Voices"), s.baseUrl.isEmpty ? L("Speech server (no URL)") : s.baseUrl),
+                (L("Voice model"), s.model.isEmpty ? SpeechSettings.fallbackModel : s.model)]
     }
 }

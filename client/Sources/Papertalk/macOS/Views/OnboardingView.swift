@@ -48,9 +48,15 @@ struct OnboardingView: View {
             Image(systemName: "gearshape.2")
                 .font(.system(size: 28)).foregroundStyle(Color.appAccent)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Welcome to Papertalk").font(.title2).fontWeight(.semibold)
-                Text("Set up where your papers live, which LLM writes the episodes, and where the voices are made.").font(.subheadline).foregroundStyle(.secondary)
+                Text(L("Welcome to Papertalk")).font(.title2).fontWeight(.semibold)
+                Text(L("Set up where your papers live, which LLM writes the episodes, and where the voices are made.")).font(.subheadline).foregroundStyle(.secondary)
             }
+            Spacer(minLength: 0)
+            LanguagePicker()
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+                .help(LanguagePresentation.pickerLabel)
         }
     }
 
@@ -61,19 +67,19 @@ struct OnboardingView: View {
     // MARK: Step 1 — storage
     private var storageView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepTitle("1. Where should your library be stored?")
+            stepTitle(L("1. Where should your library be stored?"))
             HStack(spacing: 10) {
-                storageCard(.local, icon: "internaldrive", title: "On this Mac",
-                            desc: "Files kept locally in Application Support.")
-                storageCard(.remote, icon: "network", title: "Storage server",
-                            desc: "Point at your storage_server.py (HTTP).")
+                storageCard(.local, icon: "internaldrive", title: L("On this Mac"),
+                            desc: L("Files kept locally in Application Support."))
+                storageCard(.remote, icon: "network", title: L("Storage server"),
+                            desc: L("Point at your storage_server.py (HTTP)."))
             }
             if server.mode == .remote {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Storage server URL").font(.caption)
+                    Text(L("Storage server URL")).font(.caption)
                     TextField("http://host:9170", text: $server.apiBase).textFieldStyle(.roundedBorder)
-                    Text("API token").font(.caption)
-                    SecureField("token (optional)", text: $server.token).textFieldStyle(.roundedBorder)
+                    Text(L("API token")).font(.caption)
+                    SecureField(L("token (optional)"), text: $server.token).textFieldStyle(.roundedBorder)
                 }
             }
         }
@@ -108,26 +114,26 @@ struct OnboardingView: View {
     // MARK: Step 2 — LLM
     private var llmView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepTitle("2. Which LLM writes the episodes?")
-            Text("An OpenAI-compatible chat endpoint. Leave empty to use a plain read-through transcript (no AI).")
+            stepTitle(L("2. Which LLM writes the episodes?"))
+            Text(L("An OpenAI-compatible chat endpoint. Leave empty to use a plain read-through transcript (no AI)."))
                 .font(.caption).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 4) {
-                Text("LLM base URL").font(.caption)
+                Text(L("LLM base URL")).font(.caption)
                 TextField("http://localhost:3000/api", text: $llm.baseUrl).textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text("API key source").font(.caption)
+                Text(L("API key source")).font(.caption)
                 Picker("", selection: $llm.keySource) {
-                    ForEach(LLMKeySource.allCases) { s in Text(s.rawValue).tag(s) }
+                    ForEach(LLMKeySource.allCases) { s in Text(s.label).tag(s) }
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
             }
             KeySourceFields(form: $llm)
             HStack {
-                Text("Model").font(.caption)
+                Text(L("Model")).font(.caption)
                 Spacer()
-                Button(loadingModels ? "Loading…" : "Refresh models") { loadModels() }
+                Button(loadingModels ? L("Loading…") : L("Refresh models")) { loadModels() }
                     .disabled(loadingModels || !llm.canFetchModels)
             }
             modelPicker
@@ -138,7 +144,7 @@ struct OnboardingView: View {
         if loadingModels {
             ProgressView().controlSize(.small)
         } else if models.isEmpty {
-            TextField("llama3.1:70b (manual)", text: $llm.model).textFieldStyle(.roundedBorder)
+            TextField(L("llama3.1:70b (manual)"), text: $llm.model).textFieldStyle(.roundedBorder)
         } else {
             Picker("", selection: $llm.model) {
                 ForEach(models, id: \.self) { m in Text(m).tag(m) }
@@ -150,7 +156,7 @@ struct OnboardingView: View {
     // MARK: Step 3 — voices
     private var voicesView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepTitle("3. Where should the voices be synthesized?")
+            stepTitle(L("3. Where should the voices be synthesized?"))
             ScrollView { SpeechSettingsFields(form: $speech).padding(.trailing, 8) }
         }
     }
@@ -158,10 +164,10 @@ struct OnboardingView: View {
     // MARK: Step 4 — review + test
     private var reviewView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepTitle("4. Review")
+            stepTitle(L("4. Review"))
 
             VStack(alignment: .leading, spacing: 6) {
-                summaryRow("Storage", server.summary)
+                summaryRow(L("Storage"), server.summary)
                 ForEach(SetupStep.llmSummary(llm.settings), id: \.label) { row in
                     summaryRow(row.label, row.value)
                 }
@@ -177,7 +183,7 @@ struct OnboardingView: View {
                         .foregroundStyle(r.ok ? Color.green : Color.red)
                 }
                 Spacer()
-                Button("Test connection") { runTests() }
+                Button(L("Test connection")) { runTests() }
                     .disabled(testing || !llm.canFetchModels)
             }
         }
@@ -216,13 +222,13 @@ struct OnboardingView: View {
     private var footer: some View {
         HStack {
             if step.canSkip {
-                Button("Skip setup") { store.markOnboarded() }
+                Button(L("Skip setup")) { store.markOnboarded() }
                     .buttonStyle(.borderless)
-                    .help("Use the defaults for now; change them any time in Settings (⌘,)")
+                    .help(L("Use the defaults for now; change them any time in Settings (⌘,)"))
             }
             Spacer()
             if let previous = step.previous {
-                Button("Back") { step = previous }.buttonStyle(.borderless)
+                Button(L("Back")) { step = previous }.buttonStyle(.borderless)
             }
             Button(step.nextTitle) {
                 if let next = step.next { step = next } else { store.finishSetup(server: server.config, llm: llm.settings, speech: speech.settings) }

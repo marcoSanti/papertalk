@@ -53,11 +53,11 @@ struct PlayPane: View {
                     Text(message).foregroundColor(.red)
                 case .scrubber:
                     HStack(spacing: 8) {
-                        Button("Back") { player.skip(by: -1) }
+                        Button(L("Back")) { player.skip(by: -1) }
                             .disabled(!PlayerBarPresentation.canSkipBack(activeTurn: player.activeTurn))
                         Button(PlayerBarPresentation.playButton(isPlaying: player.isPlaying).help) { player.playPause() }
                             .disabled(!PlayerBarPresentation.canPlay(isRendering: player.isRendering, turnCount: player.turnCount))
-                        Button("Next") { player.skip(by: 1) }
+                        Button(L("Next")) { player.skip(by: 1) }
                             .disabled(!PlayerBarPresentation.canSkipForward(activeTurn: player.activeTurn, turnCount: player.turnCount))
                         Slider(value: Binding(get: { player.currentTime }, set: { player.seek(toTime: $0) }),
                                in: 0...max(player.duration, 1))
@@ -85,7 +85,7 @@ struct ImportPane: View {
         let store = bridge.store
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Importing “\(paper.displayTitle)”").lineLimit(1)
+                Text(L("Importing “{0}”", paper.displayTitle)).lineLimit(1)
                 Spacer()
                 Text(ImportProgressPresentation.counter(index: store.activeRunIndex, count: store.progressItems.count) ?? "")
                     .foregroundColor(.gray)

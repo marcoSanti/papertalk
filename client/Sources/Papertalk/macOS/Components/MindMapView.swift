@@ -130,15 +130,15 @@ struct MindMapView: View {
             Button { zoom(to: scale / 1.25, around: viewportCenter) } label: {
                 Image(systemName: "minus.magnifyingglass").frame(width: 26, height: 24)
             }
-            .help("Zoom out")
+            .help(L("Zoom out"))
             Button { zoom = nil } label: {
                 Text("\(Int((scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 44, minHeight: 24)
             }
-            .help("Fit the whole map")
+            .help(L("Fit the whole map"))
             Button { zoom(to: scale * 1.25, around: viewportCenter) } label: {
                 Image(systemName: "plus.magnifyingglass").frame(width: 26, height: 24)
             }
-            .help("Zoom in")
+            .help(L("Zoom in"))
         }
         .buttonStyle(.borderless)
         .font(.callout)

@@ -83,6 +83,6 @@ enum AuthorsPresentation {
     static func summary(papers: Int, coauthors: Int) -> String {
         let p = LibraryPresentation.paperCount(papers)
         guard coauthors > 0 else { return p }
-        return p + " · " + LibraryPresentation.count(coauthors, "co-author", "co-authors")
+        return p + " · " + LibraryPresentation.count(coauthors, L("1 co-author"), L("{0} co-authors"))
     }
 }

@@ -6,22 +6,22 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: selection) {
-            Section("Library") {
-                Label("All Papers", systemImage: "books.vertical")
+            Section(L("Library")) {
+                Label(L("All Papers"), systemImage: "books.vertical")
                     .badge(store.papers.count)
                     .tag(SidebarItem.all)
-                Label("Favorites", systemImage: "star")
+                Label(L("Favorites"), systemImage: "star")
                     .badge(store.favoritesCount)
                     .tag(SidebarItem.favorites)
-                Label("Authors", systemImage: "person.2")
+                Label(L("Authors"), systemImage: "person.2")
                     .badge(store.authorCounts.count)
-                    .help("Browse papers by author — like a contact book")
+                    .help(L("Browse papers by author — like a contact book"))
                     .tag(SidebarItem.authors)
             }
 
-            Section("Tags") {
+            Section(L("Tags")) {
                 if tagList.isEmpty {
-                    Text("Add tags in the inspector to group papers here.")
+                    Text(L("Add tags in the inspector to group papers here."))
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .selectionDisabled()
@@ -57,7 +57,7 @@ struct SidebarView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(location.title)
                     .font(.caption.weight(.medium))
-                Text("Converted in-app")
+                Text(L("Converted in-app"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -70,7 +70,7 @@ struct SidebarView: View {
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
-            .help("Settings (⌘,)")
+            .help(L("Settings (⌘,)"))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

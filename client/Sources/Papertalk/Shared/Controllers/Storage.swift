@@ -186,8 +186,8 @@ enum StorageError: Error, LocalizedError {
     case badResponse, status(Int)
     var errorDescription: String? {
         switch self {
-        case .badResponse: return "Bad storage response"
-        case .status(let c): return "Storage returned \(c)"
+        case .badResponse: return L("Bad storage response")
+        case .status(let c): return L("Storage returned {0}", c)
         }
     }
 }

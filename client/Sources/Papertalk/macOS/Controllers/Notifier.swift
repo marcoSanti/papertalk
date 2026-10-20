@@ -41,11 +41,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let identifier: String
         switch event {
         case .ready:
-            content.title = "Episode ready"
+            content.title = L("Episode ready")
             content.body = title
             identifier = "ready-\(paperId)"
         case .failed(let reason):
-            content.title = "Conversion failed"
+            content.title = L("Conversion failed")
             content.body = "\(title): \(reason)"
             identifier = "failed-\(paperId)"
         case .needsInput(let question):

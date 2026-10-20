@@ -32,7 +32,9 @@ struct ContentView: View {
                 }
             }
         }
-        .searchable(text: $store.search, placement: .toolbar, prompt: "Search titles, authors, DOI (#tag for tags)")
+        // Rebuilt in a new language, so views that don't watch the store redraw too.
+        .id(store.language)
+        .searchable(text: $store.search, placement: .toolbar, prompt: L("Search titles, authors, DOI (#tag for tags)"))
         .toolbar { toolbarContent }
         .sheet(isPresented: $store.showUpload) {
             UploadSheet()
@@ -67,7 +69,7 @@ struct ContentView: View {
         .confirmationDialog(duplicateText?.title ?? "", isPresented: duplicateShown,
                             titleVisibility: .visible) {
             Button(duplicateText?.confirmLabel ?? "") { store.resolveDuplicate(true) }
-            Button("Cancel", role: .cancel) { store.resolveDuplicate(false) }
+            Button(L("Cancel"), role: .cancel) { store.resolveDuplicate(false) }
         } message: {
             if let message = duplicateText?.message { Text(message) }
         }
@@ -75,9 +77,9 @@ struct ContentView: View {
                presenting: store.updateAlert) { alert in
             if let label = alert.actionLabel {
                 Button(label) { store.openUpdateLink(alert) }
-                Button("Not Now", role: .cancel) {}
+                Button(L("Not Now"), role: .cancel) {}
             } else {
-                Button("OK", role: .cancel) {}
+                Button(L("OK"), role: .cancel) {}
             }
         } message: { alert in
             Text(alert.message)
@@ -131,23 +133,23 @@ struct ContentView: View {
 
     @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            Picker("Layout", selection: $store.libraryLayout) {
-                Label("Grid", systemImage: "square.grid.2x2").tag(LibraryLayout.grid)
-                Label("List", systemImage: "list.bullet").tag(LibraryLayout.list)
+            Picker(L("Layout"), selection: $store.libraryLayout) {
+                Label(L("Grid"), systemImage: "square.grid.2x2").tag(LibraryLayout.grid)
+                Label(L("List"), systemImage: "list.bullet").tag(LibraryLayout.list)
             }
             .pickerStyle(.segmented)
             .labelStyle(.iconOnly)
-            .help("Change library layout")
+            .help(L("Change library layout"))
 
             Menu {
-                Picker("Sort by", selection: $store.sort) {
+                Picker(L("Sort by"), selection: $store.sort) {
                     ForEach(SortOption.allCases) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.inline)
             } label: {
-                Label("Sort", systemImage: "arrow.up.arrow.down")
+                Label(L("Sort"), systemImage: "arrow.up.arrow.down")
             }
-            .help("Sort papers")
+            .help(L("Sort papers"))
         }
 
         ToolbarSpacer(.fixed, placement: .primaryAction)
@@ -156,10 +158,10 @@ struct ContentView: View {
             Button {
                 store.beginImport()
             } label: {
-                Label("Import", systemImage: "plus")
+                Label(L("Import"), systemImage: "plus")
             }
             .buttonStyle(.glassProminent)
-            .help("Import a PDF paper (⌘O)")
+            .help(L("Import a PDF paper (⌘O)"))
         }
 
         ToolbarSpacer(.fixed, placement: .primaryAction)
@@ -168,9 +170,9 @@ struct ContentView: View {
             Button {
                 withAnimation(.snappy) { showInspector.toggle() }
             } label: {
-                Label("Inspector", systemImage: "sidebar.trailing")
+                Label(L("Inspector"), systemImage: "sidebar.trailing")
             }
-            .help(showInspector ? "Hide paper details" : "Show paper details")
+            .help(showInspector ? L("Hide paper details") : L("Show paper details"))
         }
     }
 }
@@ -178,9 +180,9 @@ struct ContentView: View {
 struct EmptyDetailPlaceholder: View {
     var body: some View {
         ContentUnavailableView {
-            Label("No paper selected", systemImage: "waveform.and.magnifyingglass")
+            Label(L("No paper selected"), systemImage: "waveform.and.magnifyingglass")
         } description: {
-            Text("Pick a paper from the library to see its details, tags and episode.")
+            Text(L("Pick a paper from the library to see its details, tags and episode."))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -210,7 +212,7 @@ private struct InspectorResizeHandle: View {
                             .onEnded { _ in startWidth = nil }
                     )
             }
-            .help("Drag to resize")
+            .help(L("Drag to resize"))
     }
 }
 

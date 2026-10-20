@@ -72,12 +72,12 @@ struct PaperCard: View {
         if PaperPresentation.showsStatusBadgeOnCover(paper) {
             StatusBadge(paper: paper, compact: true)
         } else if PaperPresentation.isNew(paper) {
-            Text("NEW")
+            Text(L("NEW"))
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 7).padding(.vertical, 3)
                 .glassEffect(.regular.tint(Color.appAccent), in: Capsule())
-                .help("Not listened yet")
+                .help(L("Not listened yet"))
         }
     }
 
@@ -152,7 +152,7 @@ struct ContextMenuItems: View {
         Button {
             store.selectedId = paper.id
         } label: {
-            Label("Open", systemImage: "arrow.up.forward.app")
+            Label(L("Open"), systemImage: "arrow.up.forward.app")
         }
         Divider()
         let favorite = PaperPresentation.favoriteToggle(paper)
@@ -170,12 +170,12 @@ struct ContextMenuItems: View {
         Button {
             store.editingPaper = paper
         } label: {
-            Label("Edit metadata…", systemImage: "pencil")
+            Label(L("Edit metadata…"), systemImage: "pencil")
         }
         Button {
             store.requestRerun(paper)
         } label: {
-            Label("Rerun episode", systemImage: "arrow.counterclockwise")
+            Label(L("Rerun episode"), systemImage: "arrow.counterclockwise")
         }
         .disabled(!PaperPresentation.canRerun(paper))
         if PaperPresentation.canStop(paper) {
@@ -188,13 +188,13 @@ struct ContextMenuItems: View {
         Button {
             store.refreshMeta(paper.id)
         } label: {
-            Label("Refresh metadata", systemImage: "arrow.clockwise")
+            Label(L("Refresh metadata"), systemImage: "arrow.clockwise")
         }
         if store.isStandalone {
             Button {
                 store.revealInFinder(paper.id)
             } label: {
-                Label("Show in Finder", systemImage: "folder")
+                Label(L("Show in Finder"), systemImage: "folder")
             }
         }
         Divider()
@@ -202,13 +202,13 @@ struct ContextMenuItems: View {
             Button(role: .destructive) {
                 store.pendingConfirmation = .deleteAudio(paper)
             } label: {
-                Label("Delete audio…", systemImage: "waveform.slash")
+                Label(L("Delete audio…"), systemImage: "waveform.slash")
             }
         }
         Button(role: .destructive) {
             store.pendingConfirmation = .delete(paper)
         } label: {
-            Label("Delete", systemImage: "trash")
+            Label(L("Delete"), systemImage: "trash")
         }
     }
 }
@@ -235,7 +235,7 @@ struct PaperListRow: View {
                 HStack(spacing: 6) {
                     if PaperPresentation.isNew(paper) {
                         Circle().fill(Color.appAccent).frame(width: 7, height: 7)
-                            .help("Not listened yet")
+                            .help(L("Not listened yet"))
                     }
                     Text(paper.displayTitle)
                         .font(.body.weight(.medium))

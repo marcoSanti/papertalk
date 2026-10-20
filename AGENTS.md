@@ -273,6 +273,12 @@ Still to do, in order:
   `PDFFile`, store methods), or duplicating a rule that exists elsewhere.
 - Shared forms keep Settings and the setup wizard identical: both use `LLMSettingsForm`,
   `ServerSettingsForm` and `KeySourceFields`.
+- Interface text goes through `L("English wording", args…)` (`Shared/Localization/`), with
+  values as `{0}`, `{1}` placeholders, never `\(…)` interpolation. Add each new key to every pack
+  in `Shared/Localization/Packs/`; `LocalizationTests` scans the sources and fails on a missing
+  or stale key. Only the interface is translated: prompts, logs and what the LLM writes stay
+  English, unless an import sets `Paper.scriptLanguage` (then `LocalPipeline.outputLanguage`
+  appends the `outputLanguage` prompt).
 - Every new presentation type or store method gets tests (`PresentationTests.swift`,
   `AppStoreTests.swift`). Coverage of `Presentation/` should stay near 100%.
 

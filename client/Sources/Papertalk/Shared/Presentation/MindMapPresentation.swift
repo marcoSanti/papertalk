@@ -184,23 +184,23 @@ struct MindMapLayout: Equatable {
 
 /// The mind map sheet's wording and the side panel's content.
 enum MindMapPresentation {
-    static let heading = "Mind map"
-    static let paperHeading = "The paper"
-    static let mainConceptsTitle = "Main concepts"
-    static let hint = "Click a concept or a connection to see it here; click the paper to come back."
-    static let noSummary = "This map was drawn before maps had a summary. Redraw mind map (under Manage) adds one."
+    static var heading: String { L("Mind map") }
+    static var paperHeading: String { L("The paper") }
+    static var mainConceptsTitle: String { L("Main concepts") }
+    static var hint: String { L("Click a concept or a connection to see it here; click the paper to come back.") }
+    static var noSummary: String { L("This map was drawn before maps had a summary. Redraw mind map (under Manage) adds one.") }
 
     static func summary(_ map: MindMap) -> String { map.summary ?? noSummary }
-    static let coreTitle = "Core"
-    static let descriptionTitle = "What it is"
-    static let connectionsTitle = "Connections"
-    static let missingMessage = "Couldn't open the mind map. Create it again from Manage."
+    static var coreTitle: String { L("Core") }
+    static var descriptionTitle: String { L("What it is") }
+    static var connectionsTitle: String { L("Connections") }
+    static var missingMessage: String { L("Couldn't open the mind map. Create it again from Manage.") }
 
     static func branchTitle(_ b: MindMap.Branch) -> String {
         switch b {
-        case .problem: return "The problem"
-        case .method: return "The approach"
-        case .evidence: return "The demonstration"
+        case .problem: return L("The problem")
+        case .method: return L("The approach")
+        case .evidence: return L("The demonstration")
         }
     }
 
@@ -223,16 +223,16 @@ enum MindMapPresentation {
     static func connections(_ map: MindMap, of id: String) -> [Connection] {
         guard let node = map.node(id) else { return [] }
         var out: [Connection] = []
-        if let p = node.parent.flatMap(map.node) { out.append(Connection(id: p.id, label: p.label, relation: "Part of")) }
-        out += map.children(of: id).map { Connection(id: $0.id, label: $0.label, relation: "Includes") }
+        if let p = node.parent.flatMap(map.node) { out.append(Connection(id: p.id, label: p.label, relation: L("Part of"))) }
+        out += map.children(of: id).map { Connection(id: $0.id, label: $0.label, relation: L("Includes")) }
         for l in map.links where l.from == id || l.to == id {
             let other = l.from == id ? l.to : l.from
-            if let n = map.node(other) { out.append(Connection(id: n.id, label: n.label, relation: l.label.isEmpty ? "Linked" : l.label)) }
+            if let n = map.node(other) { out.append(Connection(id: n.id, label: n.label, relation: l.label.isEmpty ? L("Linked") : l.label)) }
         }
         return out
     }
 
-    static let connectionHeading = "Connection"
+    static var connectionHeading: String { L("Connection") }
 
     /// A selected edge: the two concepts it joins, top to bottom, and how.
     struct EdgeDetail: Equatable {
@@ -245,8 +245,8 @@ enum MindMapPresentation {
     /// their label and direction.
     static func edgeDetail(_ map: MindMap, _ edge: MindMapLayout.Edge) -> EdgeDetail? {
         guard let a = map.node(edge.from), let b = map.node(edge.to) else { return nil }
-        guard let label = edge.label else { return EdgeDetail(top: a, bottom: b, relation: "includes") }
-        return EdgeDetail(top: a, bottom: b, relation: label.isEmpty ? "linked to" : label)
+        guard let label = edge.label else { return EdgeDetail(top: a, bottom: b, relation: L("includes")) }
+        return EdgeDetail(top: a, bottom: b, relation: label.isEmpty ? L("linked to") : label)
     }
 
     static func edgeHelp(_ d: EdgeDetail) -> String { "\(d.top.label) \(d.relation) \(d.bottom.label)" }

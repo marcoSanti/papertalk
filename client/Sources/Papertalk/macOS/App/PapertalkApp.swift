@@ -7,7 +7,7 @@ extension Color {
 
 @main
 struct PapertalkApp: App {
-    @StateObject private var store = AppStore()
+    @StateObject private var store = AppStore.launch()
 
     var body: some Scene {
         WindowGroup {
@@ -18,19 +18,19 @@ struct PapertalkApp: App {
         }
         .commands {
             CommandGroup(after: .appInfo) {
-                Button("Check for Updates…") { store.requestUpdateCheck(.stable) }
+                Button(L("Check for Updates…")) { store.requestUpdateCheck(.stable) }
                     .disabled(store.isCheckingForUpdates)
-                Button("Check for Dev Builds…") { store.requestUpdateCheck(.dev) }
+                Button(L("Check for Dev Builds…")) { store.requestUpdateCheck(.dev) }
                     .disabled(store.isCheckingForUpdates)
             }
             CommandGroup(after: .appSettings) {
-                Button("Settings…") { store.settingsPage = .llm; store.showSettings = true }
+                Button(L("Settings…")) { store.settingsPage = .llm; store.showSettings = true }
                     .keyboardShortcut(",", modifiers: .command)
                 Divider()
-                Button("Clear All Data…") { store.settingsPage = .clear; store.showSettings = true }
+                Button(L("Clear All Data…")) { store.settingsPage = .clear; store.showSettings = true }
             }
             CommandGroup(replacing: .newItem) {
-                Button("Import PDF…") { store.beginImport() }
+                Button(L("Import PDF…")) { store.beginImport() }
                     .keyboardShortcut("o", modifiers: .command)
             }
         }

@@ -100,18 +100,43 @@ enum KokoroSpeech {
         }
     }
 
+    /// `accent`, in the interface language.
+    static func accentLabel(_ voice: String) -> String {
+        switch voice.first {
+        case "a": return L("American")
+        case "b": return L("British")
+        case "e": return L("Spanish")
+        case "f": return L("French")
+        case "h": return L("Hindi")
+        case "i": return L("Italian")
+        case "j": return L("Japanese")
+        case "p": return L("Portuguese")
+        case "z": return L("Mandarin")
+        default: return L("Other")
+        }
+    }
+
+    /// "female" / "male" in the interface language.
+    static func genderLabel(_ gender: String?) -> String? {
+        switch gender {
+        case "female": return L("female")
+        case "male": return L("male")
+        default: return nil
+        }
+    }
+
     /// Voices grouped for menus: accent × gender, American and British first.
-    static let voiceGroups: [(title: String, voices: [String])] = {
+    static var voiceGroups: [(title: String, voices: [String])] {
         var order: [String] = []
         var groups: [String: [String]] = [:]
         for v in allVoices {
-            let g = voiceGender(v).map { " · \($0)" } ?? ""
-            let key = accent(v) + g
+            let g = genderLabel(voiceGender(v)).map { " · \($0)" } ?? ""
+            let key = accentLabel(v) + g
             if groups[key] == nil { order.append(key) }
             groups[key, default: []].append(v)
         }
         return order.map { ($0, groups[$0] ?? []) }
-    }()
+    }
 
     /// Human label for a voice id, e.g. "am_michael" -> "Michael · male".
     static func label(_ voice: String) -> String {
@@ -126,7 +151,7 @@ enum KokoroSpeech {
                 || voice.hasPrefix("pm") || voice.hasPrefix("zm")
                 ? "male" : ""
         let pretty = name.prefix(1).uppercased() + name.dropFirst()
-        return gender.isEmpty ? pretty : "\(pretty) · \(gender)"
+        return genderLabel(gender).map { "\(pretty) · \($0)" } ?? pretty
     }
 
     /// 24 kHz mono 16-bit PCM WAV duration in seconds.

@@ -61,6 +61,9 @@ struct Paper: Identifiable, Codable, Equatable {
     var targetMinutes: Int? = nil
     /// Whether `mindmap.json` was written (nil in records from before mind maps).
     var hasMindMap: Bool? = nil
+    /// The language the LLM writes the episode in (an `AppLanguage` raw value);
+    /// nil is English, the default. Kept so reruns match.
+    var scriptLanguage: String? = nil
     var progress: Double
     var duration: Double
     var progressTs: String?
@@ -78,6 +81,7 @@ struct Paper: Identifiable, Codable, Equatable {
         case storedSpeakers = "speakers"
         case targetMinutes = "target_minutes"
         case hasMindMap = "has_mind_map"
+        case scriptLanguage = "script_language"
     }
 
     /// The episode's cast (names + chosen voices); empty when never set.
@@ -99,7 +103,7 @@ struct Paper: Identifiable, Codable, Equatable {
     func dismissingError() -> Paper {
         var p = self
         if hasScript {
-            p.state = "done"; p.stage = "done"; p.progress = 1; p.message = "Done"
+            p.state = "done"; p.stage = "done"; p.progress = 1; p.message = L("Done")
         } else {
             p.state = "draft"; p.stage = nil; p.progress = 0; p.message = nil
         }
@@ -113,6 +117,9 @@ enum StatusKind: String { case running, done, error, unknown }
 extension Paper {
     /// The progress stage of a mind map being drawn.
     static let mindMapStage = "mindmap"
+
+    /// The language the LLM writes this paper's episode in.
+    var episodeLanguage: AppLanguage { scriptLanguage.flatMap(AppLanguage.init(rawValue:)) ?? .english }
 
     var depthTitle: String? {
         guard let d = depth else { return nil }

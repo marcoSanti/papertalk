@@ -24,7 +24,7 @@ OFFICIAL_ICON="$ROOT/shared/icon.icns"
 DEV_ICON="$CLIENT/.build/icons/Papertalk-dev.icns"
 
 usage() {
-    echo "usage: $0 [build|app|run|release|test|coverage|clean|version|bump-patch|bump-minor|bump-major]" >&2
+    echo "usage: $0 [build|app|run|release|test|coverage|clean|version]" >&2
     exit 2
 }
 

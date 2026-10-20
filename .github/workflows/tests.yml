@@ -1,14 +1,19 @@
 name: Tests
 
-# Every push to main and every pull request into main: build the app and run the
-# test suite with code coverage. The coverage table goes on the run's summary
-# page (no Codecov or other service), and the full report is attached to the run.
-# The suite is fully mocked (no LLM, network, Keychain or voice models).
+# Every pull request into main: run the test suite once, with code coverage.
+# The coverage table goes on the run's summary page (no Codecov or other
+# service), and the full report is attached to the run. The suite is fully
+# mocked (no LLM, network, Keychain or voice models).
+#
+# Kept to what a PR needs:
+#  - No app bundle: nothing would be uploaded, and the tests already compile
+#    everything. Release builds are made (and published) by release.yml.
+#  - No run on push to main: release.yml tests main before it publishes.
+#  - Docs-only changes (Markdown) don't run it at all.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore: ['**.md']
   workflow_dispatch:
 
 permissions:
@@ -21,7 +26,7 @@ concurrency:
 
 jobs:
   test:
-    name: Build and test (macOS 26)
+    name: Test (macOS 26)
     # The package needs macOS 26 and Swift 6.2 (Xcode 26).
     runs-on: macos-26
     timeout-minutes: 30
@@ -30,8 +35,6 @@ jobs:
         working-directory: client
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # full history (git tooling; the build number is the commit hash)
 
       - name: Toolchain
         run: |
@@ -45,10 +48,11 @@ jobs:
             client/.build
             ~/Library/Caches/org.swift.swiftpm
           key: spm-${{ runner.os }}-${{ hashFiles('client/Package.resolved', 'client/Package.swift') }}
-          restore-keys: spm-${{ runner.os }}-
-
-      - name: Version
-        run: ../app.sh version
+          # A PR can only restore caches saved on main, and on main only
+          # release.yml runs (its cache holds the dependencies and a test build).
+          restore-keys: |
+            spm-${{ runner.os }}-
+            spm-release-${{ runner.os }}-
 
       - name: Test with coverage
         run: ../app.sh coverage
@@ -69,9 +73,6 @@ jobs:
             coverage/summary.md
             coverage/totals.json
           retention-days: 30
-
-      - name: Build the app bundle
-        run: ../app.sh app
 
       - name: Check the storage server
         working-directory: .

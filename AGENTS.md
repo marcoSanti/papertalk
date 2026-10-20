@@ -1,7 +1,8 @@
 # AGENTS.md
 
 Guidance for coding agents working on Papertalk. Read `README.md` for what the app does; this
-file covers how to work on it and the traps that have already bitten.
+file covers how to work on it and the traps that have already bitten. `CLAUDE.md` only imports
+this file (for Claude Code), so keep the guidance here.
 
 ## Repo map
 
@@ -27,16 +28,15 @@ file covers how to work on it and the traps that have already bitten.
     `macOS/Support/Theme.swift` has shared styling (`glassCard`, `StatusBadge`, `FlowLayout`,
     `Color.stable(for:)`); `macOS/Support/Clipboard.swift` copies text.
 - `server/storage_server.py`: optional stdlib-only HTTP key/value file store. No compute.
-- `VERSION`, `scripts/version.sh`: the app version and the tool that bumps/checks it.
+- `VERSION`: the app version, edited by hand (`app.sh version` prints it).
 - `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
-- `.github/workflows/`: `tests.yml` (PRs and `main`) and `release.yml` (dev + stable releases).
+- `.github/workflows/`: `tests.yml` (pull requests) and `release.yml` (`main`: dev + stable releases).
 - `shared/`: app icon.
 - Linux port pieces: `client/Sources/Papertalk/Linux/` (compat shims, `#if os(Linux)`),
   `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
   `client/linux-dev/` (dev container `Dockerfile`, `dev.sh`).
 - `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
-- `client/UI_ISSUES.md`: running list of UI/UX issues and fix notes. Update it when you fix or
-  find one.
+- `todo.md`: the backlog. Remove an item in the PR that completes it.
 
 ## Build and test
 
@@ -47,13 +47,15 @@ swift build          # compile (from client/)
 ../app.sh app        # build dist/Papertalk.app (debug); `app.sh release` → dist/Papertalk-<version>.zip
 ```
 
-`app.sh` (repo root) replaces the old Makefile: build/app/run/release/test/coverage/clean/version
-and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with `../`.
+`app.sh` (repo root) replaces the old Makefile: build/app/run/release/test/coverage/clean/version.
+It's run from anywhere; from `client/` prefix it with `../`.
 
 - Requires macOS 26 and Swift 6.2 tools; app and tests compile in Swift 5 language mode.
 - After every change, run `swift build` **and** `app.sh test`, and report the results. Read the
-  build output for **warnings**, not just errors: the app should compile warning-free (ignore
-  warnings from `.build/checkouts/`, i.e. dependencies). Several warnings here become errors in
+  build output for **warnings**, not just errors: the app should compile warning-free in both
+  debug and release (`swift build -c release`) configurations. Ignore warnings from dependencies:
+  `.build/checkouts/`, and the three `swift-cross-ui` "pkg-config" lines on macOS (it's a
+  Linux-only dependency whose GTK probe SwiftPM still runs). Several warnings here become errors in
   Swift 6 mode (e.g. main-actor calls from timer closures). Run the
   suite a few times when touching anything async; it has caught real races.
 - `open dist/Papertalk.app` and `screencapture` may be blocked in a sandboxed agent shell. Don't
@@ -62,21 +64,27 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
 
 ## CI, pull requests and versions
 
-- Work goes through pull requests into `main`. `.github/workflows/tests.yml` runs `app.sh test` and
-  `app.sh app` on every PR and every push to `main` (GitHub's `macos-26` runner). Keep it green:
-  a change that needs new tooling must update the workflow too.
+- Work goes through pull requests into `main` (squash or rebase; one approving review). CI does
+  only what's needed, on GitHub's `macos-26` runner:
+  - `tests.yml`, on every PR: `app.sh coverage` (the suite, once, with coverage) and a syntax
+    check of the storage server. No app bundle: nothing would be uploaded. PRs that change only
+    Markdown skip it (no check is required, so they can still merge).
+  - `release.yml`, on every push to `main` (Markdown-only pushes skip it): `app.sh test`, then the
+    release build and the GitHub release (see below). It's the only run on `main`, so it's what
+    tests `main`. It can be started by hand to retry a release, from `main` only.
+  - The Linux jobs in both are paused (`if: false`); see "Linux port".
+  Keep it green: a change that needs new tooling must update the workflows too.
 - The version lives only in `VERSION` (semver, `MAJOR.MINOR.PATCH`). `app.sh` stamps it into
   the built app's `Info.plist`, with the short commit hash as the build number (shown as
   "Version 0.0.1 (a1b2c3d)" in About Papertalk). Don't hard-code
-  versions elsewhere; read them with `scripts/version.sh`.
+  versions elsewhere; read them with `app.sh version`.
 - Coverage needs no external service: `tests.yml` runs `app.sh coverage` and appends
   `coverage/summary.md` to the job summary (and uploads `coverage/` as a run artifact). Nothing is
   published elsewhere. `scripts/coverage.sh` and `scripts/coverage_summary.py` produce the files;
   the "logic" figure excludes `macOS/Views/`, `macOS/Components/`, `macOS/App/` and
   `macOS/Support/Theme.swift`.
-- Bump with `app.sh bump-patch|bump-minor|bump-major` (or `scripts/version.sh set X.Y.Z`)
-  as part of a PR. Patch for fixes, minor for features, major for breaking changes (e.g. a
-  library format that older builds can't read).
+- Bump by editing `VERSION` as part of a PR. Patch for fixes, minor for features, major for
+  breaking changes (e.g. a library format that older builds can't read).
 - Stable releases are CI-driven: merge the bumped `VERSION` to `main` and
   `.github/workflows/release.yml` publishes a full release tagged `v<VERSION>`, marked Latest.
 - Icons: the `CHANNEL` env var of `app.sh` (default `dev`) picks the app icon. Only the stable
@@ -87,7 +95,7 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
 - `app.sh release` also writes `dist/Papertalk-<version>-source.tar.gz` (`git archive` of HEAD);
   the release workflow publishes it, with checksums, beside the app zip.
 - Dev builds: every push to `main` that didn't bump the version publishes a **pre-release**
-  `v<VERSION>-dev.<short commit>`, built with `app.sh release VERSION=<that>` (the `VERSION`
+  `v<VERSION>-dev.<short commit>`, built with `VERSION=<that> app.sh release` (the `VERSION`
   env overrides the file for that build only). It keeps the newest 10 dev builds and deletes
   older ones with their tags. Never create `-dev.` tags by hand, and never push tags or bump the
   version unless the user asks.
@@ -96,7 +104,7 @@ and the `bump-*` targets. It's run from anywhere; from `client/` prefix it with 
 
 - The `Papertalk` target builds on macOS and Linux. macOS-only files are wrapped in
   `#if os(macOS)` (App, Views, Components, Theme, Clipboard, Notifier, PDFViewerWindow,
-  KokoroEngine), which live under `macOS/`. Linux supplies same-named compat shims in `Linux/`,
+  MindMapWindow, KokoroEngine), which live under `macOS/`. Linux supplies same-named compat shims in `Linux/`,
   so shared code compiles unchanged. Prefer extending a shim to adding `#if` in shared code.
   Never change how the macOS app looks or behaves for the port's sake.
 - A new file goes in `Shared/`, `macOS/` or `Linux/` by where it compiles, and files in `macOS/`
@@ -142,8 +150,9 @@ Packaging: `client/linux-dev/dev.sh appimage` (with `VERSION`, `CHANNEL`) builds
 `client/dist/Papertalk-<version>-<arch>.AppImage`: release binary with the Swift runtime
 static, a bundled Python 3.12 with the packages (so nothing is installed at first launch), every
 other library except the GTK / graphics / glibc stack, and a `.desktop` file with `%f`.
-`client/linux-dev/appimage_smoke.sh` checks it on plain Ubuntu. CI packs and smoke-tests it on
-every PR (run artifact), and `release.yml`'s `linux` job uploads it to each release (x86_64).
+`client/linux-dev/appimage_smoke.sh` checks it on plain Ubuntu. CI used to pack and smoke-test it
+on every PR and upload it to each release (x86_64); those jobs are paused (`if: false` in both
+workflows, plus the `LINUX_BUILDS` guard in the release notes) until the Linux work resumes.
 If you add a Python package or a native dependency, run the smoke test: a library missing from
 the bundle only shows up on a clean system.
 

@@ -69,7 +69,7 @@ struct LocalPipeline {
     var baseUrl: String
     var apiKey: String
     var model: String
-    /// Editable prose prompts (data-format + fix-query prompts stay hardcoded).
+    /// Editable prompts (only the reply schemas and dialogue format stay hardcoded).
     var prompts: PromptSettings = .defaults
     /// Optional hook for emitting progress lines; no-ops when unset.
     var log: (String) -> Void = { _ in }
@@ -134,14 +134,8 @@ struct LocalPipeline {
     /// DOI, tags) out of the paper's raw text. Best-effort: returns empty fields
     /// if the model fails or returns unusable JSON, never throws.
     func extractMeta(text: String, fallbackTitle: String) async throws -> PaperMeta {
-        let system = "You extract bibliographic metadata from a research paper's raw OCR/PDF text. "
-            + "Return ONLY a JSON object, no markdown, exactly: "
+        let system = prompts.metadata + "\n\nReturn ONLY a JSON object, no markdown, exactly: "
             + #"{"title": string, "authors": [string], "affiliations": [string], "doi": string, "tags": [string]}"#
-            + "\n- title: the paper's real title (clean, not the filename). If you cannot tell, return \"\"."
-            + "\n- authors: full author names in order. Empty if unknown."
-            + "\n- affiliations: institution/department strings, deduplicated. Empty if unknown."
-            + "\n- doi: the DOI when present (e.g. \"10.1016/j.jpdc.2017.07.010\"), else \"\"."
-            + "\n- tags: 2-4 CONSISTENT, broad topical research-areas so related papers group together. Prefer established field categories (e.g. \"machine-learning\", \"nlp\", \"computer-vision\", \"algorithms\", \"databases\", \"distributed-systems\", \"security\", \"bioinformatics\", \"neuroscience\", \"quantum-computing\"). Multi-word tags are kebab-case with no spaces. NEVER use paper-specific jargon, method acronyms, author names, or narrow low-comsumption fragments that won't recur in other papers. Reuse the same category names you'd assign to any similar paper. Never empty unless the text is unusable."
         let user = String(text.prefix(20_000))  // title/authors/DOI live near the top; keeps the call cheap
         let raw = (try? await chat(system: system, user: user, maxTokens: 1500)) ?? ""
         guard let json = Self.extractJSON(raw),
@@ -170,7 +164,11 @@ struct LocalPipeline {
     ///    rolling window of recent turns for consistency.
     /// 3. Methodology segments are delivered as FULL-LENGTH expert monologues,
     ///    chunked by source size so the audio scales with the paper.
-    func generateTranscript(text: String, depth: Depth = .inDepth, depthNote: String = "", host: String? = nil, expert: String? = nil) async throws -> PipelineResult {
+    ///
+    /// `summaryMinutes` is the summary's ceiling (default `SummaryLength.defaultMinutes`);
+    /// other depths ignore it.
+    func generateTranscript(text: String, depth: Depth = .inDepth, depthNote: String = "", summaryMinutes: Int? = nil,
+                            host: String? = nil, expert: String? = nil) async throws -> PipelineResult {
         let cleaned = String(text.prefix(240_000)).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { throw PipelineError.noText }
         let lines = cleaned.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -187,9 +185,11 @@ struct LocalPipeline {
         var wordCap: Int? = nil
         switch depth {
         case .summary:
-            // Up to 35 minutes: aim a little under, since the model tends to overshoot.
-            plannedWords = Int(30 * wordsPerMinute)
-            wordCap = Int(35 * wordsPerMinute)
+            // Up to the chosen length: aim a little under (30 of 35 minutes),
+            // since the model tends to overshoot.
+            let ceiling = Double(summaryMinutes ?? SummaryLength.defaultMinutes)
+            plannedWords = Int(ceiling * 6 / 7 * wordsPerMinute)
+            wordCap = Int(ceiling * wordsPerMinute)
         case .inDepth, .custom, .direct:
             // As long as the paper needs: scale with the source, never under ~30 min.
             let sourceWords = cleaned.split(whereSeparator: \.isWhitespace).count
@@ -197,7 +197,8 @@ struct LocalPipeline {
         }
         let minutes = max(1, Int((Double(plannedWords) / wordsPerMinute).rounded()))
         let minSeg = max(3, min(6, minutes / 5))
-        let maxSeg = max(8, min(18, minutes / 2))
+        // A short summary gets few segments, or their minimum lengths alone would overrun it.
+        let maxSeg = max(minSeg + 1, min(18, minutes / 2))
 
         var plan = try await planScript(cleaned: cleaned, title: title, host: host, expert: expert,
                                         depth: depth, depthNote: depthNote, minutes: minutes,
@@ -230,7 +231,7 @@ struct LocalPipeline {
                        "Segment \(k + 1)/\(total): \(seg.title)")
             // Summary: re-split what's left of the ceiling over the remaining
             // segments, so an over-long early segment can't push the episode
-            // past 35 minutes (and the ending still gets its share).
+            // past its length (and the ending still gets its share).
             if let cap = wordCap {
                 let written = history.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
                 let remainingWeight = plan.segments[k...].map(\.weight).reduce(0, +)
@@ -279,26 +280,24 @@ struct LocalPipeline {
         var depthGuide: String
         switch depth {
         case .summary:
-            depthGuide = "DEPTH: SUMMARY. Overview-style episode for a general audience. Summarise method and results at a high level; no section is read verbatim."
+            depthGuide = prompts.depthSummary
         case .custom:
-            depthGuide = depthNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? "DEPTH: IN-DEPTH. Cover methods and results fully, including technical detail."
-                : "USER-REQUESTED DEPTH:\n" + depthNote
+            let note = depthNote.trimmingCharacters(in: .whitespacesAndNewlines)
+            depthGuide = note.isEmpty ? prompts.depthInDepth : PromptSettings.fill(prompts.depthCustom, ["note": note])
         case .inDepth:
-            depthGuide = "DEPTH: IN-DEPTH. Cover methods and results fully and technically, so a student could re-derive the work."
+            depthGuide = prompts.depthInDepth
         case .direct:
             depthGuide = ""
         }
-        let outlineInstructions = prompts.outlineRules + """
+        let rules = PromptSettings.fill(prompts.outlineRules, [
+            "minutes": "\(minutes)", "minSeg": "\(minSeg)", "maxSeg": "\(maxSeg)",
+            "plannedWords": "\(plannedWords)", "depthGuide": depthGuide, "host": host, "expert": expert,
+        ])
+        let outlineInstructions = rules + """
         \n\nRespond with ONLY a JSON object, no markdown, exactly:
         {"tags": [short keywords], "sections": [{"title": string, "min_sec": int}], "segments": [{"title": string, "goal": string, "sections": [int], "key_points": [string], "weight": number, "monologue": boolean}]}
         """
-        .replacingOccurrences(of: "{minutes}", with: "\(minutes)")
-        .replacingOccurrences(of: "{minSeg}", with: "\(minSeg)")
-        .replacingOccurrences(of: "{maxSeg}", with: "\(maxSeg)")
-        .replacingOccurrences(of: "{plannedWords}", with: "\(plannedWords)")
-        .replacingOccurrences(of: "{depthGuide}", with: depthGuide)
-        let system = "You are an expert science-podcast editor. You respond with strict JSON only."
+        let system = prompts.outlineSystem
         log("Outline: requesting section index + segment plan for \(title)…")
 
         var raw = try await chat(system: system, user: outlineInstructions + "\n\n=== PAPER ===\n" + cleaned, maxTokens: 9000)
@@ -306,7 +305,7 @@ struct LocalPipeline {
         if plan == nil {
             // One repair attempt: ask for the JSON alone.
             log("Outline not decodable — asking LLM to re-emit strict JSON")
-            let fix = "Your previous reply was not valid JSON for my schema. Return ONLY a single JSON object matching exactly: "
+            let fix = prompts.outlineRepair + " Return ONLY a single JSON object matching exactly: "
                 + #"{"sections": [{"title": string, "min_sec": int}], "segments": [{"title": string, "goal": string, "sections": [int], "key_points": [string], "weight": number, "monologue": boolean}]}"#
             raw = try await chat(system: system, user: fix + "\n\nPAPER:\n" + cleaned, maxTokens: 9000)
             plan = Self.decodePlanLenient(raw)
@@ -384,25 +383,15 @@ struct LocalPipeline {
 
         let spoken = prompts.writeForEar
 
-        let segPrompt = """
-        SEGMENT \(k + 1) of \(n) — Title: "\(seg.title)"
-        GOAL: \(seg.goal)
-        MUST COVER (key points):
-        \(kps)
+        let request = PromptSettings.fill(prompts.segmentRequest, [
+            "segmentNumber": "\(k + 1)", "segmentCount": "\(n)", "segmentTitle": seg.title, "goal": seg.goal,
+            "keyPoints": kps, "targetWords": "\(targetWords)", "otherSegments": titles, "covered": coveredStr,
+            "recentTurns": recent.isEmpty ? "No turns yet." : recent, "position": position,
+            "host": host, "expert": expert,
+        ])
+        // The format is what `Parsers.dialogue` reads, so it isn't part of the editable prompt.
+        let segPrompt = request + """
 
-        TARGET LENGTH: about \(targetWords) words. Write a full, detailed conversation — do not rush or truncate.
-
-        OTHER SEGMENTS IN THIS EPISODE (do not repeat them):
-        \(titles)
-
-        ALREADY COVERED EARLIER (do not repeat these points):
-        \(coveredStr)
-
-        RECENT TURNS FROM THE EPISODE SO FAR (match their tone and continue naturally; do not re-say them):
-        \(recent.isEmpty ? "No turns yet." : recent)
-
-        POSITION IN THE EPISODE:
-        \(position)
 
         FORMAT: dialogue only, one turn per line, as
         \(host): ...
@@ -414,9 +403,8 @@ struct LocalPipeline {
         \(cleaned)
         """
 
-        let system = prompts.dialoguePersona.replacingOccurrences(of: "{host}", with: host)
-            .replacingOccurrences(of: "{expert}", with: expert)
-            + "\n\n" + spoken
+        let system = PromptSettings.fill(prompts.dialoguePersona, ["host": host, "expert": expert])
+            + "\n\n" + PromptSettings.fill(spoken, ["host": host, "expert": expert])
 
         for _ in 0..<2 {
             let raw = try await chat(system: system, user: segPrompt, maxTokens: 9000)
@@ -455,14 +443,14 @@ struct LocalPipeline {
         for (i, block) in blocks.enumerated() {
             guard !block.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
             let position: String
-            if blocks.count == 1 { position = "This is the only block." }
-            else if i == 0 { position = "This is block 1 (the first part)." }
-            else if i == blocks.count - 1 { position = "This is the final block." }
-            else { position = "This block continues the monologue; keep the same voice and flow." }
+            if blocks.count == 1 { position = prompts.blockOnly }
+            else if i == 0 { position = prompts.blockFirst }
+            else if i == blocks.count - 1 { position = prompts.blockLast }
+            else { position = prompts.blockMiddle }
+            let tokens = ["expert": expert, "host": hostName, "position": position]
 
-            let system = prompts.monologuePersona.replacingOccurrences(of: "{expert}", with: expert)
-                + "\n\nWRITE FOR THE EAR: plain sentences, no markdown, no headings, no stage directions.\n"
-                + position
+            let system = PromptSettings.fill(prompts.monologuePersona, tokens)
+                + "\n\n" + PromptSettings.fill(prompts.monologueRules, tokens)
                 + "\n\nOutput ONLY the narration text — no speaker name, no notes."
 
             let raw = try await chat(system: system, user: "METHOD TEXT (block \(i + 1)):\n" + block, maxTokens: 9000)
@@ -489,17 +477,11 @@ struct LocalPipeline {
     }
 
     private func positionRule(index k: Int, count n: Int, host: String, expert: String) -> String {
-        func r(_ speaker: String) -> String { speaker }
-        if n == 1 {
-            return "This is the ONLY segment of the episode. \(r(host)) opens by introducing the paper, its authors and the topic, then you have a complete conversation from start to finish, landing a satisfying ending."
-        }
-        if k == 0 {
-            return "This is the FIRST segment. \(r(host)) starts the episode by introducing the paper, its authors and the topic. Leave room for the later segments; do not jump to conclusions."
-        }
-        if k == n - 1 {
-            return "This is the LAST segment. Build on what was covered and move the conversation to a satisfying conclusion and wrap-up."
-        }
-        return "This is a MIDDLE segment. \(r(host)) briefly signals this part's goal, then keep going. Do not reintroduce the paper or wrap up the episode."
+        let template = n == 1 ? prompts.positionOnly
+            : k == 0 ? prompts.positionFirst
+            : k == n - 1 ? prompts.positionLast
+            : prompts.positionMiddle
+        return PromptSettings.fill(template, ["host": host, "expert": expert])
     }
 
     // ------------------------------------------------------------- helpers
@@ -709,13 +691,10 @@ struct LocalPipeline {
             authorGenders: [:])
         // An object, not a bare array: `extractJSON` cuts from the first "{" to
         // the last "}", which mangles a top-level array.
-        let system = """
-        You are casting a short research-podcast interview. Return ONLY a JSON object, no markdown or prose:
+        let system = prompts.cast + """
+        \n\nReturn ONLY a JSON object, no markdown or prose:
         {"speakers": [{"role": string, "gender": "male"|"female", "name": string}],
          "authors": [{"name": string, "gender": "male"|"female"}]}
-        "speakers": exactly two — the interviewer (female by default, propose a realistic first name) and the \
-        interviewed scientist, who is one of the paper's real authors; use their given first name and their real gender.
-        "authors": every author exactly as listed, each with their most likely gender based on their name.
         """
         let user = "Title: \(title)\nAuthors: \(authors.joined(separator: ", "))\nMode: \(depthNote.isEmpty ? "In-depth discussion" : depthNote)\n\nPaper excerpt:\n\(cleaned.prefix(2500))"
         var cast = fallback

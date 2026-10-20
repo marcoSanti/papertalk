@@ -37,7 +37,15 @@ final class PaperModelTests: PapertalkTestCase {
         let p = try decode(makeJSON(speakers: false, extra: ["speakers": NSNull(), "published_iso": ""]))
         XCTAssertEqual(p.storedSpeakers, nil)
         XCTAssertEqual(p.speakers, [])
+        XCTAssertNil(p.targetMinutes)
         XCTAssertEqual(p.displayTitle, "A Paper")
+    }
+
+    func testTargetMinutesIsSavedAsTargetMinutes() throws {
+        let p = try decode(makeJSON(extra: ["target_minutes": 20]))
+        XCTAssertEqual(p.targetMinutes, 20)
+        let raw = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p)) as! [String: Any]
+        XCTAssertEqual(raw["target_minutes"] as? Int, 20)
     }
 
     func testCodableRoundTrip() throws {

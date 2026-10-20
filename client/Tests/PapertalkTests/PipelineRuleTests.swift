@@ -85,6 +85,69 @@ final class PipelineRuleTests: PapertalkTestCase {
         XCTAssertTrue(log.all.contains { $0.contains("(~30 min, 4350 words)") }, "\(log.all)")
     }
 
+    func testSummaryLengthFollowsTheChosenMinutes() async throws {
+        let log = Box<String>()
+        let plan = outline(segments: 2)
+        MockLLM.install { [self] request in
+            let text = MockLLM.allText(in: request)
+            return (200, MockLLM.chatReply(isOutline(text) ? plan : dialogue(words: 50)))
+        }
+        // 10 minutes up top: plan 6/7 of it (~8.6 min, 1,242 words).
+        _ = try await pipeline(log: log).generateTranscript(text: paper, depth: .summary, summaryMinutes: 10)
+        XCTAssertTrue(log.all.contains { $0.contains("(~9 min, 1242 words)") }, "\(log.all)")
+        // Only summaries have a length: in-depth ignores it.
+        _ = try await pipeline(log: log).generateTranscript(text: paper, depth: .inDepth, summaryMinutes: 10)
+        XCTAssertTrue(log.all.contains { $0.contains("(~30 min, 4350 words)") }, "\(log.all)")
+    }
+
+    func testShortSummaryStaysUnderItsCeiling() async throws {
+        let prompts = Box<String>()
+        let plan = outline(segments: 3)
+        MockLLM.install { [self] request in
+            let text = MockLLM.allText(in: request)
+            if isOutline(text) { return (200, MockLLM.chatReply(plan)) }
+            prompts.append(text)
+            return (200, MockLLM.chatReply(dialogue(words: 4000)))
+        }
+        _ = try await pipeline().generateTranscript(text: paper, depth: .summary, summaryMinutes: 5)
+        // 5 minutes = 725 words: the 250-word segment floor gives way to the
+        // ceiling's share, and an overshoot leaves the rest only the 120-word floor.
+        XCTAssertEqual(targets(in: prompts.all), [241, 120, 120])
+    }
+
+    // MARK: editable prompts
+
+    func testEditedPromptsAreWhatTheLLMGets() async throws {
+        let sent = Box<String>()
+        let plan = outline(segments: 2)
+        MockLLM.install { [self] request in
+            let text = MockLLM.allText(in: request)
+            sent.append(text)
+            if text.contains("CAST-X") {
+                return (200, MockLLM.chatReply(#"{"speakers":[{"role":"Interviewer","gender":"male","name":"Jo"}],"authors":[]}"#))
+            }
+            return (200, MockLLM.chatReply(isOutline(text) ? plan : dialogue(words: 50)))
+        }
+        var p = pipeline()
+        p.prompts.metadata = "META-X"
+        p.prompts.cast = "CAST-X"
+        p.prompts.outlineSystem = "EDITOR-X"
+        p.prompts.depthSummary = "SUMMARY-X"
+        p.prompts.outlineRules = "RULES {depthGuide} {minutes}"
+        p.prompts.segmentRequest = "WRITE {segmentNumber}/{segmentCount} IN {targetWords} AS {position}"
+        p.prompts.positionFirst = "OPEN-{host}"
+        _ = try await p.extractMeta(text: paper, fallbackTitle: "F")
+        _ = await p.proposeCast(title: "T", authors: [], cleaned: paper, depthNote: "")
+        _ = try await p.generateTranscript(text: paper, depth: .summary, summaryMinutes: 10, host: "Jo", expert: "Ada")
+
+        let all = sent.all
+        // The reply formats are still appended after the user's wording.
+        XCTAssertTrue(all.contains { $0.contains("META-X") && $0.contains(#""doi": string"#) })
+        XCTAssertTrue(all.contains { $0.contains("CAST-X") && $0.contains(#""speakers": [{"role""#) })
+        XCTAssertTrue(all.contains { $0.contains("EDITOR-X") && $0.contains("RULES SUMMARY-X 9") && isOutline($0) })
+        XCTAssertTrue(all.contains { $0.contains("WRITE 1/2 IN") && $0.contains("AS OPEN-Jo") && $0.contains("Jo: ...") })
+    }
+
     func testInDepthScalesWithThePaperAndHasNoCeiling() async throws {
         let log = Box<String>()
         let plan = outline(segments: 2)

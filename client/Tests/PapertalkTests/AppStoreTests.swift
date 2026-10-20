@@ -578,6 +578,7 @@ final class AppStoreTests: PapertalkTestCase {
         let store = await makeStore()
         store.resolveDuplicate(true)
         store.resolveCast([])
+        store.resolveCast([], voiceAudio: false)
         store.cancelCast()
         XCTAssertNil(store.pendingCast)
         XCTAssertNil(store.pendingDuplicate)

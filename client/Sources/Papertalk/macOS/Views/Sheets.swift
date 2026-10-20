@@ -130,6 +130,26 @@ struct UploadSheet: View {
                     .controlSize(.small)
                     .transition(.opacity)
                 }
+                if form.showsLengthSlider {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Length").font(.callout.weight(.medium))
+                            Spacer()
+                            Text(form.lengthLabel).font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        Slider(value: $form.summaryMinutes, in: ImportForm.lengthRange, step: ImportForm.lengthStep) {
+                            Text("Length")
+                        } minimumValueLabel: {
+                            Text(ImportForm.lengthMinLabel).font(.caption)
+                        } maximumValueLabel: {
+                            Text(ImportForm.lengthMaxLabel).font(.caption)
+                        }
+                        .labelsHidden()
+                    }
+                    .help(ImportForm.lengthHelp)
+                    .padding(.horizontal, 4)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
             .animation(.snappy, value: form.depth)
 
@@ -161,7 +181,8 @@ struct UploadSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Start episode") {
                     if let s = form.submission {
-                        store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote)
+                        store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
+                                     targetMinutes: s.targetMinutes)
                         dismiss()
                     }
                 }
@@ -528,47 +549,46 @@ struct KeySourceFields<Form: KeySourceEditing>: View {
     }
 }
 
-// MARK: - Editable LLM prose prompts (data-format / fix-query prompts excluded)
+// MARK: - Editable LLM prompts (reply formats are appended by the pipeline)
 struct PromptsSettingsPage: View {
     @EnvironmentObject private var store: AppStore
     @State private var prompts = PromptSettings.defaults
 
-    @State private var selected = 0
+    @State private var selected = PromptCatalog.entries[0].id
 
     var body: some View {
+        let entry = PromptCatalog.entry(selected)
         VStack(alignment: .leading, spacing: 14) {
             Text("Query prompts").font(.title3).fontWeight(.semibold)
-            Text("Customise the LLM's context and instructions. Reply-format prompts and the outline repair query are locked to keep replies parseable. Tokens: {host}, {expert}, {minutes}, {minSeg}, {maxSeg}, {plannedWords}, {depthGuide}.")
+            Text(PromptCatalog.intro)
                 .font(.caption).foregroundStyle(.secondary)
 
-            Picker("", selection: $selected) {
-                Text("Outline rules").tag(0)
-                Text("Personas").tag(1)
-                Text("Monologue").tag(2)
-                Text("Ear style").tag(3)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
-            Group {
-                switch selected {
-                case 0: detail("Outline planning rules",
-                               usedWhen: "When the LLM plans the episode: it breaks the paper into a section index and designs the listening segments before any dialogue is written.",
-                               text: $prompts.outlineRules)
-                case 1: detail("Host & expert personas",
-                               usedWhen: "When the LLM writes the two-speaker conversational dialogue segments — {host} asks the questions, {expert} (the author) carries the technical content.",
-                               text: $prompts.dialoguePersona)
-                case 2: detail("Monologue persona",
-                               usedWhen: "When the LLM writes a technical section as a single long spoken monologue delivered by the first author, {expert}.",
-                               text: $prompts.monologuePersona)
-                default: detail("Write-for-the-ear style",
-                                usedWhen: "Applied on top of the other prompts to all generated text, so it reads naturally when spoken by the TTS engine.",
-                                text: $prompts.writeForEar)
+            HStack {
+                Picker("Prompt", selection: $selected) {
+                    ForEach(PromptCatalog.groups, id: \.name) { group in
+                        Section(group.name) {
+                            ForEach(group.entries) { Text($0.title).tag($0.id) }
+                        }
+                    }
                 }
+                .pickerStyle(.menu)
+                .fixedSize()
+                Spacer()
+                Button(PromptCatalog.resetTitle) { entry.reset(&prompts) }
+                    .disabled(entry.isDefault(prompts))
             }
-            .animation(.snappy, value: selected)
 
-            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("\(entry.group) · \(entry.title)").font(.headline)
+                Text(entry.usedWhen).font(.caption).foregroundStyle(.secondary)
+                Text(entry.tokensLabel).font(.caption.monospaced()).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                TextEditor(text: $prompts[dynamicMember: entry.keyPath])
+                    .font(.system(.caption, design: .monospaced))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.35)))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .padding(20)
@@ -578,18 +598,6 @@ struct PromptsSettingsPage: View {
         .onReceive(NotificationCenter.default.publisher(for: .papertalkRestorePrompts)) { _ in
             prompts = PromptSettings.defaults
         }
-    }
-
-    private func detail(_ title: String, usedWhen: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.headline)
-            Text(usedWhen).font(.caption).foregroundStyle(.secondary)
-            TextEditor(text: text)
-                .font(.system(.caption, design: .monospaced))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.35)))
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func save() { store.savePrompts(prompts) }
@@ -788,6 +796,10 @@ struct CastSheet: View {
                 Button("Cancel import") { store.cancelCast() }
                     .buttonStyle(.glass)
                     .keyboardShortcut(.cancelAction)
+                Button(CastForm.scriptOnlyTitle) { store.resolveCast(form.cast, voiceAudio: false) }
+                    .buttonStyle(.glass)
+                    .disabled(!form.canConfirm)
+                    .help(CastForm.scriptOnlyHelp)
                 Button("Use these voices") { store.resolveCast(form.cast) }
                     .buttonStyle(.glassProminent)
                     .disabled(!form.canConfirm)

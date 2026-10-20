@@ -44,6 +44,8 @@ struct CastSheet: View {
             HStack(spacing: 8) {
                 Spacer()
                 Button("Cancel import") { store.cancelCast() }
+                Button(CastForm.scriptOnlyTitle) { store.resolveCast(form.cast, voiceAudio: false) }
+                    .disabled(!form.canConfirm)
                 Button("Use these voices") { store.resolveCast(form.cast) }
                     .disabled(!form.canConfirm)
             }

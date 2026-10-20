@@ -211,7 +211,12 @@ final class AppStore: ObservableObject {
         let proposals: [ProposedSpeaker]
         let authors: [String]
         let authorGenders: [String: String]
-        let cont: CheckedContinuation<[SpeakerConfig]?, Never>
+        let cont: CheckedContinuation<CastChoice?, Never>
+    }
+    /// The cast sheet's answer: who speaks, and whether to voice the script now.
+    struct CastChoice {
+        let speakers: [SpeakerConfig]
+        let voiceAudio: Bool
     }
     @Published var pendingCast: CastPrompt?
     /// System notifications while the app is in the background.
@@ -804,7 +809,7 @@ final class AppStore: ObservableObject {
 
     /// Pause the import pipeline to confirm the episode cast the model proposed.
     /// Resolves with nil if the user cancels the import, else the final cast.
-    private func askCast(_ id: String, _ proposal: CastProposal, authors: [String], paperTitle: String) async -> [SpeakerConfig]? {
+    private func askCast(_ id: String, _ proposal: CastProposal, authors: [String], paperTitle: String) async -> CastChoice? {
         while pendingCast != nil, !Task.isCancelled { try? await Task.sleep(nanoseconds: 200_000_000) }
         guard !Task.isCancelled else { return nil }
         notifier.post(.needsInput("Choose the voices for your episode"), paperId: id, title: paperTitle)
@@ -815,13 +820,14 @@ final class AppStore: ObservableObject {
     }
 
     /// Called by the cast sheet: applies the user's names/voices and resumes the
-    /// import pipeline.
-    func resolveCast(_ speakers: [SpeakerConfig]) {
+    /// import pipeline. With `voiceAudio` false the script is written but not
+    /// voiced (Regenerate audio voices it later, with these voices).
+    func resolveCast(_ speakers: [SpeakerConfig], voiceAudio: Bool = true) {
         guard let q = pendingCast else { return }
         player.stopPreview()
         notifier.clearInputRequest(paperId: q.paperId)
         pendingCast = nil
-        q.cont.resume(returning: speakers)
+        q.cont.resume(returning: CastChoice(speakers: speakers, voiceAudio: voiceAudio))
     }
 
     /// Called when the cast sheet is cancelled: aborts the in-flight import.
@@ -997,9 +1003,13 @@ final class AppStore: ObservableObject {
     }
 
     /// Run the in-process pipeline on a PDF (or an existing stored paper).
-    func upload(_ pdf: Data, filename: String, depth: Depth, depthNote: String) {
+    /// `targetMinutes` is a summary's length (nil: the default).
+    func upload(_ pdf: Data, filename: String, depth: Depth, depthNote: String, targetMinutes: Int? = nil) {
         let id = UUID().uuidString
-        startRun(id) { await self.runPipeline(nil, id: id, pdf: pdf, filename: filename, depth: depth, depthNote: depthNote) }
+        startRun(id) {
+            await self.runPipeline(nil, id: id, pdf: pdf, filename: filename, depth: depth, depthNote: depthNote,
+                                   targetMinutes: targetMinutes)
+        }
     }
 
     // MARK: Audio baking
@@ -1214,7 +1224,7 @@ final class AppStore: ObservableObject {
 
     // MARK: Pipeline (always local)
     private func runPipeline(_ existing: Paper?, id newId: String? = nil, pdf: Data? = nil, filename: String = "",
-                             depth: Depth = .inDepth, depthNote: String = "") async {
+                             depth: Depth = .inDepth, depthNote: String = "", targetMinutes: Int? = nil) async {
         let id = existing?.id ?? newId ?? UUID().uuidString
         // First conversion is when notifications start to matter: ask then.
         notifier.requestPermissionIfNeeded()
@@ -1223,7 +1233,7 @@ final class AppStore: ObservableObject {
         var rec = existing ?? Paper(id: id, title: "", filename: name, hasPdf: true, hasScript: false, hasAudio: false,
                                      createdIso: ISO8601DateFormatter().string(from: Date()), publishedIso: existing?.publishedIso, state: "queued",
                                      tags: [], favorite: false, authors: [], affiliations: [], doi: "", read: false,
-                                     depth: existing?.depth ?? depth.rawValue, bibtex: nil, progress: 0, duration: 0, progressTs: nil,
+                                     depth: existing?.depth ?? depth.rawValue, bibtex: nil, targetMinutes: targetMinutes, progress: 0, duration: 0, progressTs: nil,
                                      stage: "extract", message: "Queued", statusError: nil)
         papers[id] = rec
         selectedId = id
@@ -1284,6 +1294,9 @@ final class AppStore: ObservableObject {
             return
         }
 
+        // Cleared when the user skips audio at the cast prompt.
+        var voiceAudio = true
+
         // Fill title/authors/DOI/tags from the LLM right away (before the script),
         // so the detail view shows real metadata even while the episode is being written.
         if !base.isEmpty {
@@ -1305,13 +1318,16 @@ final class AppStore: ObservableObject {
             let proposal = hasScript ? CastProposal(speakers: [], authorGenders: [:]) : await pipeline.proposeCast(title: papers[id]?.displayTitle ?? rec.displayTitle,
                                                                authors: papers[id]?.authors ?? rec.authors,
                                                                cleaned: text, depthNote: depthNote)
-            let cast = hasScript ? [] : await askCast(id, proposal, authors: papers[id]?.authors ?? rec.authors,
-                                                      paperTitle: papers[id]?.displayTitle ?? rec.displayTitle)
-            guard let cast else {
+            let choice = hasScript ? CastChoice(speakers: [], voiceAudio: true)
+                : await askCast(id, proposal, authors: papers[id]?.authors ?? rec.authors,
+                                paperTitle: papers[id]?.displayTitle ?? rec.displayTitle)
+            guard let choice else {
                 await discardImport(id)
                 show("Import cancelled")
                 return
             }
+            voiceAudio = choice.voiceAudio
+            let cast = choice.speakers
             if !cast.isEmpty {
                 // Merge into the live record: `rec` predates the metadata
                 // extraction and the progress updates, so it must not overwrite them.
@@ -1342,12 +1358,19 @@ final class AppStore: ObservableObject {
                 appendLog("Resuming with previously generated transcript…", paper: id)
             } else {
                 let result = try await pipeline.generateTranscript(text: text, depth: depth, depthNote: depthNote,
+                                                                    summaryMinutes: rec.targetMinutes,
                                                                     host: rec.speakers.first?.name,
                                                                     expert: rec.speakers.count > 1 ? rec.speakers[1].name : nil)
                 script = result.transcript
                 // Persist now so an interrupted run can resume past segments later.
                 await storage.save(script, K.transcript(id))
                 appendLog("Got transcript (\(script.segments.count) segments)", paper: id)
+            }
+            guard voiceAudio else {
+                appendLog("Skipped audio — voice the script later with Regenerate audio.", paper: id)
+                await finish(id, script, papers[id]?.displayTitle ?? name,
+                             authors: papers[id]?.authors ?? [], pdfData: pdfData, depth: depth, hasAudio: false)
+                return
             }
             updateRec(id) { $0.stage = "audio"; $0.progress = 0.78; $0.message = "Synthesizing audio…" }
             if let failure = await bakeAudio(id, script, from: 0.80, to: 1.0) {

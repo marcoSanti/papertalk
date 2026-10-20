@@ -239,25 +239,70 @@ struct SpeechSettings: Codable, Equatable {
     }
 }
 
-// MARK: - Editable LLM prose prompts (persisted locally)
+// MARK: - Editable LLM prompts (persisted locally)
 //
-// Only NON data-format instructions are exposed here. The JSON-reply-context
-// prompts and the outline "fix" query are deliberately kept hardcoded in the
-// pipeline so users cannot break the schema contract.
+// Every instruction the pipeline sends is editable here. Only the exact JSON
+// schemas and the "Name: line" dialogue format stay appended by the pipeline:
+// the parsers depend on them, and an edit there would silently break imports.
 //
-// Templates may use these tokens, replaced at request time:
-//   {host}, {expert}, {minutes}, {minSeg}, {maxSeg}, {plannedWords}, {depthGuide}
+// Templates use {tokens}, replaced at request time (`PromptCatalog` lists
+// which ones each prompt gets).
 struct PromptSettings: Codable, Equatable {
+    /// Metadata extraction: what to pull out of the paper (schema appended).
+    var metadata: String
+    /// Casting the interviewer and guest (schema appended).
+    var cast: String
+    /// System prompt for the outline call.
+    var outlineSystem: String
     /// Prose planning rules appended to the outline request (before the schema).
     var outlineRules: String
+    /// Sent when the outline reply wasn't valid JSON (schema appended).
+    var outlineRepair: String
+    /// The {depthGuide} for each depth.
+    var depthSummary: String
+    var depthInDepth: String
+    var depthCustom: String
     /// Host/expert personas shown to the dialogue writer.
     var dialoguePersona: String
-    /// First-author persona for technical method monologues.
-    var monologuePersona: String
     /// "Write for the ear" style rules (shared, plain prose).
     var writeForEar: String
+    /// The request for one dialogue segment (format and source appended).
+    var segmentRequest: String
+    /// The segment's {position} in the episode.
+    var positionOnly: String
+    var positionFirst: String
+    var positionMiddle: String
+    var positionLast: String
+    /// First-author persona for technical method monologues.
+    var monologuePersona: String
+    /// Rules for each monologue block, around its {position}.
+    var monologueRules: String
+    /// The monologue block's {position}.
+    var blockOnly: String
+    var blockFirst: String
+    var blockMiddle: String
+    var blockLast: String
+
+    /// Replace each `{token}` in `template`; unknown tokens are left as typed.
+    static func fill(_ template: String, _ values: [String: String]) -> String {
+        values.reduce(template) { $0.replacingOccurrences(of: "{\($1.key)}", with: $1.value) }
+    }
 
     static let defaults = PromptSettings(
+        metadata: """
+        You extract bibliographic metadata from a research paper's raw OCR/PDF text.
+        - title: the paper's real title (clean, not the filename). If you cannot tell, return "".
+        - authors: full author names in order. Empty if unknown.
+        - affiliations: institution/department strings, deduplicated. Empty if unknown.
+        - doi: the DOI when present (e.g. "10.1016/j.jpdc.2017.07.010"), else "".
+        - tags: 2-4 CONSISTENT, broad topical research-areas so related papers group together. Prefer established field categories (e.g. "machine-learning", "nlp", "computer-vision", "algorithms", "databases", "distributed-systems", "security", "bioinformatics", "neuroscience", "quantum-computing"). Multi-word tags are kebab-case with no spaces. NEVER use paper-specific jargon, method acronyms, author names, or narrow low-consumption fragments that won't recur in other papers. Reuse the same category names you'd assign to any similar paper. Never empty unless the text is unusable.
+        """,
+        cast: """
+        You are casting a short research-podcast interview.
+        "speakers": exactly two — the interviewer (female by default, propose a realistic first name) and the interviewed scientist, who is one of the paper's real authors; use their given first name and their real gender.
+        "authors": every author exactly as listed, each with their most likely gender based on their name.
+        """,
+        outlineSystem: "You are an expert science-podcast editor. You respond with strict JSON only.",
         outlineRules: """
         You are planning a two-speaker podcast episode about a research paper. First break the paper into an ordered, numbered SECTION INDEX of its major sections (Abstract, Introduction, Related Work, Method/Model/Approach, Experiments/Evaluation, Results, Discussion, Conclusion, ... Keep the paper's own titles where clear). Then design an OUTLINE of listening segments covering the whole paper.
 
@@ -269,11 +314,12 @@ struct PromptSettings: Codable, Equatable {
         - Give each segment: a clear spoken goal (e.g. "explain the key idea of attention"), the key_points that must be hit, and a "weight" (0–1, sums used to split the ~{plannedWords} planned words so longer/more technical parts get more airtime).
         - {depthGuide}
         """,
+        outlineRepair: "Your previous reply was not valid JSON for my schema.",
+        depthSummary: "DEPTH: SUMMARY. Overview-style episode for a general audience. Summarise method and results at a high level; no section is read verbatim.",
+        depthInDepth: "DEPTH: IN-DEPTH. Cover methods and results fully and technically, so a student could re-derive the work.",
+        depthCustom: "USER-REQUESTED DEPTH:\n{note}",
         dialoguePersona: """
         You are a scriptwriter writing a faithful, detailed, two-speaker spoken podcast episode from a scientific paper. {host} is the HOST (sharp, technical, asks the questions a smart listener would, asks for intuition, signposts transitions). {expert} is the EXPERT, the paper's first author (carries the technical content, exact figures, never condescending).
-        """,
-        monologuePersona: """
-        You are {expert}, the paper's first author, explaining the method aloud to a listener who wants to re-derive it. Build a SINGLE continuous monologue that reproduces the paper's method FAITHFULLY and at FULL length — do not summarise, condense, or drop any step, definition, parameter, equation, assumption, dataset, baseline, or number. The source is raw OCR/PDF text full of extraction artifacts (broken hyphenated words, mangled symbols and equations): repair those so it reads as clean, natural spoken prose, and verbalise every equation in words. Keep the paper's own framing and every number exactly as stated. Never add content the source does not state.
         """,
         writeForEar: """
         WRITE FOR THE EAR — the text will be read aloud by a text-to-speech engine:
@@ -284,9 +330,65 @@ struct PromptSettings: Codable, Equatable {
         - Expand abbreviations the first time they appear.
         - Mostly 1–5 sentences per turn; vary rhythm with occasional short reactions ("Right.", "Wait, so...").
         - Stay faithful to the source. Never invent results, numbers or claims.
-        """
-    )
+        """,
+        segmentRequest: """
+        SEGMENT {segmentNumber} of {segmentCount} — Title: "{segmentTitle}"
+        GOAL: {goal}
+        MUST COVER (key points):
+        {keyPoints}
 
+        TARGET LENGTH: about {targetWords} words. Write a full, detailed conversation — do not rush or truncate.
+
+        OTHER SEGMENTS IN THIS EPISODE (do not repeat them):
+        {otherSegments}
+
+        ALREADY COVERED EARLIER (do not repeat these points):
+        {covered}
+
+        RECENT TURNS FROM THE EPISODE SO FAR (match their tone and continue naturally; do not re-say them):
+        {recentTurns}
+
+        POSITION IN THE EPISODE:
+        {position}
+        """,
+        positionOnly: "This is the ONLY segment of the episode. {host} opens by introducing the paper, its authors and the topic, then you have a complete conversation from start to finish, landing a satisfying ending.",
+        positionFirst: "This is the FIRST segment. {host} starts the episode by introducing the paper, its authors and the topic. Leave room for the later segments; do not jump to conclusions.",
+        positionMiddle: "This is a MIDDLE segment. {host} briefly signals this part's goal, then keep going. Do not reintroduce the paper or wrap up the episode.",
+        positionLast: "This is the LAST segment. Build on what was covered and move the conversation to a satisfying conclusion and wrap-up.",
+        monologuePersona: """
+        You are {expert}, the paper's first author, explaining the method aloud to a listener who wants to re-derive it. Build a SINGLE continuous monologue that reproduces the paper's method FAITHFULLY and at FULL length — do not summarise, condense, or drop any step, definition, parameter, equation, assumption, dataset, baseline, or number. The source is raw OCR/PDF text full of extraction artifacts (broken hyphenated words, mangled symbols and equations): repair those so it reads as clean, natural spoken prose, and verbalise every equation in words. Keep the paper's own framing and every number exactly as stated. Never add content the source does not state.
+        """,
+        monologueRules: "WRITE FOR THE EAR: plain sentences, no markdown, no headings, no stage directions.\n{position}",
+        blockOnly: "This is the only block.",
+        blockFirst: "This is block 1 (the first part).",
+        blockMiddle: "This block continues the monologue; keep the same voice and flow.",
+        blockLast: "This is the final block."
+    )
+}
+
+extension PromptSettings {
+    /// Saved prompts from older builds lack the newer fields: those take their
+    /// defaults, so a user's edits to the others survive.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self.defaults
+        func v(_ key: CodingKeys, _ fallback: String) throws -> String {
+            try c.decodeIfPresent(String.self, forKey: key) ?? fallback
+        }
+        self.init(metadata: try v(.metadata, d.metadata), cast: try v(.cast, d.cast),
+                  outlineSystem: try v(.outlineSystem, d.outlineSystem), outlineRules: try v(.outlineRules, d.outlineRules),
+                  outlineRepair: try v(.outlineRepair, d.outlineRepair),
+                  depthSummary: try v(.depthSummary, d.depthSummary), depthInDepth: try v(.depthInDepth, d.depthInDepth),
+                  depthCustom: try v(.depthCustom, d.depthCustom),
+                  dialoguePersona: try v(.dialoguePersona, d.dialoguePersona), writeForEar: try v(.writeForEar, d.writeForEar),
+                  segmentRequest: try v(.segmentRequest, d.segmentRequest),
+                  positionOnly: try v(.positionOnly, d.positionOnly), positionFirst: try v(.positionFirst, d.positionFirst),
+                  positionMiddle: try v(.positionMiddle, d.positionMiddle), positionLast: try v(.positionLast, d.positionLast),
+                  monologuePersona: try v(.monologuePersona, d.monologuePersona),
+                  monologueRules: try v(.monologueRules, d.monologueRules),
+                  blockOnly: try v(.blockOnly, d.blockOnly), blockFirst: try v(.blockFirst, d.blockFirst),
+                  blockMiddle: try v(.blockMiddle, d.blockMiddle), blockLast: try v(.blockLast, d.blockLast))
+    }
     static func load() -> PromptSettings {
         if let raw = UserDefaults.standard.string(forKey: "papertalk.prompts.json"),
            let data = raw.data(using: .utf8),

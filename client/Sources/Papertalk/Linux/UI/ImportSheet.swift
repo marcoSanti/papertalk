@@ -32,6 +32,13 @@ struct ImportSheet: View {
             if form.depth == .custom {
                 TextField("Describe the depth you want…", text: $form.depthNote)
             }
+            if form.showsLengthSlider {
+                HStack(spacing: 8) {
+                    Text("Length")
+                    Slider(value: $form.summaryMinutes, in: ImportForm.lengthRange)
+                    Text(form.lengthLabel)
+                }
+            }
             if form.showsNoLLMWarning(llmBaseURL: store.llm.baseUrl) {
                 Text(ImportForm.noLLMWarning).foregroundColor(.orange)
             }
@@ -40,7 +47,8 @@ struct ImportSheet: View {
                 Button("Cancel") { store.showUpload = false }
                 Button("Start episode") {
                     if let s = form.submission {
-                        store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote)
+                        store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
+                                     targetMinutes: s.targetMinutes)
                         store.showUpload = false
                     }
                 }

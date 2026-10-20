@@ -225,14 +225,17 @@ Still to do, in order:
   JSON object, never a top-level array**: an array gets mangled and the parse silently falls
   back to defaults (this broke the cast step for a long time).
 - Depth: only `.inDepth` may have full-length method monologues; `generateTranscript` forces
-  every other depth to dialogue. Summary aims for about 30 minutes, with a hard 35-minute word
-  ceiling enforced segment by segment. In-depth has no cap and scales with the paper. Lengths
+  every other depth to dialogue. Summary's ceiling is the import sheet's length
+  (`SummaryLength`, 5–60 min, default 35, saved as `Paper.targetMinutes` for reruns); it aims
+  for 6/7 of it, and the ceiling is enforced segment by segment. In-depth has no cap and scales with the paper. Lengths
   assume about 145 spoken words per minute at the default pace.
 - Cast: the interviewer keeps the signature voice for their gender (Heart / Michael); the guest
   gets `KokoroSpeech.guestVoice` (same gender, different voice, stable per name). Gender comes
   from the LLM (per speaker and per author); `KokoroSpeech.guessGender(fromName:)` is only a
   fallback. The sheet shows the gender so the user can correct it. Never let an unknown gender
   quietly become a female voice.
+- The cast prompt can answer **Skip audio** (`resolveCast(_:voiceAudio: false)`): the script
+  is written and the paper finishes "done" with `hasAudio == false`; Regenerate audio voices it.
 - The duplicate and cast prompts pause the pipeline on a `CheckedContinuation`. Prompts queue,
   one at a time. Only *new* imports (`existing == nil`) may be discarded by the duplicate
   prompt, because declining deletes the paper.

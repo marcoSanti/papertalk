@@ -465,6 +465,29 @@ final class FormTests: PapertalkTestCase {
         XCTAssertEqual(f.submission?.depth, .custom)
     }
 
+    func testImportFormSummaryLength() {
+        var f = ImportForm()
+        f.setFile(name: "p.pdf", data: Data(count: 10))
+        XCTAssertFalse(f.showsLengthSlider)
+        XCTAssertNil(f.submission?.targetMinutes)       // only summaries carry a length
+        f.depth = .summary
+        XCTAssertTrue(f.showsLengthSlider)
+        XCTAssertEqual(f.lengthLabel, "Up to 35 minutes")
+        XCTAssertEqual(f.submission?.targetMinutes, 35)
+        f.summaryMinutes = 12.4                          // a continuous slider snaps to 5-minute steps
+        XCTAssertEqual(f.lengthLabel, "Up to 10 minutes")
+        XCTAssertEqual(f.submission?.targetMinutes, 10)
+        XCTAssertEqual(ImportForm.lengthRange, 5...60)
+        XCTAssertEqual(ImportForm.lengthMinLabel, "5 min")
+        XCTAssertEqual(ImportForm.lengthMaxLabel, "60 min")
+        XCTAssertEqual(SummaryLength.clamped(0), 5)
+        XCTAssertEqual(SummaryLength.clamped(90), 60)
+        XCTAssertEqual(SummaryLength.clamped(57.6), 60)
+        f.depth = .custom
+        f.depthNote = "results only"
+        XCTAssertNil(f.submission?.targetMinutes)
+    }
+
     func testImportFormLLMWarning() {
         var f = ImportForm()
         XCTAssertTrue(f.showsNoLLMWarning(llmBaseURL: "  "))

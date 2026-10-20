@@ -56,6 +56,9 @@ struct Paper: Identifiable, Codable, Equatable {
     /// Persisted under "speakers". Optional so paper.json files written before
     /// the cast step existed still decode.
     var storedSpeakers: [SpeakerConfig]? = nil
+    /// Summary only: the longest the episode may run, in minutes (nil: the
+    /// default, `SummaryLength.defaultMinutes`). Kept so reruns match.
+    var targetMinutes: Int? = nil
     var progress: Double
     var duration: Double
     var progressTs: String?
@@ -71,6 +74,7 @@ struct Paper: Identifiable, Codable, Equatable {
         case progressTs = "progress_ts", stage, message
         case statusError = "status_error"
         case storedSpeakers = "speakers"
+        case targetMinutes = "target_minutes"
     }
 
     /// The episode's cast (names + chosen voices); empty when never set.

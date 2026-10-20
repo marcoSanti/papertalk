@@ -22,12 +22,14 @@ fetches a BibTeX citation for you.
 
 Next it proposes a cast: an interviewer, and one of the paper's real authors as the guest. A
 small sheet lets you rename them, pick which author is interviewed, and choose each person's
-voice. You can play a short sample of any voice before you decide.
+voice. You can play a short sample of any voice before you decide. **Skip audio** writes the
+script with those names and voices but doesn't voice it yet; **Regenerate audio** voices it later.
 
 Then the LLM plans the episode and writes the dialogue section by section, following the depth
-you picked. *In-depth* walks through the method faithfully, *Summary* stays high-level, *Custom*
-follows your own instructions (which you can save as presets), and *Direct read* skips the LLM
-entirely and reads the paper out as-is.
+you picked. *In-depth* walks through the method faithfully, *Summary* stays high-level and fits
+the length you set on the import sheet (5 to 60 minutes), *Custom* follows your own instructions
+(which you can save as presets), and *Direct read* skips the LLM entirely and reads the paper out
+as-is.
 
 Finally every line is voiced with [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), running
 on the Neural Engine through [FluidAudio](https://github.com/FluidInference/FluidAudio), or
@@ -115,8 +117,8 @@ library like a contact book: open an author to see their papers and jump to thei
 Search matches titles, authors and DOIs; start with `#` to search tags.
 
 If an episode doesn't sound right, **Regenerate audio** re-voices the existing script, and
-**Rerun episode** writes a new one from scratch. To change how the LLM writes, edit the prompts
-in **Settings → Query Prompts**.
+**Rerun episode** writes a new one from scratch. To change how the LLM writes, edit any of the
+prompts it's sent in **Settings → Query Prompts** (the reply formats are added automatically).
 
 A conversion can be stopped while it runs, with **Stop conversion** in the paper's details or its
 right-click menu. The script and any sections already voiced are kept, and **Try again** carries

@@ -138,6 +138,10 @@ struct CastForm: Equatable {
         return issue != .emptyName && issue != .duplicateName
     }
 
+    /// The second confirm button: write the script with these names, but no audio yet.
+    static let scriptOnlyTitle = "Skip audio"
+    static let scriptOnlyHelp = "Write the script without voicing it. You can voice it later with Regenerate audio."
+
     /// The confirmed cast: trimmed names with their voices.
     var cast: [SpeakerConfig] {
         zip(rows, trimmedNames).map { SpeakerConfig(name: $1, voice: $0.voice) }

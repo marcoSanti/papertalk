@@ -13,9 +13,14 @@ name: Release
 #          They carry the "DEV" stripe icon, like local builds.
 # If a stable run fails before its release is created, the tag doesn't exist
 # yet, so the next push to main simply tries the stable release again.
+#
+# Docs-only merges (Markdown) don't publish anything: the app would be the same.
+# Run it by hand (Actions → Release → Run workflow) to retry a failed release.
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
 
 permissions:
   contents: write   # create releases, upload assets, delete old dev builds
@@ -30,6 +35,8 @@ env:
 jobs:
   release:
     name: Release
+    # A manual run from another branch must not publish it.
+    if: github.ref == 'refs/heads/main'
     runs-on: macos-26
     timeout-minutes: 45
     outputs:   # for the Linux job, which adds its AppImage to this release

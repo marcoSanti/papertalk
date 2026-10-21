@@ -262,6 +262,14 @@ Still to do, in order:
   stray links) and returns nil unless all three pillars exist; the pipeline asks once more when a
   pillar has fewer than two parts. Layout is `MindMapLayout` (pure, tested); `Paper.hasMindMap`
   is optional so older records decode.
+- Connections between maps (`MindMapConnections`, `AppStore.connectMindMap`): after a map is
+  drawn, a local TF-IDF pass shortlists concept pairs with other maps (bounded: `maxPairs`,
+  `maxPapers`), and only that shortlist goes to the LLM, so the prompt doesn't grow with the
+  library. Never send whole maps. Results go on `MindMap.external` (optional). Connections are
+  two-way: save maps only through `AppStore.saveMindMap`, which writes the other side of every
+  connection involved (from a fresh read) and bumps `mindMapRevision` so open windows reload.
+  Writing `K.mindMap` directly leaves a connection one-sided. `mindMap(for:)` hides links to
+  papers no longer in the library.
 - The duplicate and cast prompts pause the pipeline on a `CheckedContinuation`. Prompts queue,
   one at a time. Only *new* imports (`existing == nil`) may be discarded by the duplicate
   prompt, because declining deletes the paper.

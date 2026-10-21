@@ -631,18 +631,43 @@ final class AppStore: ObservableObject {
         await storage.exists(Transcript.self, K.transcript(id))
     }
 
-    /// A paper's saved mind map, nil when there's none or it can't be read.
+    /// A paper's saved mind map, nil when there's none or it can't be read. Connections to papers
+    /// no longer in the library are left out.
     func mindMap(for id: String) async -> MindMap? {
-        await storage.exists(MindMap.self, K.mindMap(id))
+        guard var map = await storage.exists(MindMap.self, K.mindMap(id)) else { return nil }
+        if map.external != nil { map.external = map.externalLinks.filter { papers[$0.paperId] != nil } }
+        return map
     }
 
-    /// Save a mind map edited in its window. Queued behind earlier saves, so quick edits land in order.
-    func saveMindMap(_ id: String, _ map: MindMap) {
+    /// Bumped whenever a paper's saved mind map changes, so an open map window can reload it.
+    @Published private(set) var mindMapRevision: [String: Int] = [:]
+
+    /// Save a mind map (edited in its window, or with new connections) and keep its connections
+    /// two-way: every paper it links to, linked to before, or in `involving` gets the same
+    /// connections back, written onto a fresh read of its map. A connection whose other concept
+    /// is gone (or whose paper left the library) is dropped. Queued behind earlier saves, so quick
+    /// edits land in order.
+    func saveMindMap(_ id: String, _ map: MindMap, involving extra: Set<String> = []) {
         guard papers[id] != nil else { return }
         let previous = saveQueue
         saveQueue = Task {
             await previous?.value
-            await storage.save(map, K.mindMap(id))
+            let old = await storage.exists(MindMap.self, K.mindMap(id))
+            let involved = extra.union((old?.externalLinks ?? []).map(\.paperId)).union(map.externalLinks.map(\.paperId))
+            var others: [String: MindMap] = [:]
+            for pid in involved where pid != id && papers[pid] != nil {
+                if let m = await storage.exists(MindMap.self, K.mindMap(pid)) { others[pid] = m }
+            }
+            var mine = map
+            mine.external = map.external?.filter { others[$0.paperId]?.node($0.nodeId) != nil }
+            await storage.save(mine, K.mindMap(id))
+            var changed = [id]
+            for (pid, m) in MindMapConnections.mirrored(mine.externalLinks, of: id, title: papers[id]?.displayTitle ?? "",
+                                                        map: mine, into: others) {
+                await storage.save(m, K.mindMap(pid))
+                changed.append(pid)
+            }
+            for c in changed { mindMapRevision[c, default: 0] += 1 }
         }
     }
 
@@ -1063,6 +1088,10 @@ final class AppStore: ObservableObject {
         }
         papers[id] = paper
         pdfStored(id)
+        // Its map's connections to papers in this library are added on their side too.
+        if let map = mindMap.flatMap({ try? JSONDecoder().decode(MindMap.self, from: $0) }), !map.externalLinks.isEmpty {
+            saveMindMap(id, map)
+        }
         selectedId = id
         show(L("Imported “{0}”", paper.displayTitle))
         return id
@@ -1211,6 +1240,7 @@ final class AppStore: ObservableObject {
             let map = try await pipeline.mindMap(title: title, text: text)
             await storage.save(map, K.mindMap(id))
             optimistic(id, { $0.hasMindMap = true })
+            await connectMindMap(id, map: map, title: title, pipeline: pipeline)
             return true
         } catch {
             if Task.isCancelled { return false }
@@ -1218,6 +1248,33 @@ final class AppStore: ObservableObject {
             show(L("Couldn't draw the mind map: {0}", error.localizedDescription))
             return false
         }
+    }
+
+    /// Find how a newly drawn map connects to the library's other maps (`MindMapConnections`), save
+    /// the connections on it, and mirror them onto the other papers' maps (replacing what those
+    /// had for this paper). Best-effort: a failure is logged and the map stays as drawn.
+    private func connectMindMap(_ id: String, map: MindMap, title: String, pipeline: LocalPipeline) async {
+        var others: [String: MindMap] = [:]
+        for p in papers.values where p.id != id && p.hasMindMap == true {
+            if let m = await mindMap(for: p.id) { others[p.id] = m }
+        }
+        guard !others.isEmpty else { return }
+        let candidates = MindMapConnections.candidates(for: map, among: others)
+        var links: [MindMap.ExternalLink] = []
+        if !candidates.isEmpty {
+            do {
+                links = try await pipeline.mindMapConnections(title: title, map: map, candidates: candidates,
+                                                              others: others, titles: papers.mapValues(\.displayTitle))
+            } catch {
+                if Task.isCancelled { return }
+                // Carry on with none: the old connections pointed at the previous drawing's concepts.
+                appendLog("WARN: connecting the mind map to other papers failed: \(error.localizedDescription)", paper: id)
+            }
+        }
+        var mine = map
+        mine.external = links.isEmpty ? nil : links
+        // Papers still holding connections from an earlier drawing of this map lose them.
+        saveMindMap(id, mine, involving: Set(others.filter { $0.value.externalLinks.contains { $0.paperId == id } }.keys))
     }
 
     /// Ask the LLM for the paper's metadata again (fills only empty fields).

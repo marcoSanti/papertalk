@@ -290,6 +290,8 @@ struct PromptSettings: Codable, Equatable {
     var mindMap: String
     /// Sent when the mind map's three main concepts weren't each broken down.
     var mindMapRetry: String
+    /// Which shortlisted concept pairs across papers really relate (schema appended).
+    var mindMapConnections: String
     /// System prompt for the outline call.
     var outlineSystem: String
     /// Prose planning rules appended to the outline request (before the schema).
@@ -359,6 +361,12 @@ struct PromptSettings: Codable, Equatable {
         - Use only what the paper states.
         """,
         mindMapRetry: "Your mind map must break each of the three main concepts (problem, method, evidence) into at least two more specific concepts. Return the whole mind map again.",
+        mindMapConnections: """
+        You connect a research paper's concepts to concepts from other papers in the same library. Each numbered pair below joins a concept of THIS PAPER to a concept of another paper; they were picked only because they share words, so many are not really related.
+        - Keep a pair only when the two concepts are genuinely connected: the same technique, dataset, metric or problem, one builds on or extends the other, they compete, or one contradicts the other.
+        - label: how the concept of this paper relates to the other one, in 1 to 3 words (for example "same dataset", "extends", "alternative to").
+        - Leave out every pair that only shares generic words. Returning no pairs is fine.
+        """,
         outlineSystem: "You are an expert science-podcast editor. You respond with strict JSON only.",
         outlineRules: """
         You are planning a two-speaker podcast episode about a research paper. First break the paper into an ordered, numbered SECTION INDEX of its major sections (Abstract, Introduction, Related Work, Method/Model/Approach, Experiments/Evaluation, Results, Discussion, Conclusion, ... Keep the paper's own titles where clear). Then design an OUTLINE of listening segments covering the whole paper.
@@ -439,6 +447,7 @@ extension PromptSettings {
         }
         self.init(metadata: try v(.metadata, d.metadata), cast: try v(.cast, d.cast),
                   mindMap: try v(.mindMap, d.mindMap), mindMapRetry: try v(.mindMapRetry, d.mindMapRetry),
+                  mindMapConnections: try v(.mindMapConnections, d.mindMapConnections),
                   outlineSystem: try v(.outlineSystem, d.outlineSystem), outlineRules: try v(.outlineRules, d.outlineRules),
                   outlineRepair: try v(.outlineRepair, d.outlineRepair),
                   depthSummary: try v(.depthSummary, d.depthSummary), depthInDepth: try v(.depthInDepth, d.depthInDepth),

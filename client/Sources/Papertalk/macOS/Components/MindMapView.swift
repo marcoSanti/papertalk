@@ -13,6 +13,8 @@ struct MindMapView: View {
     let title: String
     /// Saves an edited map; nil makes the map read-only.
     let onSave: ((MindMap) -> Void)?
+    /// Opens another paper's mind map (from one of its concepts on this map); nil hides the button.
+    let onOpenPaper: ((String) -> Void)?
     /// Whether the side panel shows the editing controls.
     @State private var editing = false
     /// The selected concept's text being edited, or the selected link's label (in `label`).
@@ -65,11 +67,12 @@ struct MindMapView: View {
 
     /// `selected` / `selectedEdge` open with a concept or an edge already selected (previews, tests).
     init(map: MindMap, title: String, selected: String? = nil, selectedEdge: String? = nil,
-         onSave: ((MindMap) -> Void)? = nil) {
+         onSave: ((MindMap) -> Void)? = nil, onOpenPaper: ((String) -> Void)? = nil) {
         _map = State(initialValue: map)
         _drawn = State(initialValue: Drawn(map))
         self.title = title
         self.onSave = onSave
+        self.onOpenPaper = onOpenPaper
         _selection = State(initialValue: selected.map { .node($0) } ?? selectedEdge.map { .edge($0) })
     }
 
@@ -77,7 +80,7 @@ struct MindMapView: View {
     private func edit(_ change: (inout MindMap) -> Void) {
         change(&map)
         drawn = Drawn(map)
-        if case .node(let id) = selection, map.node(id) == nil { selection = nil }
+        if case .node(let id) = selection, map.node(id) == nil, MindMapPresentation.external(map, id) == nil { selection = nil }
         if case .edge(let id) = selection, !layout.selectableEdges.contains(where: { $0.id == id }) { selection = nil }
         loadDraft()
         onSave?(map)
@@ -267,26 +270,36 @@ struct MindMapView: View {
         // Nothing selected means the paper is: its summary is the panel's default.
         let isSelected = selection == .node(id) || (selection == nil && id == MindMapLayout.centerId)
         let shape = RoundedRectangle(cornerRadius: tier == .detail ? 10 : 14, style: .continuous)
+        let external = tier == .external ? MindMapPresentation.external(map, id) : nil
         Button {
-            withAnimation(.snappy) { selection = node == nil ? nil : .node(id) }
+            withAnimation(.snappy) { selection = node == nil && external == nil ? nil : .node(id) }
         } label: {
             Group {
+                if let external {
+                    VStack(spacing: 1) {
+                        Text(external.label).lineLimit(1)
+                        Text(external.paperTitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 // The main concepts' icon sits inline, so long names keep both lines.
-                if tier == .main, let node {
+                } else if tier == .main, let node {
                     Text("\(Image(systemName: MindMapPresentation.branchIcon(node.branch))) \(node.label)")
                 } else {
                     Text(node?.label ?? title)
                 }
             }
-            .font(tier == .detail ? .callout.weight(.medium) : .callout.weight(.bold))
+            .font(tier == .detail || tier == .external ? .callout.weight(.medium) : .callout.weight(.bold))
             .lineLimit(tier == .paper ? 3 : 2)
             .multilineTextAlignment(.center)
-            .foregroundStyle(tier == .detail ? Color.primary : Color.white)
+            .foregroundStyle(tier == .detail || tier == .external ? Color.primary : Color.white)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(width: MindMapLayout.nodeWidth - 6, height: MindMapLayout.nodeHeight - 4)
-            .background(shape.fill(tier == .detail ? AnyShapeStyle(color.opacity(0.16)) : AnyShapeStyle(color.gradient)))
+            .background(shape.fill(tier == .external ? AnyShapeStyle(Color.secondary.opacity(0.10))
+                                   : tier == .detail ? AnyShapeStyle(color.opacity(0.16)) : AnyShapeStyle(color.gradient)))
             .background(shape.fill(Color(nsColor: .windowBackgroundColor)))
+            // Another paper's concept: a dashed grey outline, so it reads as outside this map.
+            .overlay(shape.strokeBorder(Color.secondary.opacity(tier == .external && !isSelected ? 0.6 : 0),
+                                        style: StrokeStyle(lineWidth: 1.2, dash: [4, 3])))
             .overlay(shape.strokeBorder(isSelected ? Color.primary : color.opacity(tier == .detail ? 0.7 : 0),
                                         lineWidth: isSelected ? 2.5 : 1))
             // Only the selected node gets a shadow: one per node was costly to draw.
@@ -294,7 +307,7 @@ struct MindMapView: View {
             .contentShape(shape)
         }
         .buttonStyle(.plain)
-        .help(node?.label ?? title)
+        .help(external.map { "\($0.label) — \($0.paperTitle)" } ?? node?.label ?? title)
     }
 
     /// Tree edges take their child's branch colour; links are grey.
@@ -348,7 +361,9 @@ struct MindMapView: View {
     @ViewBuilder
     private var panel: some View {
         ScrollView {
-            if let id = selectedNode, let node = nodes[id] {
+            if let id = selectedNode, let external = MindMapPresentation.external(map, id) {
+                externalDetail(external)
+            } else if let id = selectedNode, let node = nodes[id] {
                 if editing { nodeEditor(node) } else { detail(node) }
             } else if let e = selectedEdge, let d = MindMapPresentation.edgeDetail(map, e) {
                 edgeDetail(d)
@@ -393,6 +408,45 @@ struct MindMapView: View {
                 }
             }
             Text(MindMapPresentation.hint).font(.caption).foregroundStyle(.tertiary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Another paper's concept: which paper, how this map's concepts connect to it, and a way there.
+    private func externalDetail(_ e: MindMapPresentation.ExternalNode) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label(MindMapPresentation.externalHeading, systemImage: "arrow.up.right.square")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(e.label).font(.title3.weight(.semibold)).textSelection(.enabled)
+            Text(e.paperTitle).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+            if let onOpenPaper {
+                Button(MindMapPresentation.openOtherMap) { onOpenPaper(e.paperId) }
+                    .buttonStyle(.borderedProminent)
+            }
+            Divider()
+            SectionLabel(title: MindMapPresentation.connectionsTitle, systemImage: "point.3.connected.trianglepath.dotted")
+            ForEach(e.connections) { c in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Button { withAnimation(.snappy) { selection = .node(c.id) } } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(c.label).font(.callout)
+                            Text(c.relation).font(.caption).foregroundStyle(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Spacer(minLength: 0)
+                    if editing {
+                        Button(role: .destructive) {
+                            edit { $0.deleteExternal(from: c.id, paperId: e.paperId, nodeId: e.nodeId) }
+                        } label: { Image(systemName: "trash") }
+                        .buttonStyle(.borderless)
+                        .help(L("Delete connection"))
+                    }
+                }
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -56,6 +56,10 @@ struct MindMapLayout: Equatable {
 
     /// The paper's node id; "§" keeps it from clashing with the LLM's ids.
     static let centerId = "§paper"
+    /// The node id of another paper's concept, shown on the outer ring.
+    static func externalId(paperId: String, nodeId: String) -> String { "§ext:\(paperId):\(nodeId)" }
+    /// Whether `id` is another paper's concept.
+    static func isExternal(_ id: String) -> Bool { id.hasPrefix("§ext:") }
     /// Node box the layout leaves room for.
     static let nodeWidth = 150.0, nodeHeight = 56.0
     /// Room left for a link's label tag.
@@ -171,6 +175,28 @@ struct MindMapLayout: Equatable {
             + map.nodes.compactMap { n in n.parent.map { Edge(from: $0, to: n.id, label: nil) } }
             + map.links.map { Edge(from: $0.from, to: $0.to, label: $0.label) }
 
+        // Other papers' concepts sit on a ring of their own outside the map, each towards the
+        // concepts it connects to, pushed apart so their boxes don't touch.
+        var outer: [String: [String]] = [:]
+        for l in map.externalLinks where angle[l.from] != nil {
+            outer[Self.externalId(paperId: l.paperId, nodeId: l.nodeId), default: []].append(l.from)
+            edges.append(Edge(from: l.from, to: Self.externalId(paperId: l.paperId, nodeId: l.nodeId), label: l.label))
+        }
+        if !outer.isEmpty {
+            let step = Self.nodeWidth + 30
+            let r = max((radius.values.max() ?? Self.firstRing) + Self.ringGap, Double(outer.count) * step / (2 * .pi))
+            let gap = step / r * 180 / .pi
+            var placed = outer.map { id, froms -> (String, Double) in
+                let x = froms.reduce(0) { $0 + cos((angle[$1] ?? 0) * .pi / 180) }
+                let y = froms.reduce(0) { $0 + sin((angle[$1] ?? 0) * .pi / 180) }
+                return (id, atan2(y, x) * 180 / .pi)
+            }.sorted { $0.1 != $1.1 ? $0.1 < $1.1 : $0.0 < $1.0 }
+            for i in placed.indices.dropFirst() where placed[i].1 < placed[i - 1].1 + gap {
+                placed[i].1 = placed[i - 1].1 + gap
+            }
+            for (id, a) in placed { raw[id] = Point(x: r * cos(a * .pi / 180), y: r * sin(a * .pi / 180)) }
+        }
+
         // The canvas holds every node, and every link's curve and label: a link
         // bows outward, and its furthest point is its handle.
         positions = raw
@@ -255,6 +281,9 @@ enum MindMapPresentation {
             let other = l.from == id ? l.to : l.from
             if let n = map.node(other) { out.append(Connection(id: n.id, label: n.label, relation: l.label.isEmpty ? L("Linked") : l.label)) }
         }
+        out += map.externalLinks.filter { $0.from == id }.map {
+            Connection(id: MindMapLayout.externalId(paperId: $0.paperId, nodeId: $0.nodeId), label: $0.nodeLabel, relation: $0.label)
+        }
         return out
     }
 
@@ -279,10 +308,36 @@ enum MindMapPresentation {
     /// An edge's tooltip, read as a sentence: "Attention includes Softmax".
     static func edgeHelp(_ d: EdgeDetail) -> String { "\(d.top.label) \(d.relation) \(d.bottom.label)" }
 
-    /// A node's tier, for its look: the paper, a main concept, or a detail.
-    enum Tier { case paper, main, detail }
+    /// A node's tier, for its look: the paper, a main concept, a detail, or another paper's concept.
+    enum Tier { case paper, main, detail, external }
     /// Which tier a node is in.
     static func tier(_ layout: MindMapLayout, _ id: String) -> Tier {
-        id == MindMapLayout.centerId ? .paper : layout.depth[id] == 1 ? .main : .detail
+        if MindMapLayout.isExternal(id) { return .external }
+        return id == MindMapLayout.centerId ? .paper : layout.depth[id] == 1 ? .main : .detail
     }
+
+    /// Another paper's concept on the map: which paper, the concept, and how this map's concepts
+    /// connect to it.
+    struct ExternalNode: Equatable {
+        let paperId: String
+        let paperTitle: String
+        /// The concept's id in the other paper's map.
+        let nodeId: String
+        let label: String
+        /// This map's concepts that connect to it, with how.
+        let connections: [Connection]
+    }
+
+    /// The other paper's concept drawn as `id`, nil if `id` isn't one.
+    static func external(_ map: MindMap, _ id: String) -> ExternalNode? {
+        let links = map.externalLinks.filter { MindMapLayout.externalId(paperId: $0.paperId, nodeId: $0.nodeId) == id }
+        guard let first = links.first else { return nil }
+        let connections = links.compactMap { l in map.node(l.from).map { Connection(id: $0.id, label: $0.label, relation: l.label) } }
+        return ExternalNode(paperId: first.paperId, paperTitle: first.paperTitle, nodeId: first.nodeId, label: first.nodeLabel, connections: connections)
+    }
+
+    /// The side panel's heading for another paper's concept.
+    static var externalHeading: String { L("In another paper") }
+    /// The button that opens the other paper's mind map.
+    static var openOtherMap: String { L("Open its mind map") }
 }

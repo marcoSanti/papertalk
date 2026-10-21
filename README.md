@@ -35,6 +35,10 @@ ideas. It's a native macOS app written in SwiftUI.
   description, or a connection to see the two concepts it joins. **Edit** (by the zoom controls)
   lets you rename, describe, add, move and delete concepts, and add, name and delete connections;
   changes are saved as you make them. The three main concepts can be changed but not deleted.
+  When a map is drawn, Papertalk also looks for concepts it shares with your other papers' maps
+  and shows them as grey, dashed nodes around the edge; click one to see the other paper, and
+  **Open its mind map** to switch the window to that paper's map. A connection always shows on both papers' maps: deleting it (or its concept) on one
+  removes it from the other, and an open map window updates when the other side changes.
 - **Metadata and citations done for you.** Title, authors, affiliations, DOI and tags come from
   the paper itself, and a DOI fetches a BibTeX citation. Everything can be edited.
 - **A library you can find things in.** Covers in a grid or a list, favourites and tags in the

@@ -39,5 +39,42 @@ final class MindMapWindowTests: PapertalkTestCase {
         XCTAssertFalse(again === win)
         again.close()
     }
+
+    func testAConnectedMapReplacesTheOneInTheSameWindow() async throws {
+        _ = NSApplication.shared
+        let storage = LocalStorage(root: Fixtures.tempDir())
+        let map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply()))
+        for (id, title) in [("sa", "Swap paper A"), ("sb", "Swap paper B")] {
+            var p = Fixtures.paper(id: id, title: title)
+            p.hasMindMap = true
+            await storage.save(p, K.paper(id))
+            await storage.save(map, K.mindMap(id))
+        }
+        let store = AppStore(storage: storage, speech: FakeSpeechBackend())
+        await waitUntil { store.papers.count == 2 }
+
+        MindMapWindow.open(paperId: "sa", store: store)
+        await waitUntil { !self.windows("Swap paper A").isEmpty }
+        let win = try XCTUnwrap(windows("Swap paper A").first)
+        defer { win.close() }
+
+        MindMapWindow.openConnected("sb", from: "sa", store: store)
+        await waitUntil { win.title.hasSuffix("Swap paper B") }
+        XCTAssertEqual(win.title, "Mind map — Swap paper B")
+        XCTAssertEqual(windows("Swap paper B").count, 1, "no second window")
+        await waitUntil { (win.contentView?.alphaValue ?? 0) > 0.99 }
+        XCTAssertEqual(win.contentView?.alphaValue ?? 0, 1, accuracy: 0.01, "faded back in")
+
+        // A is free again: opening it makes its own window; B stays where it is.
+        MindMapWindow.open(paperId: "sa", store: store)
+        await waitUntil { !self.windows("Swap paper A").isEmpty }
+        let other = try XCTUnwrap(windows("Swap paper A").first)
+        XCTAssertFalse(other === win)
+        other.close()
+        // Opening B again from anywhere brings this window forward rather than swapping.
+        MindMapWindow.openConnected("sb", from: "sa", store: store)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(windows("Swap paper B").count, 1)
+    }
 }
 #endif

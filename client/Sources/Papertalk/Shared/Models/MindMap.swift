@@ -36,6 +36,21 @@ struct MindMap: Codable, Equatable {
         var label: String
     }
 
+    /// A relation from one of this map's concepts to a concept in another paper's map, found by
+    /// `MindMapConnections`. The other side's names are copied in, so the map draws without
+    /// reading the other paper's file.
+    struct ExternalLink: Codable, Equatable {
+        /// The concept in this map.
+        var from: String
+        var paperId: String
+        var paperTitle: String
+        /// The concept in the other paper's map.
+        var nodeId: String
+        var nodeLabel: String
+        /// How the two relate (e.g. "same dataset").
+        var label: String
+    }
+
     /// Every concept, the three branch roots included.
     var nodes: [Node]
     /// Cross-branch relations; duplicates and tree edges are dropped by `parse`.
@@ -43,6 +58,10 @@ struct MindMap: Codable, Equatable {
     /// The paper in a few plain sentences (its abstract restated). nil in maps
     /// drawn before summaries, which still decode.
     var summary: String? = nil
+    /// Connections to other papers' maps; nil in maps drawn before them, which still decode.
+    var external: [ExternalLink]? = nil
+    /// Connections to other papers' maps, none when there are none.
+    var externalLinks: [ExternalLink] { external ?? [] }
 
     /// The branch's main concept.
     func root(_ branch: Branch) -> Node? { nodes.first { $0.branch == branch && $0.parent == nil } }
@@ -191,6 +210,7 @@ extension MindMap {
         let gone = subtree(id)
         nodes.removeAll { gone.contains($0.id) }
         links.removeAll { gone.contains($0.from) || gone.contains($0.to) }
+        external?.removeAll { gone.contains($0.from) }
     }
 
     /// Where `id` can be moved: any concept outside its own subtree, except its current parent.
@@ -232,5 +252,10 @@ extension MindMap {
     /// Remove a link.
     mutating func deleteLink(from: String, to: String) {
         links.removeAll { $0.from == from && $0.to == to }
+    }
+
+    /// Remove a connection to another paper's concept.
+    mutating func deleteExternal(from: String, paperId: String, nodeId: String) {
+        external?.removeAll { $0.from == from && $0.paperId == paperId && $0.nodeId == nodeId }
     }
 }

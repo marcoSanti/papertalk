@@ -52,7 +52,7 @@ final class AppStore: ObservableObject {
     }
 
     /// Every paper in the library, by id. Records are saved through `persist`.
-    @Published var papers: [String: Paper] = [:]
+    @Published var papers: [String: Paper] = [:] { didSet { authorIndex = nil } }
     /// The paper shown in the details panel.
     @Published var selectedId: String?
     /// Global audio player shown in the bottom status bar (iTunes-style).
@@ -251,6 +251,9 @@ final class AppStore: ObservableObject {
     let notifier = Notifier()
     /// Papers are voiced one at a time: concurrent bakes ran small Macs out of memory.
     let audioGate = SerialGate()
+    /// Imports read their PDF and write their script one at a time, in arrival order; several at
+    /// once crashed the app. A paper leaves it for `audioGate`, so the next script overlaps its voicing.
+    let importGate = SerialGate()
 
     // filtering
     @Published var view: ViewMode = .all
@@ -375,17 +378,21 @@ final class AppStore: ObservableObject {
         showOnboarding = false
     }
 
+    /// The cover `loadThumbnail` already rendered, if any (no loading).
+    func cachedThumbnail(_ id: String) -> NSImage? { thumbCache[id] }
+
     /// Renders the first page of a stored PDF as a cached thumbnail, or nil when
     /// the PDF is missing/unreadable (caller falls back to a placeholder).
     func loadThumbnail(_ id: String) async -> NSImage? {
         if let cached = thumbCache[id] { return cached }
+        // Rendered off the main thread: a big library drawing its covers froze scrolling.
         guard let data = try? await storage.read(K.pdf(id)),
-              let image = Self.thumbnail(of: data) else { return nil }
+              let image = await Task.detached(operation: { Self.thumbnail(of: data) }).value else { return nil }
         thumbCache[id] = image
         return image
     }
 
-    private static func thumbnail(of data: Data, width: CGFloat = 280) -> NSImage? {
+    nonisolated private static func thumbnail(of data: Data, width: CGFloat = 280) -> NSImage? {
         #if os(Linux)
         return PDFDocument.coverPNG(of: data, width: width * 2).map(NSImage.init(png:))
         #else
@@ -609,14 +616,20 @@ final class AppStore: ObservableObject {
 
     /// Each author (whitespace-normalised) with their papers, newest first.
     var papersByAuthor: [String: [Paper]] {
+        // Views ask for it once per author row on every redraw: build it once per library change.
+        if let cached = authorIndex { return cached }
         var out: [String: [Paper]] = [:]
         for p in papers.values {
             for a in Set(p.authors.map(AuthorName.clean)) where !a.isEmpty {
                 out[a, default: []].append(p)
             }
         }
-        return out.mapValues { $0.sorted { ($0.createdIso ?? "") > ($1.createdIso ?? "") } }
+        let index = out.mapValues { $0.sorted { ($0.createdIso ?? "") > ($1.createdIso ?? "") } }
+        authorIndex = index
+        return index
     }
+    /// `papersByAuthor` as last built; cleared whenever `papers` changes.
+    private var authorIndex: [String: [Paper]]?
 
     /// Drill the library into one author's papers.
     func showAuthor(_ name: String) {
@@ -676,11 +689,12 @@ final class AppStore: ObservableObject {
         Task {
             let ids = (try? await storage.list()) ?? []
             let seen = Set(ids)
-            for id in ids {
-                if papers[id] == nil, let p: Paper = await storage.exists(Paper.self, K.paper(id)) {
-                    papers[id] = p
-                }
+            // One change for the whole scan: a redraw per paper made opening a big library crawl.
+            var loaded: [String: Paper] = [:]
+            for id in ids where papers[id] == nil {
+                if let p: Paper = await storage.exists(Paper.self, K.paper(id)) { loaded[id] = p }
             }
+            papers.merge(loaded) { current, _ in current }
             for id in Array(papers.keys) where !seen.contains(id) {
                 if selectedId == id { selectedId = nil }
                 papers.removeValue(forKey: id)
@@ -1208,7 +1222,7 @@ final class AppStore: ObservableObject {
         Task {
             defer { endMindMapJob(id) }
             guard let pdfData = try? await storage.read(K.pdf(id)) else { show(L("No PDF to read")); return }
-            let text = LocalPipeline.extractText(pdfData)
+            let text = await Task.detached { LocalPipeline.extractText(pdfData) }.value
             guard !text.isEmpty else { show(L("Could not read PDF text")); return }
             updateMindMapJob(id, progress: 0.08, message: L("Asking the LLM for the paper's key concepts…"))
             // Cancelled when the drawing ends (below), so holding the store is fine.
@@ -1284,7 +1298,7 @@ final class AppStore: ObservableObject {
             guard let pdfData = try? await storage.read(K.pdf(id)) else {
                 appendLog("ERROR: no PDF on disk to extract metadata from", paper: id); show(L("No PDF to read")); return
             }
-            let text = LocalPipeline.extractText(pdfData)
+            let text = await Task.detached { LocalPipeline.extractText(pdfData) }.value
             guard !text.isEmpty else { show(L("Could not read PDF text")); return }
             _ = await extractMetaLLM(id, text: text, fallback: papers[id]?.displayTitle ?? "Untitled")
         }
@@ -1578,14 +1592,26 @@ final class AppStore: ObservableObject {
         if existing == nil, let scriptLanguage, scriptLanguage != .english { rec.scriptLanguage = scriptLanguage.rawValue }
         papers[id] = rec
         selectedId = id
-        await storage.save(rec, K.paper(id))
         // Store the PDF right away: the record already says hasPdf, and the
-        // library shows its cover as soon as the file exists.
-        if let pdf {
-            try? await storage.write(K.pdf(id), pdf)
-            pdfStored(id)
+        // library shows its cover as soon as the file exists. Saved beside the
+        // queue, so the place in line is taken before anything is awaited.
+        let saved = Task { [rec] in
+            await storage.save(rec, K.paper(id))
+            if let pdf {
+                try? await storage.write(K.pdf(id), pdf)
+                pdfStored(id)
+            }
         }
         appendLog("Queued: \(name)", paper: id)
+
+        if importGate.isBusy { updateRec(id) { $0.state = "queued"; $0.message = L("Queued") } }
+        let admitted = await importGate.acquire()
+        await saved.value
+        guard admitted else { return }
+        var holdsGate = true
+        defer { if holdsGate { importGate.release() } }
+        // Hand the queue to the next import before voicing (that waits on `audioGate`).
+        func leaveQueue() { importGate.release(); holdsGate = false }
 
         let base = llm.baseUrl
         let key = llm.resolvedKey()
@@ -1610,7 +1636,7 @@ final class AppStore: ObservableObject {
 
         updateRec(id) { $0.state = "running"; $0.stage = "extract"; $0.progress = 0.02; $0.message = L("Extracting text…") }
         appendLog("Extracting PDF text…", paper: id)
-        let text = LocalPipeline.extractText(pdfData)
+        let text = await Task.detached { LocalPipeline.extractText(pdfData) }.value
         guard !text.isEmpty else {
             updateRec(id) { $0.state = "error"; $0.statusError = L("Could not read PDF text") }; appendLog("ERROR: Could not read PDF text", paper: id); return
         }
@@ -1627,6 +1653,7 @@ final class AppStore: ObservableObject {
                                     segments: [Transcript.Segment(title: "Paper", turns: turns)])
             await storage.save(direct, K.transcript(id))
             updateRec(id) { $0.stage = "audio"; $0.progress = 0.78; $0.message = L("Synthesizing audio…") }
+            leaveQueue()
             if let failure = await bakeAudio(id, direct, from: 0.80, to: 1.0) {
                 await storage.save(direct, K.transcript(id))
                 await failAudio(id, failure)
@@ -1720,6 +1747,7 @@ final class AppStore: ObservableObject {
                 return
             }
             updateRec(id) { $0.stage = "audio"; $0.progress = 0.78; $0.message = L("Synthesizing audio…") }
+            leaveQueue()
             if let failure = await bakeAudio(id, script, from: 0.80, to: 1.0) {
                 await failAudio(id, failure)
                 return

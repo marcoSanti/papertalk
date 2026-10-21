@@ -77,5 +77,32 @@ final class SerialGateTests: PapertalkTestCase {
     func testStoreSharesOneGate() async {
         let store = AppStore(storage: LocalStorage(root: Fixtures.tempDir()))
         XCTAssertFalse(store.audioGate.isBusy)
+        XCTAssertFalse(store.importGate.isBusy)
+    }
+
+    /// Imports started together go through the pipeline one at a time, in the order they were
+    /// started: the second stays queued (no LLM call) until the first leaves the queue.
+    func testImportsQueueInOrder() async {
+        let storage = LocalStorage(root: Fixtures.tempDir())
+        await storage.save(Fixtures.paper(id: "seed"), K.paper("seed"))
+        let store = AppStore(storage: storage, speech: FakeSpeechBackend())
+        await waitUntil { store.papers["seed"] != nil }
+        store.llm.baseUrl = "http://mock.local/v1"
+        MockLLM.install { _ in (200, MockLLM.chatReply("{}")) }
+
+        let pdf = Fixtures.pdf(lines: ["Some paper text"])
+        for name in ["queue-1.pdf", "queue-2.pdf", "queue-3.pdf"] { store.upload(pdf, filename: name, depth: .summary, depthNote: "") }
+        func paper(_ name: String) -> Paper? { store.papers.values.first { $0.filename == name } }
+
+        for name in ["queue-1.pdf", "queue-2.pdf", "queue-3.pdf"] {
+            await waitUntil { store.pendingCast != nil }
+            XCTAssertEqual(store.pendingCast?.paperId, paper(name)?.id)
+            for later in ["queue-1.pdf", "queue-2.pdf", "queue-3.pdf"].drop(while: { $0 != name }).dropFirst() {
+                XCTAssertEqual(paper(later)?.state, "queued")
+            }
+            store.cancelCast()
+        }
+        await waitUntil { !store.importGate.isBusy }
+        XCTAssertEqual(store.papers.count, 1)
     }
 }

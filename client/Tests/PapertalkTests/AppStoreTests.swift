@@ -731,4 +731,86 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: out.path))
     }
     #endif
+
+    // MARK: Paper bundles
+
+    func testExportedPaperImportsBackWithAudioAndWithoutThePDF() async throws {
+        let p = Fixtures.paper(id: UUID().uuidString, title: "Waves", authors: ["Ada Lovelace"])
+        await storage.save(Fixtures.transcript([("Jordan", "Hi"), ("Ada", "Hello")]), K.transcript(p.id))
+        try await storage.write(K.pdf(p.id), Data("%PDF".utf8))
+        try await storage.write(K.turn(p.id, 0), Fixtures.silentWAV(seconds: 0.1))
+        try await storage.write(K.turn(p.id, 1), Fixtures.silentWAV(seconds: 0.1))
+        await storage.save(AudioManifest(durations: [0.1, 0.1]), K.audioManifest(p.id))
+        let store = await makeStore([p])
+        let bundle = Fixtures.tempDir().appendingPathComponent("Waves.papertalk")
+
+        await store.exportPaper(p.id, to: bundle, includePDF: false)
+        XCTAssertEqual(store.toast, "Exported “Waves.papertalk”")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("source.pdf").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("turns/1.wav").path))
+
+        // The original is still in the library, so the copy gets its own id.
+        let id = await store.importPaper(from: bundle)
+        let copy = try XCTUnwrap(id.flatMap { store.papers[$0] })
+        XCTAssertNotEqual(copy.id, p.id)
+        XCTAssertEqual(copy.title, "Waves")
+        XCTAssertEqual(copy.authors, ["Ada Lovelace"])
+        XCTAssertTrue(copy.hasScript)
+        XCTAssertTrue(copy.hasAudio)
+        XCTAssertFalse(copy.hasPdf)
+        XCTAssertEqual(store.selectedId, copy.id)
+        let baked = await store.loadBakedAudio(for: copy.id)
+        XCTAssertEqual(baked?.count, 2)
+        let onDisk = await onDisk(copy.id)
+        XCTAssertEqual(onDisk?.title, "Waves")
+    }
+
+    func testImportKeepsAFreeIdAndDropsIncompleteAudio() async throws {
+        let id = UUID().uuidString
+        let bundle = Fixtures.tempDir().appendingPathComponent("x.papertalk")
+        var p = Fixtures.paper(id: id, state: "running", hasAudio: true)
+        p.progress = 0.4
+        try FileManager.default.createDirectory(at: bundle.appendingPathComponent("turns"), withIntermediateDirectories: true)
+        try JSONEncoder().encode(p).write(to: bundle.appendingPathComponent("paper.json"))
+        try JSONEncoder().encode(Fixtures.transcript([("A", "Hi")])).write(to: bundle.appendingPathComponent("transcript.json"))
+        try JSONEncoder().encode(AudioManifest(durations: [1, 1])).write(to: bundle.appendingPathComponent("audio.json"))
+        try Fixtures.silentWAV(seconds: 0.1).write(to: bundle.appendingPathComponent("turns/0.wav"))   // turn 1 missing
+        let store = await makeStore()
+
+        let imported = await store.importPaper(from: bundle)
+
+        XCTAssertEqual(imported, id)
+        let paper = try XCTUnwrap(store.papers[id])
+        XCTAssertEqual(paper.state, "done", "never resumed as a running import")
+        XCTAssertEqual(paper.progress, 0)
+        XCTAssertFalse(paper.hasAudio)
+        let manifest = await storage.exists(AudioManifest.self, K.audioManifest(id))
+        XCTAssertNil(manifest)
+    }
+
+    func testImportRejectsWhatIsntAPaper() async throws {
+        let store = await makeStore()
+        let empty = Fixtures.tempDir().appendingPathComponent("empty.papertalk")
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        let none = await store.importPaper(from: empty)
+        XCTAssertNil(none)
+        XCTAssertEqual(store.toast, "“empty.papertalk” isn't a Papertalk paper.")
+
+        let bare = Fixtures.tempDir().appendingPathComponent("bare.papertalk")
+        try FileManager.default.createDirectory(at: bare, withIntermediateDirectories: true)
+        try JSONEncoder().encode(Fixtures.paper()).write(to: bare.appendingPathComponent("paper.json"))
+        let nothing = await store.importPaper(from: bare)
+        XCTAssertNil(nothing)
+        XCTAssertEqual(store.toast, "“bare.papertalk” has neither a script nor a PDF to import.")
+        XCTAssertTrue(store.papers.isEmpty)
+    }
+
+    func testOpenFilesSendsPDFsToTheImportSheet() async {
+        let store = await makeStore()
+        XCTAssertFalse(store.openFiles([URL(fileURLWithPath: "/tmp/notes.txt")]))
+        XCTAssertFalse(store.showUpload)
+        XCTAssertTrue(store.openFiles([URL(fileURLWithPath: "/tmp/a.pdf")]))
+        XCTAssertTrue(store.showUpload)
+        XCTAssertEqual(store.pendingUploadURL?.lastPathComponent, "a.pdf")
+    }
 }

@@ -12,6 +12,8 @@ extension Color {
 @main
 struct PapertalkApp: App {
     @StateObject private var store = AppStore.launch()
+    /// Hands files opened from Finder (`.papertalk`, PDFs) to the store.
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +21,7 @@ struct PapertalkApp: App {
                 .environmentObject(store)
                 .tint(Color.appAccent)
                 .frame(minWidth: 960, minHeight: 620)
+                .onAppear { appDelegate.onOpen = { store.openFiles($0) } }
         }
         .commands {
             CommandGroup(after: .appInfo) {
@@ -36,6 +39,8 @@ struct PapertalkApp: App {
             CommandGroup(replacing: .newItem) {
                 Button(L("Import PDF…")) { store.beginImport() }
                     .keyboardShortcut("o", modifiers: .command)
+                Button(L("Import Paper…")) { PaperPanels.importPapers(into: store) }
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
             }
         }
     }

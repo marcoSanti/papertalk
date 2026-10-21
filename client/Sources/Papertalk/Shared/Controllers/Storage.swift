@@ -66,18 +66,50 @@ enum K {
 }
 
 // MARK: - Local disk storage (self-hosted)
-/// Files under `~/Library/Application Support/papertalk/` (or a test's temp folder).
+/// Files under `~/Library/Application Support/papertalk/`, the folder picked in Settings, or a
+/// test's temp folder. Each paper's folder is a `.papertalk` package (`PaperBundle`), so Finder
+/// shows it as one item; keys stay "papers/<id>/…" and `path(_:)` adds the extension.
 final class LocalStorage: Storage {
     /// The library folder; keys are paths under it.
     let root: URL
 
-    /// `root` pins the folder (tests); otherwise Application Support, moving an old "paper2pod" library over first.
+    /// User defaults key of the library folder picked in Settings (absent: `defaultRoot`).
+    static let folderDefaultsKey = "papertalk.libraryFolder"
+    /// Application Support/papertalk.
+    static var defaultRoot: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("papertalk", isDirectory: true)
+    }
+    /// The picked library folder, else the default one.
+    static var configuredRoot: URL {
+        UserDefaults.standard.string(forKey: folderDefaultsKey).map { URL(fileURLWithPath: $0, isDirectory: true) } ?? defaultRoot
+    }
+
+    /// `root` pins the folder (tests); otherwise the configured one, moving an old "paper2pod" library over first.
     init(root: URL? = nil) {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = root ?? LocalStorage.migrateLibrary(from: base.appendingPathComponent("paper2pod", isDirectory: true),
-                                         to: base.appendingPathComponent("papertalk", isDirectory: true))
+        let dir = root ?? (UserDefaults.standard.string(forKey: Self.folderDefaultsKey) != nil ? Self.configuredRoot
+            : LocalStorage.migrateLibrary(from: base.appendingPathComponent("paper2pod", isDirectory: true), to: Self.defaultRoot))
         self.root = dir
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+
+    /// Move every paper package from the library at `old` into the one at `new`, keeping any
+    /// paper `new` already has. Returns how many papers moved.
+    @discardableResult
+    static func moveLibrary(from old: URL, to new: URL) throws -> Int {
+        let fm = FileManager.default
+        let from = old.appendingPathComponent("papers", isDirectory: true)
+        let to = new.appendingPathComponent("papers", isDirectory: true)
+        try fm.createDirectory(at: to, withIntermediateDirectories: true)
+        guard from.standardizedFileURL != to.standardizedFileURL,
+              let items = try? fm.contentsOfDirectory(at: from, includingPropertiesForKeys: nil) else { return 0 }
+        var moved = 0
+        for item in items where !fm.fileExists(atPath: to.appendingPathComponent(item.lastPathComponent).path) {
+            try fm.moveItem(at: item, to: to.appendingPathComponent(item.lastPathComponent))
+            moved += 1
+        }
+        return moved
     }
 
     /// First launch under the new name: move an existing library written under
@@ -95,8 +127,12 @@ final class LocalStorage: Storage {
         return new
     }
 
-    /// The file for `key`.
-    private func path(_ key: String) -> URL { root.appendingPathComponent(key) }
+    /// The file for `key`: "papers/<id>/…" lives in "papers/<id>.papertalk/…".
+    private func path(_ key: String) -> URL {
+        var parts = key.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        if parts.count > 2, parts[0] == "papers", !parts[1].isEmpty { parts[1] += "." + PaperBundle.pathExtension }
+        return root.appendingPathComponent(parts.joined(separator: "/"))
+    }
 
     func read(_ key: String) async throws -> Data {
         try Data(contentsOf: path(key))
@@ -121,7 +157,15 @@ final class LocalStorage: Storage {
     }
     func list() async throws -> [String] {
         let base = root.appendingPathComponent("papers", isDirectory: true)
-        guard let subs = try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil) else { return [] }
+        guard var subs = try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil) else { return [] }
+        // Libraries from before packages have plain "<id>" folders: give them the extension.
+        subs = subs.map { sub in
+            var isDir: ObjCBool = false
+            guard sub.pathExtension.isEmpty, !sub.lastPathComponent.hasPrefix("."),
+                  FileManager.default.fileExists(atPath: sub.path, isDirectory: &isDir), isDir.boolValue else { return sub }
+            let package = sub.appendingPathExtension(PaperBundle.pathExtension)
+            return (try? FileManager.default.moveItem(at: sub, to: package)) != nil ? package : sub
+        }
         return subs.compactMap { $0.deletingPathExtension().lastPathComponent }
             .filter { existsFile(path(K.paper($0))) }
     }

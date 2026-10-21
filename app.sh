@@ -22,6 +22,7 @@ case "$CHANNEL" in
 esac
 OFFICIAL_ICON="$ROOT/shared/icon.icns"
 DEV_ICON="$CLIENT/.build/icons/Papertalk-dev.icns"
+DOCUMENT_ICON="$CLIENT/.build/icons/PaperDocument.icns"
 
 usage() {
     echo "usage: $0 [build|app|run|release|test|coverage|clean|version]" >&2
@@ -43,6 +44,17 @@ icon() {
     echo "$DEV_ICON"
 }
 
+# The Finder icon of .papertalk files, generated from the official icon on every channel,
+# and regenerated when either it or the script is newer.
+document_icon() {
+    local script="$ROOT/scripts/document_icon.swift"
+    if [ ! -f "$DOCUMENT_ICON" ] || [ "$OFFICIAL_ICON" -nt "$DOCUMENT_ICON" ] || [ "$script" -nt "$DOCUMENT_ICON" ]; then
+        mkdir -p "$(dirname "$DOCUMENT_ICON")"
+        swift "$script" "$OFFICIAL_ICON" "$DOCUMENT_ICON" >&2
+    fi
+    echo "$DOCUMENT_ICON"
+}
+
 build() {
     local config="$1"
     cd "$CLIENT"
@@ -56,8 +68,9 @@ app() {
     build "$config"
     cd "$CLIENT"
     local app="dist/Papertalk.app" zip_file="dist/Papertalk-$VERSION.zip"
-    local source_file="dist/Papertalk-$VERSION-source.tar.gz" icon_file
+    local source_file="dist/Papertalk-$VERSION-source.tar.gz" icon_file document_icon_file
     icon_file="$(icon)"
+    document_icon_file="$(document_icon)"
     rm -rf "$app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cp ".build/$config/Papertalk" "$app/Contents/MacOS/Papertalk"
@@ -65,6 +78,7 @@ app() {
     plutil -replace CFBundleShortVersionString -string "$VERSION" "$app/Contents/Info.plist"
     plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$app/Contents/Info.plist"
     cp "$icon_file" "$app/Contents/Resources/Papertalk.icns"
+    cp "$document_icon_file" "$app/Contents/Resources/PaperDocument.icns"
     plutil -replace CFBundleIconFile -string Papertalk "$app/Contents/Info.plist"
     codesign --force --sign - "$app" >/dev/null 2>&1 || true
     echo "Built $app (version $VERSION, build $BUILD_NUMBER, $CHANNEL icon)"

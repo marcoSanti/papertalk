@@ -45,7 +45,7 @@ final class AppStore: ObservableObject {
     func revealInFinder(_ id: String) {
         guard isStandalone else { return }
         Task {
-            if let u = await storage.url(for: K.paper(id)) {
+            if let u = await storage.url(for: K.folder(id)) {
                 NSWorkspace.shared.activateFileViewerSelecting([u])
             }
         }
@@ -949,7 +949,7 @@ final class AppStore: ObservableObject {
             logEntries = []
             // 2. All settings + old (pre-rename) keys.
             let d = UserDefaults.standard
-            for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.prompts.json", "papertalk.customDepths.json", "papertalk.settingsPage", "papertalk.voiceSpeed", "papertalk.onboarded", Localization.defaultsKey, AppStore.askDeleteKey, SpeechSettings.defaultsKey,
+            for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.prompts.json", "papertalk.customDepths.json", "papertalk.settingsPage", "papertalk.voiceSpeed", "papertalk.onboarded", LocalStorage.folderDefaultsKey, Localization.defaultsKey, AppStore.askDeleteKey, SpeechSettings.defaultsKey,
                         "paper2pod.server.json", "paper2pod.llm.json", "paper2pod.onboarded"] {
                 d.removeObject(forKey: key)
             }
@@ -978,6 +978,123 @@ final class AppStore: ObservableObject {
             showOnboarding = true
         }
     }
+    // MARK: Paper bundles and the library folder
+
+    /// Write paper `id` as a `.papertalk` bundle at `url` (replacing what's there): its record,
+    /// script, mind map, baked audio and, when `includePDF`, the PDF. Reports as a toast.
+    func exportPaper(_ id: String, to url: URL, includePDF: Bool) async {
+        guard var paper = papers[id] else { return }
+        let fm = FileManager.default
+        let staging = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + PaperBundle.pathExtension)
+        defer { try? fm.removeItem(at: staging) }
+        let turns = await storage.exists(AudioManifest.self, K.audioManifest(id))?.durations.count ?? 0
+        paper.hasPdf = paper.hasPdf && includePDF
+        do {
+            for key in PaperBundle.keys(id, turns: turns, includePDF: paper.hasPdf) {
+                let data = key == K.paper(id) ? try JSONEncoder().encode(paper) : try? await storage.read(key)
+                guard let data else { continue }
+                let file = staging.appendingPathComponent(PaperBundle.relative(key, id))
+                try fm.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try data.write(to: file)
+            }
+            if fm.fileExists(atPath: url.path) { try fm.removeItem(at: url) }
+            try fm.moveItem(at: staging, to: url)
+            show(L("Exported “{0}”", url.lastPathComponent))
+        } catch {
+            show(L("Couldn't export the paper: {0}", error.localizedDescription))
+        }
+    }
+
+    /// Add the paper in the `.papertalk` bundle at `url` to the library and select it. Only the
+    /// bundle's known files are read, and each is checked: a script or mind map that doesn't
+    /// decode is dropped, and audio comes only with every turn. Returns the new paper's id.
+    @discardableResult
+    func importPaper(from url: URL) async -> String? {
+        let name = url.lastPathComponent
+        func file(_ key: String, _ bundleId: String) -> Data? {
+            try? Data(contentsOf: url.appendingPathComponent(PaperBundle.relative(key, bundleId)))
+        }
+        guard let record = try? Data(contentsOf: url.appendingPathComponent("paper.json")),
+              let original = try? JSONDecoder().decode(Paper.self, from: record) else {
+            show(L("“{0}” isn't a Papertalk paper.", name)); return nil
+        }
+        let old = original.id
+        let id = PaperBundle.importId(old) { papers[$0] != nil }
+        func decodable<T: Decodable>(_ type: T.Type, _ key: String) -> Data? {
+            file(key, old).flatMap { (try? JSONDecoder().decode(type, from: $0)) != nil ? $0 : nil }
+        }
+        let transcript = decodable(Transcript.self, K.transcript(old))
+        let mindMap = decodable(MindMap.self, K.mindMap(old))
+        let pdf = file(K.pdf(old), old)
+        var turns: [Data]? = nil
+        let manifestData = decodable(AudioManifest.self, K.audioManifest(old))
+        if let manifest = manifestData.flatMap({ try? JSONDecoder().decode(AudioManifest.self, from: $0) }) {
+            let wavs = manifest.durations.indices.compactMap { file(K.turn(old, $0), old) }
+            turns = wavs.count == manifest.durations.count && !wavs.isEmpty ? wavs : nil
+        }
+        guard transcript != nil || pdf != nil else {
+            show(L("“{0}” has neither a script nor a PDF to import.", name)); return nil
+        }
+        let paper = PaperBundle.imported(original, id: id, hasPdf: pdf != nil, hasScript: transcript != nil,
+                                         hasAudio: turns != nil && transcript != nil, hasMindMap: mindMap != nil)
+        do {
+            if let transcript { try await storage.write(K.transcript(id), transcript) }
+            if let mindMap { try await storage.write(K.mindMap(id), mindMap) }
+            if let pdf { try await storage.write(K.pdf(id), pdf) }
+            if let turns, let manifestData, paper.hasAudio {
+                for (i, wav) in turns.enumerated() { try await storage.write(K.turn(id, i), wav) }
+                try await storage.write(K.audioManifest(id), manifestData)
+            }
+            // The record last: the library lists a paper only once its record is there.
+            try await storage.write(K.paper(id), JSONEncoder().encode(paper))
+        } catch {
+            try? await storage.deleteFolder(K.folder(id))
+            show(L("Couldn't import “{0}”: {1}", name, error.localizedDescription)); return nil
+        }
+        papers[id] = paper
+        pdfStored(id)
+        selectedId = id
+        show(L("Imported “{0}”", paper.displayTitle))
+        return id
+    }
+
+    /// Files opened from Finder or dropped on the library: every `.papertalk` bundle is imported,
+    /// and the first PDF opens in the import sheet. False when none of them is either.
+    @discardableResult
+    func openFiles(_ urls: [URL]) -> Bool {
+        let bundles = urls.filter(PaperBundle.isBundle)
+        let pdf = ImportPresentation.firstPDF(in: urls)
+        Task { for url in bundles { await importPaper(from: url) } }
+        if let pdf { beginImport(pdf) }
+        return !bundles.isEmpty || pdf != nil
+    }
+
+    /// The local library's folder.
+    var libraryFolder: URL { (storage as? LocalStorage)?.root ?? LocalStorage.configuredRoot }
+
+    /// Move the local library into `folder` (nil: back to Application Support) and reload it.
+    /// Papers the new folder already holds are kept and join the library.
+    func setLibraryFolder(_ folder: URL?) {
+        guard isStandalone, activeRun == nil else { return }
+        let old = libraryFolder, new = folder ?? LocalStorage.defaultRoot
+        guard old.standardizedFileURL != new.standardizedFileURL else { return }
+        if playingPaperId != nil { player.stopAll(); playingPaperId = nil }
+        Task {
+            do {
+                _ = try await Task.detached { try LocalStorage.moveLibrary(from: old, to: new) }.value
+            } catch {
+                show(L("Couldn't move the library: {0}", error.localizedDescription)); return
+            }
+            if let folder { UserDefaults.standard.set(folder.path, forKey: LocalStorage.folderDefaultsKey) }
+            else { UserDefaults.standard.removeObject(forKey: LocalStorage.folderDefaultsKey) }
+            papers.removeAll()
+            thumbCache.removeAll()
+            selectedId = nil
+            refresh()
+            show(L("The library is now in “{0}”", new.lastPathComponent))
+        }
+    }
+
     // MARK: Voice models
 
     /// Kokoro model folders FluidAudio downloads to `~/.cache/fluidaudio/Models/`

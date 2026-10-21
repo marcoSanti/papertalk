@@ -353,7 +353,7 @@ struct DetailView: View {
         }
     }
 
-    /// The paper as a library item: listened, Finder, and Delete paper last, below a divider.
+    /// The paper as a library item: listened, Finder, export, and Delete paper last, below a divider.
     private var libraryActions: some View {
         manageGroup(L("Library"), systemImage: "books.vertical") {
             let listened = PaperPresentation.listenedToggle(paper)
@@ -365,6 +365,11 @@ struct DetailView: View {
                     store.revealInFinder(paper.id)
                 }
             }
+            ManageRow(title: L("Export paper…"), subtitle: L("Save it as a Papertalk file to share or keep"),
+                      icon: "shippingbox", tint: .brown) {
+                PaperPanels.exportPaper(paper, from: store)
+            }
+            .disabled(!PaperPresentation.canExportPaper(paper))
             Divider().padding(.vertical, 4)
             ManageRow(title: L("Delete paper"), subtitle: nil, icon: "trash", tint: .red, destructive: true) {
                 store.pendingConfirmation = .delete(paper)

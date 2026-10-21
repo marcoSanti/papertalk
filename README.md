@@ -89,6 +89,12 @@ is ever downloaded or installed by itself.
 Import a paper with **File → Import PDF…** (⌘O), the **+** button, or by dropping a PDF onto the
 library. Choose the depth (and, for a summary, its length), then the voices when Papertalk asks.
 
+A converted paper can also travel as a **Papertalk paper** (a `.papertalk` file): its record,
+script, mind map and voiced audio. Before saving, Papertalk asks whether to include the PDF, with a
+warning that most papers' PDFs are under copyright; **Export Without PDF** is the default. Make one with **Export paper…** in the
+paper's details; bring one in with **File → Import Paper…** (⇧⌘O), by dropping it on the library,
+or by double-clicking it in Finder. A paper whose id is already in the library comes in as a copy.
+
 Select a paper to see its details on the right: play it, read the transcript, open the PDF or the
 mind map, favourite it, tag it, or fix its metadata.
 
@@ -98,11 +104,12 @@ mind map, favourite it, tag it, or fix its metadata.
 | Arrow keys | Move around the grid |
 | Delete | Delete the selected paper (after asking) |
 | ⌘O | Import a PDF |
+| ⇧⌘O | Import a Papertalk paper |
 | ⌘, | Settings |
 
 A paper's details group the rest by what they work on: **Audio** (regenerate, export, delete),
 **PDF management** (rerun, mind map, metadata) and **Library** (mark as listened, Show in Finder,
-Delete paper):
+Export paper, Delete paper):
 
 - **Regenerate audio** re-voices the existing script; **Rerun episode** writes a new one.
 - **Create mind map** draws one for papers imported before mind maps existed, and **Redraw mind
@@ -144,7 +151,9 @@ importing, **Regenerate audio**, playing a paper that has no audio yet, and the 
 
 ## Sharing a library between Macs
 
-Papers normally live in `~/Library/Application Support/papertalk/`. To use one library from
+Papers normally live in `~/Library/Application Support/papertalk/papers/`, one `.papertalk`
+package each (Finder shows each as a single item). **Settings → General → Library folder** moves
+the library to another folder; papers already in that folder join it. To use one library from
 several Macs, run the small storage server that comes with the project on any machine with
 Python 3. It only stores files; conversion still happens in the app.
 

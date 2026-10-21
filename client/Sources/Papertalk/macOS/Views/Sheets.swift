@@ -726,9 +726,40 @@ struct LanguageSettingsPage: View {
             LanguagePicker()
                 .pickerStyle(.menu)
                 .fixedSize()
+            Divider().padding(.vertical, 4)
+            LibraryFolderSection()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
+    }
+}
+
+/// Where the local library lives, with buttons to move it.
+struct LibraryFolderSection: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        let converting = store.activeRun != nil
+        let folder = store.libraryFolder
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L("Library folder")).font(.headline)
+            Text(folder.path)
+                .font(.callout.monospaced())
+                .textSelection(.enabled)
+                .lineLimit(2)
+                .truncationMode(.middle)
+            HStack {
+                Group {
+                    Button(L("Choose…")) { PaperPanels.chooseLibraryFolder(for: store) }
+                    Button(L("Use Default")) { store.setLibraryFolder(nil) }
+                        .disabled(LibraryFolderPresentation.isDefault(folder))
+                }
+                .disabled(!LibraryFolderPresentation.canChange(isStandalone: store.isStandalone, converting: converting))
+                Button(L("Show in Finder")) { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+            }
+            Text(LibraryFolderPresentation.note(isStandalone: store.isStandalone, converting: converting))
+                .font(.caption).foregroundStyle(.secondary)
+        }
     }
 }
 

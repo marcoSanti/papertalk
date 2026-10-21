@@ -211,6 +211,11 @@ enum MindMapPresentation {
     static var coreTitle: String { L("Core") }
     static var descriptionTitle: String { L("What it is") }
     static var connectionsTitle: String { L("Connections") }
+    /// The Delete concept button's tooltip: the three main concepts hold the map up and can't go.
+    static func deleteHelp(_ canDelete: Bool) -> String {
+        canDelete ? L("Delete this concept, everything under it and its connections")
+                  : L("The three main concepts can't be deleted; change their text instead.")
+    }
     /// When the map's file can't be read.
     static var missingMessage: String { L("Couldn't open the mind map. Create it again from Manage.") }
 

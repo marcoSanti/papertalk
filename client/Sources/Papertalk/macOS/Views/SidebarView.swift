@@ -25,7 +25,7 @@ struct SidebarView: View {
 
             Section(L("Tags")) {
                 if tagList.isEmpty {
-                    Text(L("Add tags in the inspector to group papers here."))
+                    Text(L("Add tags in a paper's Details and actions… to group papers here."))
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .selectionDisabled()

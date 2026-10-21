@@ -167,6 +167,7 @@ struct LibraryView: View {
         List(papers, selection: $store.selectedId) { paper in
             PaperListRow(paper: paper)
                 .contextMenu { ContextMenuItems(paper: paper) }
+                .simultaneousGesture(TapGesture(count: 2).onEnded { PaperWindow.present(paperId: paper.id, store: store) })
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)

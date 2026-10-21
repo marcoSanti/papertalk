@@ -32,7 +32,9 @@ ideas. It's a native macOS app written in SwiftUI.
 - **A mind map of every paper.** The key concepts as a graph around three branches: the problem,
   the approach and the demonstration, each broken into its parts, with links between them. It
   opens on a plain-language summary of the paper; click a concept for its core idea and
-  description, or a connection to see the two concepts it joins.
+  description, or a connection to see the two concepts it joins. **Edit** (by the zoom controls)
+  lets you rename, describe, add, move and delete concepts, and add, name and delete connections;
+  changes are saved as you make them. The three main concepts can be changed but not deleted.
 - **Metadata and citations done for you.** Title, authors, affiliations, DOI and tags come from
   the paper itself, and a DOI fetches a BibTeX citation. Everything can be edited.
 - **A library you can find things in.** Covers in a grid or a list, favourites and tags in the
@@ -95,8 +97,10 @@ warning that most papers' PDFs are under copyright; **Export Without PDF** is th
 paper's details; bring one in with **File → Import Paper…** (⇧⌘O), by dropping it on the library,
 or by double-clicking it in Finder. A paper whose id is already in the library comes in as a copy.
 
-Select a paper to see its details on the right: play it, read the transcript, open the PDF or the
-mind map, favourite it, tag it, or fix its metadata.
+Select a paper to see it on the right, with its tags: play it, read the transcript, open the PDF
+or the mind map, favourite it, or fix its metadata. **Details and actions…** (under those buttons),
+a double-click on the paper, or **Open** in its context menu opens the paper in a wide window of its
+own, with its authors, details, tag editing, activity log and every action below.
 
 | Key | In the library |
 | --- | --- |
@@ -107,7 +111,7 @@ mind map, favourite it, tag it, or fix its metadata.
 | ⇧⌘O | Import a Papertalk paper |
 | ⌘, | Settings |
 
-A paper's details group the rest by what they work on: **Audio** (regenerate, export, delete),
+A paper's window groups the rest by what they work on: **Audio** (regenerate, export, delete),
 **PDF management** (rerun, mind map, metadata) and **Library** (mark as listened, Show in Finder,
 Export paper, Delete paper):
 

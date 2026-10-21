@@ -35,14 +35,13 @@ extension FlowTags where Trailing == EmptyView {
     }
 }
 
-/// A single accent-tinted tag capsule; the remove button appears on hover.
-/// One "#tag" capsule; the remove button appears on hover.
+/// One accent-tinted "#tag" capsule; the remove button, if any, appears on hover.
 struct TagChip: View {
     let tag: String
     /// Clicking the chip; nil makes it inert.
     var onSelect: (() -> Void)? = nil
-    /// The remove button.
-    var onRemove: () -> Void
+    /// The remove button; nil shows the tag without one.
+    var onRemove: (() -> Void)? = nil
 
     @State private var hovering = false
 
@@ -55,19 +54,21 @@ struct TagChip: View {
             }
             .buttonStyle(.plain)
             .help(onSelect == nil ? "" : L("Show all papers tagged #{0}", tag))
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+            if let onRemove {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .opacity(hovering ? 1 : 0.35)
+                .help(L("Remove tag"))
+                .accessibilityLabel(L("Remove tag {0}", tag))
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .opacity(hovering ? 1 : 0.35)
-            .help(L("Remove tag"))
-            .accessibilityLabel(L("Remove tag {0}", tag))
         }
         .foregroundStyle(Color.appAccent)
         .padding(.leading, 9)
-        .padding(.trailing, 7)
+        .padding(.trailing, onRemove == nil ? 9 : 7)
         .padding(.vertical, 4)
         .background(Color.appAccent.opacity(hovering ? 0.22 : 0.14), in: Capsule())
         .onHover { h in withAnimation(.snappy(duration: 0.15)) { hovering = h } }

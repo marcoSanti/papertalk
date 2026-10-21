@@ -819,7 +819,7 @@ struct SettingsView: View {
                     case .general: LanguageSettingsPage()
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
             SettingsActionBar {
                 if store.settingsPage == .prompts {

@@ -7,10 +7,17 @@ import SwiftUI
 /// The paper's mind map: a radial graph of its concepts, with the selected
 /// concept's description, core idea and connections in a panel beside it.
 struct MindMapView: View {
-    /// The map to draw.
-    let map: MindMap
+    /// The map to draw; edits change it here and are handed to `onSave`.
+    @State private var map: MindMap
     /// The paper's title, shown on the centre node.
     let title: String
+    /// Saves an edited map; nil makes the map read-only.
+    let onSave: ((MindMap) -> Void)?
+    /// Whether the side panel shows the editing controls.
+    @State private var editing = false
+    /// The selected concept's text being edited, or the selected link's label (in `label`).
+    private struct Draft: Equatable { var label = "", core = "", description = "" }
+    @State private var draft = Draft()
     /// What the side panel shows: a concept, or an edge with both its concepts.
     private enum Selection: Equatable { case node(String), edge(String) }
     @State private var selection: Selection?
@@ -39,19 +46,58 @@ struct MindMapView: View {
         var viewport = CGSize.zero
     }
 
-    // Computed once: rebuilding them on every redraw (each pinch frame) made the graph lag.
-    private let layout: MindMapLayout
-    private let nodes: [String: MindMap.Node]
-    private let ids: [String]
+    /// The map's layout and lookups, rebuilt only when the map changes: rebuilding them on every
+    /// redraw (each pinch frame) made the graph lag.
+    private struct Drawn {
+        let layout: MindMapLayout
+        let nodes: [String: MindMap.Node]
+        let ids: [String]
+        init(_ map: MindMap) {
+            layout = MindMapLayout(map)
+            nodes = Dictionary(map.nodes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            ids = layout.positions.keys.sorted()
+        }
+    }
+    @State private var drawn: Drawn
+    private var layout: MindMapLayout { drawn.layout }
+    private var nodes: [String: MindMap.Node] { drawn.nodes }
+    private var ids: [String] { drawn.ids }
 
     /// `selected` / `selectedEdge` open with a concept or an edge already selected (previews, tests).
-    init(map: MindMap, title: String, selected: String? = nil, selectedEdge: String? = nil) {
-        self.map = map
+    init(map: MindMap, title: String, selected: String? = nil, selectedEdge: String? = nil,
+         onSave: ((MindMap) -> Void)? = nil) {
+        _map = State(initialValue: map)
+        _drawn = State(initialValue: Drawn(map))
         self.title = title
-        layout = MindMapLayout(map)
-        nodes = Dictionary(map.nodes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        ids = layout.positions.keys.sorted()
+        self.onSave = onSave
         _selection = State(initialValue: selected.map { .node($0) } ?? selectedEdge.map { .edge($0) })
+    }
+
+    /// Apply an edit: redraw, keep the selection if it still exists, load its draft, and save.
+    private func edit(_ change: (inout MindMap) -> Void) {
+        change(&map)
+        drawn = Drawn(map)
+        if case .node(let id) = selection, map.node(id) == nil { selection = nil }
+        if case .edge(let id) = selection, !layout.selectableEdges.contains(where: { $0.id == id }) { selection = nil }
+        loadDraft()
+        onSave?(map)
+    }
+
+    /// Put the selected concept's text, or the selected link's label, in the draft.
+    private func loadDraft() {
+        if let id = selectedNode, let n = map.node(id) {
+            draft = Draft(label: n.label, core: n.core, description: n.description)
+        } else if let e = selectedEdge {
+            draft = Draft(label: e.label ?? "")
+        } else {
+            draft = Draft()
+        }
+    }
+
+    /// The selected edge, if one is.
+    private var selectedEdge: MindMapLayout.Edge? {
+        guard case .edge(let id) = selection else { return nil }
+        return layout.selectableEdges.first { $0.id == id }
     }
 
     private var scale: Double { MindMapLayout.clampScale(zoom ?? fit) }
@@ -129,6 +175,7 @@ struct MindMapView: View {
             }
         }
         .frame(minWidth: 760, maxWidth: .infinity, minHeight: 480, maxHeight: .infinity)
+        .onChange(of: selection) { _, _ in loadDraft() }
     }
 
     /// Zoom out, the current zoom (click to fit), zoom in.
@@ -146,6 +193,14 @@ struct MindMapView: View {
                 Image(systemName: "plus.magnifyingglass").frame(width: 26, height: 24)
             }
             .help(L("Zoom in"))
+            if onSave != nil {
+                Divider().frame(height: 16)
+                Toggle(isOn: $editing.animation(.snappy)) {
+                    Label(L("Edit"), systemImage: "pencil").frame(minHeight: 24)
+                }
+                .toggleStyle(.button)
+                .help(L("Add, change and delete concepts and connections"))
+            }
         }
         .buttonStyle(.borderless)
         .font(.callout)
@@ -294,10 +349,10 @@ struct MindMapView: View {
     private var panel: some View {
         ScrollView {
             if let id = selectedNode, let node = nodes[id] {
-                detail(node)
-            } else if case .edge(let id) = selection, let e = layout.selectableEdges.first(where: { $0.id == id }),
-                      let d = MindMapPresentation.edgeDetail(map, e) {
+                if editing { nodeEditor(node) } else { detail(node) }
+            } else if let e = selectedEdge, let d = MindMapPresentation.edgeDetail(map, e) {
                 edgeDetail(d)
+                if editing, e.label != nil { linkEditor(e) }
             } else {
                 paperOverview
             }
@@ -341,6 +396,89 @@ struct MindMapView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: editing
+
+    /// The selected concept's text, where it hangs, its links, and adding or deleting concepts.
+    private func nodeEditor(_ node: MindMap.Node) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(MindMapPresentation.branchTitle(node.branch), systemImage: MindMapPresentation.branchIcon(node.branch))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Self.color(node.branch))
+            editorField(L("Name")) { TextField(L("Name"), text: $draft.label) }
+            editorField(MindMapPresentation.coreTitle) {
+                TextField(MindMapPresentation.coreTitle, text: $draft.core, axis: .vertical).lineLimit(2...5)
+            }
+            editorField(MindMapPresentation.descriptionTitle) {
+                TextField(MindMapPresentation.descriptionTitle, text: $draft.description, axis: .vertical).lineLimit(3...8)
+            }
+            Button(L("Save changes")) {
+                edit { $0.editNode(node.id, label: draft.label, core: draft.core, description: draft.description) }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(draft == Draft(label: node.label, core: node.core, description: node.description))
+            Divider()
+            Menu(L("Move under…")) {
+                ForEach(map.parentOptions(for: node.id)) { p in
+                    Button(p.label) { edit { $0.move(node.id, under: p.id) } }
+                }
+            }
+            .disabled(map.parentOptions(for: node.id).isEmpty)
+            Menu(L("Connect to…")) {
+                ForEach(map.linkTargets(from: node.id)) { t in
+                    Button(t.label) {
+                        edit { $0.addLink(from: node.id, to: t.id, label: "") }
+                        // Select the new connection, so it can be named straight away.
+                        selection = .edge(MindMapLayout.Edge(from: node.id, to: t.id, label: "").id)
+                    }
+                }
+            }
+            .disabled(map.linkTargets(from: node.id).isEmpty)
+            Button {
+                var added: String?
+                edit { added = $0.addNode(under: node.id, label: L("New concept")) }
+                if let added { selection = .node(added) }
+            } label: {
+                Label(L("Add a concept under this one"), systemImage: "plus")
+            }
+            Button(role: .destructive) {
+                edit { $0.deleteNode(node.id) }
+            } label: {
+                Label(L("Delete concept"), systemImage: "trash")
+            }
+            .disabled(!map.canDelete(node.id))
+            .help(MindMapPresentation.deleteHelp(map.canDelete(node.id)))
+        }
+        .menuStyle(.button)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The selected link's label, and deleting it.
+    private func linkEditor(_ e: MindMapLayout.Edge) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Divider()
+            editorField(L("Relation")) { TextField(L("e.g. measured by"), text: $draft.label) }
+            HStack {
+                Button(L("Save changes")) { edit { $0.editLink(from: e.from, to: e.to, label: draft.label) } }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(draft.label == (e.label ?? ""))
+                Spacer()
+                Button(role: .destructive) { edit { $0.deleteLink(from: e.from, to: e.to) } } label: {
+                    Label(L("Delete connection"), systemImage: "trash")
+                }
+            }
+        }
+        .padding([.horizontal, .bottom], 16)
+    }
+
+    /// A caption above an editing control.
+    private func editorField(_ label: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            content().textFieldStyle(.roundedBorder)
+        }
     }
 
     /// Both concepts of the selected edge, one above the other, with how they relate between them.

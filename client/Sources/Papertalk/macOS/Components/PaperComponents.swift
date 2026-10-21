@@ -41,6 +41,7 @@ struct PaperCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture(count: 2).onEnded { PaperWindow.present(paperId: paper.id, store: store) })
         .onHover { h in
             withAnimation(.snappy(duration: 0.2)) { hovering = h }
         }
@@ -159,6 +160,7 @@ struct ContextMenuItems: View {
     var body: some View {
         Button {
             store.selectedId = paper.id
+            PaperWindow.present(paperId: paper.id, store: store)
         } label: {
             Label(L("Open"), systemImage: "arrow.up.forward.app")
         }

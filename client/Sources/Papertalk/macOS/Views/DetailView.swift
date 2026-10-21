@@ -5,19 +5,25 @@
 import SwiftUI
 import AppKit
 
-/// Paper inspector (right-hand column).
+/// Paper inspector (right-hand column), and the paper window's content.
 ///
 /// Layout, top to bottom:
 ///   hero (colour wash + page cover + editable title + badges)
 ///   glass quick-action bar (play, PDF, transcript, favourite, edit)
 ///   conversion status (only while running / failed)
 ///   episode card (listening progress, resume)
-///   authors · details · tags · audio · PDF management · library · activity
+/// In the inspector the paper's tags sit above the quick actions, read-only, and the bar has a
+/// Details button that opens the paper window (where tags are edited and the activity log is).
+/// The paper window lays it out wide instead, in three columns that each scroll on their own:
+///   the paper (hero, quick actions, status, episode) · what it is (authors, details, tags) ·
+///   what to do with it (audio, PDF management, library, activity).
 struct DetailView: View {
     @EnvironmentObject private var store: AppStore
     let paper: Paper
     /// Opens the Edit paper sheet.
     var onEdit: () -> Void
+    /// Shown in the paper window (every card) rather than the inspector (the essentials).
+    var inWindow = false
 
     /// The sheet is driven by the loaded transcript itself, so it can never
     /// render before the data arrives (an `isPresented` flag + separate state
@@ -35,29 +41,31 @@ struct DetailView: View {
     @State private var showCitation = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                hero
-                QuickActionBar(player: store.player, paper: paper,
-                               onPDF: openPDF, onTranscript: openTranscript, onMindMap: openMindMap, onEdit: onEdit)
-                if PaperPresentation.showsConversionCard(paper) {
-                    ConversionStatusCard(paper: paper)
-                        .transition(.blurReplace)
+        Group {
+            if inWindow {
+                HStack(alignment: .top, spacing: 0) {
+                    column { paperColumn }
+                        .frame(minWidth: 300, idealWidth: 340, maxWidth: 380)
+                        .background(alignment: .top) { PaperBackdrop(paper: paper) }
+                    Divider()
+                    column {
+                        if !paper.authors.isEmpty { authorsCard }
+                        detailsCard
+                        tagsCard
+                    }
+                    .padding(.top, 16)
+                    Divider()
+                    column {
+                        manageCards
+                        LogPane(lines: store.logLines(for: paper.id), isOpen: $showLog)
+                    }
+                    .padding(.top, 16)
                 }
-                if PaperPresentation.showsEpisodeCard(paper) {
-                    EpisodeCard(player: store.player, paper: paper)
-                }
-                if !paper.authors.isEmpty { authorsCard }
-                detailsCard
-                tagsCard
-                manageCards
-                LogPane(lines: store.logLines(for: paper.id), isOpen: $showLog)
+            } else {
+                column { paperColumn }
+                .background(alignment: .top) { PaperBackdrop(paper: paper) }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 20)
-            .animation(.snappy, value: paper.state)
         }
-        .background(alignment: .top) { PaperBackdrop(paper: paper) }
         .sheet(item: $transcriptSheet) { item in
             if let t = item.transcript, !t.segments.isEmpty {
                 TranscriptView(transcript: t, title: paper.displayTitle)
@@ -76,6 +84,32 @@ struct DetailView: View {
         }
         .onChange(of: paper.isActive) { _, active in
             if active { withAnimation(.snappy) { showLog = true } }
+        }
+    }
+
+    /// One scrolling column of cards.
+    private func column<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) { content() }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 20)
+                .animation(.snappy, value: paper.state)
+        }
+    }
+
+    /// The paper itself: cover and title, quick actions, conversion status and the episode.
+    @ViewBuilder private var paperColumn: some View {
+        hero
+        if !inWindow, !paper.tags.isEmpty { tagChips }
+        QuickActionBar(player: store.player, paper: paper,
+                       onPDF: openPDF, onTranscript: openTranscript, onMindMap: openMindMap, onEdit: onEdit,
+                       onDetails: inWindow ? nil : { PaperWindow.present(paperId: paper.id, store: store) })
+        if PaperPresentation.showsConversionCard(paper) {
+            ConversionStatusCard(paper: paper)
+                .transition(.blurReplace)
+        }
+        if PaperPresentation.showsEpisodeCard(paper) {
+            EpisodeCard(player: store.player, paper: paper)
         }
     }
 
@@ -263,6 +297,16 @@ struct DetailView: View {
 
     // MARK: - Tags
 
+    /// The inspector's tags: centred chips that show each tag's papers; editing is in the window.
+    private var tagChips: some View {
+        FlowLayout(spacing: 6, lineSpacing: 6) {
+            ForEach(paper.tags, id: \.self) { tag in
+                TagChip(tag: tag, onSelect: { store.showTag(tag) })
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     /// The paper's tags, the add field, and suggestions from the library's common tags.
     private var tagsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -422,7 +466,8 @@ struct DetailView: View {
         Task {
             // Always read the current file: Redraw may have replaced it.
             if let map = await store.mindMap(for: paper.id) {
-                MindMapWindow.present(map: map, title: paper.displayTitle, paperId: paper.id)
+                MindMapWindow.present(map: map, title: paper.displayTitle, paperId: paper.id,
+                                      onSave: { [store, id = paper.id] in store.saveMindMap(id, $0) })
             } else {
                 store.show(MindMapPresentation.missingMessage)
             }
@@ -477,19 +522,22 @@ private struct QuickActionBar: View {
     var onMindMap: () -> Void
     /// Opens the Edit paper sheet.
     var onEdit: () -> Void
+    /// Opens the paper window; nil inside that window, where there's nothing more to open.
+    var onDetails: (() -> Void)?
 
     private var isLoaded: Bool { store.playingPaperId == paper.id }
 
     var body: some View {
         let play = PaperPresentation.playButton(paper, isPlaying: isLoaded && player.isPlaying)
         let favorite = PaperPresentation.favoriteButton(paper)
-        // Two rows: Play is the main action and gets the full width; six round
-        // buttons in one row left no room between them in a narrow inspector.
+        // Play is the main action and gets the full width; six round buttons in one row left
+        // no room between them in a narrow inspector. Details, in the inspector, gets a wide row too.
         GlassEffectContainer(spacing: 14) {
             VStack(spacing: 10) {
                 playButton(play.title, icon: play.icon, busy: isLoaded && player.isRendering,
                            enabled: PaperPresentation.isPlayable(paper))
                 secondaryActions(favorite)
+                if let onDetails { detailsButton(onDetails) }
             }
         }
         .frame(maxWidth: .infinity)
@@ -518,6 +566,25 @@ private struct QuickActionBar: View {
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.4)
         .help(title)
+    }
+
+    /// The wide button to the paper window: as big as Play but lightly tinted, so it stands out
+    /// without competing with Play.
+    private func detailsButton(_ open: @escaping () -> Void) -> some View {
+        Button(action: open) {
+            HStack(spacing: 8) {
+                Image(systemName: "macwindow").font(.system(size: 15, weight: .semibold))
+                Text(L("Details and actions…")).font(.headline)
+            }
+            .foregroundStyle(Color.appAccent)
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .glassEffect(Glass.regular.tint(Color.appAccent.opacity(0.18)).interactive(), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.appAccent.opacity(0.45), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(L("Authors, details, audio, PDF and library actions in their own window"))
     }
 
     /// The row of small icon buttons.

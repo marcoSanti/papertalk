@@ -2,6 +2,9 @@
 // actions, audio baking and playback set-up, all on a temp-folder library.
 
 import XCTest
+#if os(macOS)
+import AVFoundation
+#endif
 @testable import Papertalk
 
 /// `AppStore` against a temp-folder library. Nothing here starts a conversion
@@ -689,4 +692,43 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertEqual(store.toast, "Second")
         await waitUntil(timeout: 6) { store.toast == nil }
     }
+
+    #if os(macOS)
+    func testExportAudioWritesOneTaggedM4A() async throws {
+        var p = Fixtures.paper(id: "p", title: "Waves", authors: ["Ada Lovelace", "Alan Turing"], doi: "10.1/x")
+        p.publishedIso = "2021-05"
+        try await storage.write(K.turn("p", 0), Fixtures.silentWAV(seconds: 0.5))
+        try await storage.write(K.turn("p", 1), Fixtures.silentWAV(seconds: 0.5))
+        await storage.save(AudioManifest(durations: [0.5, 0.5]), K.audioManifest("p"))
+        let store = await makeStore([p])
+        let out = dir.appendingPathComponent("Waves.m4a")
+
+        await store.exportAudio("p", to: out)
+
+        XCTAssertEqual(store.toast, "Exported “Waves.m4a”")
+        let asset = AVURLAsset(url: out)
+        let seconds = try await asset.load(.duration).seconds
+        XCTAssertEqual(seconds, 1, accuracy: 0.1, "both turns, joined")
+        let tags = try await asset.load(.metadata)
+        func tag(_ id: AVMetadataIdentifier) async throws -> String? {
+            try await AVMetadataItem.metadataItems(from: tags, filteredByIdentifier: id).first?.load(.stringValue)
+        }
+        let title = try await tag(.iTunesMetadataSongName)
+        let artist = try await tag(.iTunesMetadataArtist)
+        let year = try await tag(.iTunesMetadataReleaseDate)
+        let comment = try await tag(.iTunesMetadataUserComment)
+        XCTAssertEqual(title, "Waves")
+        XCTAssertEqual(artist, "Ada Lovelace, Alan Turing")
+        XCTAssertEqual(year, "2021")
+        XCTAssertEqual(comment, "DOI: https://doi.org/10.1/x\nPublished: 2021-05")
+    }
+
+    func testExportAudioWithoutBakedAudioSaysSo() async {
+        let store = await makeStore([Fixtures.paper(id: "p", hasAudio: true)])
+        let out = dir.appendingPathComponent("x.m4a")
+        await store.exportAudio("p", to: out)
+        XCTAssertEqual(store.toast, "This paper has no saved audio to export. Regenerate audio first.")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: out.path))
+    }
+    #endif
 }

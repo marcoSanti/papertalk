@@ -100,11 +100,16 @@ mind map, favourite it, tag it, or fix its metadata.
 | ⌘O | Import a PDF |
 | ⌘, | Settings |
 
-The **Manage** list in a paper's details has the rest:
+A paper's details group the rest by what they work on: **Audio** (regenerate, export, delete),
+**PDF management** (rerun, mind map, metadata) and **Library** (mark as listened, Show in Finder,
+Delete paper):
 
 - **Regenerate audio** re-voices the existing script; **Rerun episode** writes a new one.
 - **Create mind map** draws one for papers imported before mind maps existed, and **Redraw mind
   map** draws it again.
+- **Export audio…** saves the voiced episode as one M4A (AAC) file, named after the paper. Its
+  tags carry the title, the authors (as artist), the publication year, the first page as cover
+  art, and the affiliations, DOI and tags in the comment.
 - **Delete audio** frees the disk space and keeps the script and PDF. The paper still plays, with
   voices made live; the app says so, since that audio isn't saved and each listen voices it again. When you listen to an episode to the end, Papertalk offers to delete its audio;
   **Keep, and don't ask again** turns that off, and **Settings → Clear Data** turns it back on.

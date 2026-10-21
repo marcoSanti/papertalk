@@ -470,7 +470,7 @@ extension LanguagePacks {
         "Audio": "Audio",
         "Tags": "Etiquetas",
         "Suggested": "Sugeridas",
-        "Manage": "Gestionar",
+        "PDF management": "Gestión del PDF",
         "Regenerate audio": "Regenerar audio",
         "Re-voice the existing script": "Vuelve a sintetizar el guion existente",
         "Write a new script from the PDF": "Escribe un guion nuevo a partir del PDF",
@@ -575,5 +575,10 @@ extension LanguagePacks {
         "Settings (⌘,)": "Ajustes (⌘,)",
         "No saved audio: the voices are made live as you listen and aren't kept. Regenerate audio voices it once and saves it.": "Sin audio guardado: las voces se crean en directo mientras escuchas y no se conservan. Regenerar audio las sintetiza una vez y las guarda.",
         "Playing with live voices. This audio isn't saved; Regenerate audio saves it.": "Reproduciendo con voces en directo. Este audio no se guarda; Regenerar audio lo guarda.",
+        "Export audio…": "Exportar audio…",
+        "Save the episode as one M4A file with the paper's details": "Guarda el episodio como un único archivo M4A con los datos del artículo",
+        "This paper has no saved audio to export. Regenerate audio first.": "Este artículo no tiene audio guardado que exportar. Usa primero Regenerar audio.",
+        "Exported “{0}”": "Exportado “{0}”",
+        "Couldn't export the audio: {0}": "No se pudo exportar el audio: {0}",
     ]
 }

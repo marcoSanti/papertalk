@@ -68,8 +68,13 @@ struct PaperCard: View {
                     isSelected ? Color.appAccent : Color.primary.opacity(0.10),
                     lineWidth: isSelected ? 3 : 0.5)
             }
-            .shadow(color: .black.opacity(hovering || isSelected ? 0.24 : 0.12),
-                    radius: hovering ? 14 : 6, y: hovering ? 8 : 3)
+            // Cast from a plain shape behind the cover: a shadow of the composited cover
+            // (image, glass badges) is re-rendered on every scroll frame.
+            .background {
+                tileShape.fill(Color(nsColor: .windowBackgroundColor))
+                    .shadow(color: .black.opacity(hovering || isSelected ? 0.24 : 0.12),
+                            radius: hovering ? 14 : 6, y: hovering ? 8 : 3)
+            }
             .scaleEffect(hovering ? 1.025 : 1)
     }
 
@@ -119,7 +124,8 @@ struct PaperArtwork: View {
         Color.clear
             .aspectRatio(Theme.pageAspect, contentMode: .fit)
             .overlay {
-                if let image {
+                // A card scrolled back into view shows its cached cover at once, not the placeholder.
+                if let image = image ?? store.cachedThumbnail(paper.id) {
                     Image(nsImage: image)
                         .resizable()
                         .interpolation(.high)

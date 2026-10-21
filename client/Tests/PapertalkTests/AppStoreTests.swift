@@ -39,6 +39,17 @@ final class AppStoreTests: PapertalkTestCase {
         return store
     }
 
+    /// A cover is cached once rendered, and a rewritten PDF drops it.
+    func testCoverIsCachedUntilThePDFChanges() async throws {
+        let p = Fixtures.paper()
+        try await storage.write(K.pdf(p.id), Fixtures.pdf(lines: ["Cover page"]))
+        let store = await makeStore([p])
+        XCTAssertNil(store.cachedThumbnail(p.id))
+        let loaded = await store.loadThumbnail(p.id)
+        XCTAssertNotNil(loaded)
+        XCTAssertTrue(store.cachedThumbnail(p.id) === loaded)
+    }
+
     private func onDisk(_ id: String) async -> Paper? {
         await storage.exists(Paper.self, K.paper(id))
     }

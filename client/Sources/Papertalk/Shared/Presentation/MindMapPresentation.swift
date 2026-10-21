@@ -27,11 +27,46 @@ struct MindMapLayout: Equatable {
     private var bend: [String: Double] = [:]
     private static let bends = [0.3, 0.45, 0.6, 0.15, -0.3, -0.45, 0.8, 1.0, -0.6]
 
-    /// A link's curve control point: links bow sideways (away from the centre
-    /// unless that puts the label on a node). nil for straight tree edges.
+    /// What the user has dragged in the window: concepts to new places, and edges' handles off
+    /// their midpoint. Kept apart from the computed layout so a redraw after an edit reapplies it.
+    struct Arrangement: Equatable {
+        var nodes: [String: Point] = [:]
+        /// Edge id → its handle's offset from the midpoint between its two ends.
+        var handles: [String: Point] = [:]
+        var isEmpty: Bool { nodes.isEmpty && handles.isEmpty }
+    }
+    private var handleOffsets: [String: Point] = [:]
+
+    /// This layout with the user's arrangement applied; concepts no longer on the map are ignored.
+    func arranged(_ a: Arrangement) -> MindMapLayout {
+        var l = self
+        for (id, p) in a.nodes where l.positions[id] != nil { l.positions[id] = p }
+        l.handleOffsets = a.handles
+        return l
+    }
+
+    /// Where something dragged from `start` by (`dx`, `dy`) screen points at `scale` lands,
+    /// kept on the canvas with room for a `w` × `h` box around it.
+    func dragged(from start: Point, dx: Double, dy: Double, scale: Double,
+                 w: Double = nodeWidth, h: Double = nodeHeight) -> Point {
+        Point(x: min(width - w / 2, max(w / 2, start.x + dx / scale)),
+              y: min(height - h / 2, max(h / 2, start.y + dy / scale)))
+    }
+
+    /// The handle offset that puts `e`'s handle at `p`.
+    func handleOffset(_ e: Edge, at p: Point) -> Point? {
+        guard let a = positions[e.from], let b = positions[e.to] else { return nil }
+        return Point(x: p.x - (a.x + b.x) / 2, y: p.y - (a.y + b.y) / 2)
+    }
+
+    /// An edge's curve control point: where the user dragged its handle, else links bow
+    /// sideways (away from the centre unless that puts the label on a node). nil for straight edges.
     func control(_ e: Edge) -> Point? {
-        guard e.label != nil, let a = positions[e.from], let b = positions[e.to] else { return nil }
+        guard let a = positions[e.from], let b = positions[e.to] else { return nil }
         let mid = Point(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+        // The handle is halfway along the curve, so the control point sits twice as far out.
+        if let o = handleOffsets[e.id] { return Point(x: mid.x + 2 * o.x, y: mid.y + 2 * o.y) }
+        guard e.label != nil else { return nil }
         let dx = b.x - a.x, dy = b.y - a.y, length = max(hypot(dx, dy), 1)
         var nx = -dy / length, ny = dx / length
         if let c = positions[Self.centerId], nx * (c.x - mid.x) + ny * (c.y - mid.y) > 0 { nx = -nx; ny = -ny }

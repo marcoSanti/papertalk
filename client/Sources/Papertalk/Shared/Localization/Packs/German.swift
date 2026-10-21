@@ -412,6 +412,7 @@ extension LanguagePacks {
         "Show activity log": "Aktivitätsprotokoll einblenden",
         "Zoom out": "Verkleinern",
         "Fit the whole map": "Ganze Mindmap einpassen",
+        "Put every concept and connection back in place": "Alle Konzepte und Verbindungen zurücksetzen",
         "Zoom in": "Vergrößern",
         "NEW": "NEU",
         "Not listened yet": "Noch nicht gehört",

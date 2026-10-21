@@ -1,5 +1,5 @@
-// The mind map window's content: the radial graph (zoom, pinch and drag to pan) and the side
-// panel describing the selected concept or connection.
+// The mind map window's content: the radial graph (zoom, pinch, drag to pan, drag concepts and
+// edges to rearrange) and the side panel describing the selected concept or connection.
 
 #if os(macOS)
 import SwiftUI
@@ -40,6 +40,9 @@ struct MindMapView: View {
     @State private var scroll = ScrollPosition()
     @State private var geometry = ScrollFrame()
     @State private var dragStart: CGPoint?
+    /// Concepts and edge handles the user has dragged, and where the one being dragged started.
+    @State private var arrangement = MindMapLayout.Arrangement()
+    @State private var moveStart: MindMapLayout.Point?
 
     /// What panning needs to know about the scroll view.
     private struct ScrollFrame: Equatable {
@@ -51,11 +54,14 @@ struct MindMapView: View {
     /// The map's layout and lookups, rebuilt only when the map changes: rebuilding them on every
     /// redraw (each pinch frame) made the graph lag.
     private struct Drawn {
-        let layout: MindMapLayout
+        /// The computed layout, and that layout with the user's arrangement on top.
+        let base: MindMapLayout
+        var layout: MindMapLayout
         let nodes: [String: MindMap.Node]
         let ids: [String]
-        init(_ map: MindMap) {
-            layout = MindMapLayout(map)
+        init(_ map: MindMap, _ arrangement: MindMapLayout.Arrangement = .init()) {
+            base = MindMapLayout(map)
+            layout = base.arranged(arrangement)
             nodes = Dictionary(map.nodes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             ids = layout.positions.keys.sorted()
         }
@@ -79,7 +85,7 @@ struct MindMapView: View {
     /// Apply an edit: redraw, keep the selection if it still exists, load its draft, and save.
     private func edit(_ change: (inout MindMap) -> Void) {
         change(&map)
-        drawn = Drawn(map)
+        drawn = Drawn(map, arrangement)
         if case .node(let id) = selection, map.node(id) == nil, MindMapPresentation.external(map, id) == nil { selection = nil }
         if case .edge(let id) = selection, !layout.selectableEdges.contains(where: { $0.id == id }) { selection = nil }
         loadDraft()
@@ -95,6 +101,30 @@ struct MindMapView: View {
         } else {
             draft = Draft()
         }
+    }
+
+    /// Change what the user has dragged, and redraw on top of the same computed layout.
+    private func arrange(_ change: (inout MindMapLayout.Arrangement) -> Void) {
+        change(&arrangement)
+        drawn.layout = drawn.base.arranged(arrangement)
+    }
+
+    /// Drags a concept (`id`) or an edge's handle (`edge`) around the map.
+    private func moveGesture(node id: String? = nil, edge: MindMapLayout.Edge? = nil, scale: Double) -> some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .global)
+            .onChanged { drag in
+                guard let start = moveStart ?? id.flatMap({ layout.positions[$0] }) ?? edge.flatMap(layout.handle) else { return }
+                moveStart = start
+                let (dx, dy) = (drag.translation.width, drag.translation.height)
+                if let id {
+                    arrange { $0.nodes[id] = layout.dragged(from: start, dx: dx, dy: dy, scale: scale) }
+                } else if let edge {
+                    let p = layout.dragged(from: start, dx: dx, dy: dy, scale: scale,
+                                           w: MindMapLayout.linkLabelWidth, h: MindMapLayout.linkLabelHeight)
+                    arrange { $0.handles[edge.id] = layout.handleOffset(edge, at: p) }
+                }
+            }
+            .onEnded { _ in moveStart = nil }
     }
 
     /// The selected edge, if one is.
@@ -151,18 +181,6 @@ struct MindMapView: View {
                             scroll.scrollTo(point: target)
                         }
                     }
-                    // Window coordinates: the content moves under the pointer while panning.
-                    .simultaneousGesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
-                        .onChanged { drag in
-                            let start = dragStart ?? geometry.offset
-                            dragStart = start
-                            let p = MindMapLayout.panned(from: .init(x: start.x, y: start.y),
-                                                         dx: drag.translation.width, dy: drag.translation.height,
-                                                         content: (geometry.content.width, geometry.content.height),
-                                                         viewport: (geometry.viewport.width, geometry.viewport.height))
-                            scroll.scrollTo(point: CGPoint(x: p.x, y: p.y))
-                        }
-                        .onEnded { _ in dragStart = nil })
                     .pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
                     .onAppear { fit = layout.fitScale(width: geo.size.width - 40, height: geo.size.height - 40) }
                     .onChange(of: geo.size) { _, size in fit = layout.fitScale(width: size.width - 40, height: size.height - 40) }
@@ -196,6 +214,12 @@ struct MindMapView: View {
                 Image(systemName: "plus.magnifyingglass").frame(width: 26, height: 24)
             }
             .help(L("Zoom in"))
+            if !arrangement.isEmpty {
+                Button { arrange { $0 = .init() } } label: {
+                    Image(systemName: "arrow.counterclockwise").frame(width: 26, height: 24)
+                }
+                .help(L("Put every concept and connection back in place"))
+            }
             if onSave != nil {
                 Divider().frame(height: 16)
                 Toggle(isOn: $editing.animation(.snappy)) {
@@ -244,6 +268,7 @@ struct MindMapView: View {
                 if let p = layout.positions[id] {
                     nodeView(id, layout: layout)
                         .scaleEffect(scale)
+                        .gesture(moveGesture(node: id, scale: scale))
                         .position(x: p.x * scale, y: p.y * scale)
                 }
             }
@@ -252,6 +277,7 @@ struct MindMapView: View {
             ForEach(layout.selectableEdges) { e in
                 if let p = layout.handle(e), let detail = MindMapPresentation.edgeDetail(map, e) {
                     edgeHandle(e, detail: detail)
+                        .gesture(moveGesture(edge: e, scale: scale))
                         .position(x: p.x * scale, y: p.y * scale)
                 }
             }
@@ -259,6 +285,19 @@ struct MindMapView: View {
         .frame(width: layout.width * scale, height: layout.height * scale, alignment: .topLeading)
         .contentShape(Rectangle())
         .onTapGesture { selection = nil }
+        // On the graph, not the scroll view: a drag that starts on a concept or a handle moves
+        // that instead. Window coordinates: the content moves under the pointer while panning.
+        .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
+            .onChanged { drag in
+                let start = dragStart ?? geometry.offset
+                dragStart = start
+                let p = MindMapLayout.panned(from: .init(x: start.x, y: start.y),
+                                             dx: drag.translation.width, dy: drag.translation.height,
+                                             content: (geometry.content.width, geometry.content.height),
+                                             viewport: (geometry.viewport.width, geometry.viewport.height))
+                scroll.scrollTo(point: CGPoint(x: p.x, y: p.y))
+            }
+            .onEnded { _ in dragStart = nil })
     }
 
     /// A concept's box, styled by tier (paper, main concept, detail); clicking selects it.

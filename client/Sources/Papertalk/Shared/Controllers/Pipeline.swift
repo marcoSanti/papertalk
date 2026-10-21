@@ -1,3 +1,8 @@
+// The LLM half of an import, run in-process against any OpenAI-compatible endpoint:
+// metadata, the cast proposal, the episode outline, each segment's dialogue or
+// monologue, length control for summaries, and the mind map. Audio is voiced later,
+// by `AppStore.bakeAudio`.
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -9,27 +14,31 @@ import PDFKit
 import AppKit
 #endif
 
-// MARK: - Local generation pipeline (self-hosted, no external compute server).
-//
-// Kept deliberately single-stage: extract text (PDFKit) -> one LLM call that
-// returns a Transcript JSON -> PlayerController reads the transcript live via
-// AVSpeechSynthesizer (no audio file is baked; local mode already streams).
-
+/// What `generateTranscript` returns.
 struct PipelineResult {
+    /// The written episode.
     var transcript: Transcript
+    /// The first line of the text: a guess, used only when the metadata step found none.
     var title: String
+    /// Names guessed from the lines under the title (same caveat).
     var authors: [String]
 }
 
 /// Structured bibliographic metadata extracted from a paper by the LLM.
 struct PaperMeta {
+    /// The paper's title (the fallback when the LLM gave none).
     var title: String = ""
+    /// Full names, in byline order.
     var authors: [String] = []
+    /// Institutions, as written.
     var affiliations: [String] = []
+    /// Bare DOI, or empty.
     var doi: String = ""
+    /// Broad topic tags; never empty ("paper" at worst).
     var tags: [String] = []
 }
 
+/// Why writing an episode failed.
 enum PipelineError: Error, LocalizedError {
     case noText, llm(String)
     var errorDescription: String? {
@@ -41,9 +50,11 @@ enum PipelineError: Error, LocalizedError {
 }
 
 private extension String {
+    /// nil for an empty string, for `??` chains.
     var nonEmpty: String? { isEmpty ? nil : self }
 }
 
+/// Reading the LLM's plain-text replies.
 enum Parsers {
     /// Parse "Name: text" dialogue lines into turns, tolerating the model
     /// occasionally mis-labeling a speaker or wrapping in prose.
@@ -65,9 +76,14 @@ enum Parsers {
     }
 }
 
+/// One configured connection to the LLM and the steps that use it. A value type: each import
+/// builds its own, with the store's prompts, language and hooks.
 struct LocalPipeline {
+    /// The endpoint's base URL; `/chat/completions` and `/models` go under it.
     var baseUrl: String
+    /// Sent as a bearer token when not empty.
     var apiKey: String
+    /// The model id sent with every request.
     var model: String
     /// Editable prompts (only the reply schemas and dialogue format stay hardcoded).
     var prompts: PromptSettings = .defaults
@@ -80,6 +96,7 @@ struct LocalPipeline {
     /// Drives the import progress bar in the UI; no-ops when unset.
     var onProgress: (Double, String) -> Void = { _, _ in }
 
+    /// A pipeline with the default prompts, English output and no hooks.
     init(baseUrl: String, apiKey: String, model: String) {
         self.baseUrl = baseUrl
         self.apiKey = apiKey
@@ -274,16 +291,21 @@ struct LocalPipeline {
     }
 
     // ------------------------------------------------------------- plan
+    /// An entry of the paper's section index; `minSec` is its suggested airtime in seconds.
     private struct PlanSection: Codable { var title: String; var minSec: Int }
+    /// A listening segment of the outline: what it covers, its share of the length (`weight`),
+    /// and whether it's a method monologue.
     private struct PlanSegment: Codable {
         var title: String; var goal: String; var sections: [Int]?; var keyPoints: [String]? = [];
         var weight: Double; var monologue: Bool; var targetWords: Int = 0
     }
+    /// The outline: the section index, the segments, and the depth guide they were planned with.
     private struct Plan: Codable {
         var sections: [PlanSection]; var segments: [PlanSegment]; var tags: [String]? = []
         var depthGuide: String = ""
     }
 
+    /// Ask for the outline (once more, stricter, if the reply can't be read); throws when no plan comes back.
     private func planScript(cleaned: String, title: String, host: String, expert: String, depth: Depth,
                             depthNote: String, minutes: Int, minSeg: Int, maxSeg: Int,
                             plannedWords: Int) async throws -> Plan {
@@ -461,6 +483,7 @@ struct LocalPipeline {
         return cut
     }
 
+    /// Spoken words in `turns`, the unit every length rule uses.
     static func wordCount(_ turns: [Transcript.Turn]) -> Int {
         turns.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
     }
@@ -550,6 +573,7 @@ struct LocalPipeline {
         return turns
     }
 
+    /// The paper's text for the sections a segment covers, matched by title; empty when none match.
     private func sourceForSections(_ plan: Plan, _ seg: PlanSegment, _ cleaned: String) -> String {
         guard let refs = seg.sections, !refs.isEmpty else { return "" }
         let wanted = refs.compactMap { $0 - 1 < plan.sections.count ? plan.sections[$0 - 1].title : nil }
@@ -565,6 +589,7 @@ struct LocalPipeline {
         return matched.joined(separator: "\n\n")
     }
 
+    /// The {position} text for segment `k` of `n` (only, first, middle or last).
     private func positionRule(index k: Int, count n: Int, host: String, expert: String) -> String {
         let template = n == 1 ? prompts.positionOnly
             : k == 0 ? prompts.positionFirst
@@ -610,6 +635,7 @@ struct LocalPipeline {
         throw lastError ?? PipelineError.llm("request failed after \(attempts) attempts")
     }
 
+    /// One chat completion: the reply's text. Throws on HTTP errors and unreadable replies.
     private func chat(system: String, user: String, maxTokens: Int) async throws -> String {
         let body: [String: Any] = [
             "model": model,
@@ -638,6 +664,7 @@ struct LocalPipeline {
         return raw
     }
 
+    /// A heading of the paper and the text under it.
     private struct PaperSection {
         let title: String
         let text: String
@@ -659,6 +686,7 @@ struct LocalPipeline {
         "preliminaries", "problem setup", "methods and experiments", "algorithm",
     ]
 
+    /// The paper cut at the lines that look like headings.
     private func splitSections(_ text: String) -> [PaperSection] {
         let lines = text.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         var sections: [PaperSection] = []
@@ -681,6 +709,7 @@ struct LocalPipeline {
         return sections.isEmpty ? [PaperSection(title: "Paper", text: text)] : sections
     }
 
+    /// A known section name, or a short numbered line ("3.1 Model").
     private func isHeading(_ line: String) -> Bool {
         guard line.count >= 3, line.count <= 80 else { return false }
         let stripped = stripNumbering(line)
@@ -691,12 +720,14 @@ struct LocalPipeline {
         return numbered && low.split(separator: " ").count <= 4 && !low.hasSuffix(".")
     }
 
+    /// A section that describes the method.
     private func isMethodology(_ title: String) -> Bool {
         let low = stripNumbering(title).lowercased()
         if Self.methodologyTitles.contains(low) { return true }
         return ["method", "methodology", "approach", "experimental setup"].contains { low.contains($0) }
     }
 
+    /// "3.1 Model" → "Model" (also roman numerals and letters).
     private func stripNumbering(_ t: String) -> String {
         var s = t.trimmingCharacters(in: .whitespacesAndNewlines)
         while let r = s.range(of: #"^([\d.]+|[ivxlc]+\.?|[a-z])\.?\s+"#, options: .regularExpression) {
@@ -705,6 +736,7 @@ struct LocalPipeline {
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The title without numbering, unless that leaves nothing.
     private func presentable(_ title: String) -> String {
         let s = stripNumbering(title)
         return s.isEmpty ? title : s
@@ -732,6 +764,8 @@ struct LocalPipeline {
         return out
     }
 
+    /// The JSON object in a reply: from the first "{" to the last "}". This is why the LLM is
+    /// always asked for an object, never a top-level array.
     static func extractJSON(_ raw: String) -> String? {
         let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         // Take everything from the first "{" to the last "}", ignoring any
@@ -763,20 +797,13 @@ struct LocalPipeline {
         return out
     }
 
+    /// "Ada Lovelace" → "Ada"; nil for initials.
     private func firstGivenName(_ full: String) -> String? {
         let first = full.replacingOccurrences(of: ",", with: " ")
             .split(separator: " ").first.map(String.init) ?? ""
         return first.count > 1 ? first : nil
     }
 
-    /// Ask the LLM to cast the episode: who speaks, each person's gender and a
-    /// suggested name. Used *after* metadata so the scientist's real author name
-    /// can inform it. Falls back to a sensible two-person cast when the model is
-    /// unreachable or returns unusable JSON.
-    ///
-    /// ponytail: the reported "how many voices" is capped at the interviewer +
-    /// scientist pair the dialogue generator supports; a future N-speaker rewrite
-    /// of planScript/writeDialogue would lift that ceiling.
     /// Ask the LLM for the paper's mind map. Asks once more when a main concept
     /// isn't broken down; throws only when no usable map comes back at all.
     func mindMap(title: String, text: String) async throws -> MindMap {
@@ -802,6 +829,14 @@ struct LocalPipeline {
         return map
     }
 
+    /// Ask the LLM to cast the episode: who speaks, each person's gender and a
+    /// suggested name. Used *after* metadata so the scientist's real author name
+    /// can inform it. Falls back to a sensible two-person cast when the model is
+    /// unreachable or returns unusable JSON.
+    ///
+    /// ponytail: the reported "how many voices" is capped at the interviewer +
+    /// scientist pair the dialogue generator supports; a future N-speaker rewrite
+    /// of planScript/writeDialogue would lift that ceiling.
     func proposeCast(title: String, authors: [String], cleaned: String, depthNote: String) async -> CastProposal {
         let scientistName = authors.first.flatMap(firstGivenName) ?? "Sam"
         let fallback = CastProposal(

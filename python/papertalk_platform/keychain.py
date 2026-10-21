@@ -10,6 +10,7 @@ SERVICE = "com.papertalk.key"
 
 
 def read(account: str) -> str:
+    """The secret saved under `account`, or "" (also when no keyring is available)."""
     try:
         return keyring.get_password(SERVICE, account) or ""
     except KeyringError:
@@ -17,6 +18,7 @@ def read(account: str) -> str:
 
 
 def write(account: str, secret: str) -> bool:
+    """Save `secret` under `account`; False when no keyring is available."""
     try:
         keyring.set_password(SERVICE, account, secret)
         return True
@@ -25,6 +27,7 @@ def write(account: str, secret: str) -> bool:
 
 
 def delete(account: str) -> None:
+    """Remove `account`'s secret, if there is one."""
     try:
         keyring.delete_password(SERVICE, account)
     except KeyringError:

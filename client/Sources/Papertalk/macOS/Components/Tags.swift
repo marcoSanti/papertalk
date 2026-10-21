@@ -1,12 +1,18 @@
+// Tag chips: a single removable chip and a wrapping row of them.
+
 #if os(macOS)
 import SwiftUI
 
 // MARK: - Flow tags (wrapping chip layout, removable)
 
+/// Tags as chips that wrap onto new lines, with optional trailing content (the add field).
 struct FlowTags<Trailing: View>: View {
     let tags: [String]
+    /// Clicking a chip (shows that tag's papers); nil makes chips inert.
     var onSelect: ((String) -> Void)? = nil
+    /// The chip's remove button.
     var onRemove: (String) -> Void
+    /// Shown after the last chip, on the same flow.
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
@@ -23,15 +29,19 @@ struct FlowTags<Trailing: View>: View {
 }
 
 extension FlowTags where Trailing == EmptyView {
+    /// Chips with nothing after them, not clickable.
     init(tags: [String], onRemove: @escaping (String) -> Void) {
         self.init(tags: tags, onSelect: nil, onRemove: onRemove, trailing: { EmptyView() })
     }
 }
 
 /// A single accent-tinted tag capsule; the remove button appears on hover.
+/// One "#tag" capsule; the remove button appears on hover.
 struct TagChip: View {
     let tag: String
+    /// Clicking the chip; nil makes it inert.
     var onSelect: (() -> Void)? = nil
+    /// The remove button.
     var onRemove: () -> Void
 
     @State private var hovering = false

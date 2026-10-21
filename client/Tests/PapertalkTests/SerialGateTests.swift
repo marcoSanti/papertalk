@@ -1,3 +1,5 @@
+// Tests of `SerialGate`.
+
 import XCTest
 @testable import Papertalk
 

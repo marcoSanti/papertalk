@@ -1,3 +1,6 @@
+// The details panel (inspector) on the right of the main window: everything about the selected
+// paper and every action on it.
+
 #if os(macOS)
 import SwiftUI
 import AppKit
@@ -13,6 +16,7 @@ import AppKit
 struct DetailView: View {
     @EnvironmentObject private var store: AppStore
     let paper: Paper
+    /// Opens the Edit paper sheet.
     var onEdit: () -> Void
 
     /// The sheet is driven by the loaded transcript itself, so it can never
@@ -75,6 +79,7 @@ struct DetailView: View {
         }
     }
 
+    /// Reset the panel's local state when another paper is shown.
     private func load(_ p: Paper) {
         guard shownID != p.id else { return }
         shownID = p.id
@@ -83,12 +88,14 @@ struct DetailView: View {
         showLog = p.isActive
     }
 
+    /// Save the inline title edit (an empty one reverts).
     private func commitTitle() {
         titleDraft = store.commitTitleEdit(paper.id, draft: titleDraft)
     }
 
     // MARK: - Hero
 
+    /// The cover, the editable title and the depth and date pills.
     private var hero: some View {
         VStack(spacing: 14) {
             PaperArtwork(paper: paper)
@@ -138,6 +145,7 @@ struct DetailView: View {
         .padding(.bottom, 4)
     }
 
+    /// A small labelled capsule under the title.
     private func pill(_ text: String, icon: String) -> some View {
         Label(text, systemImage: icon)
             .font(.caption2.weight(.medium))
@@ -149,6 +157,7 @@ struct DetailView: View {
 
     // MARK: - Authors
 
+    /// The authors, each opening their papers; long lists are folded.
     private var authorsCard: some View {
         let visible = PaperPresentation.visibleAuthors(paper.authors, showAll: showAllAuthors)
         return VStack(alignment: .leading, spacing: 10) {
@@ -173,6 +182,7 @@ struct DetailView: View {
 
     // MARK: - Details
 
+    /// Affiliation, DOI, citation, file, dates and which assets exist.
     private var detailsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: L("Details"), systemImage: "info.circle")
@@ -231,6 +241,7 @@ struct DetailView: View {
         .glassCard()
     }
 
+    /// A label and its value in the details grid.
     private func detailRow<V: View>(_ label: String, @ViewBuilder value: () -> V) -> GridRow<some View> {
         GridRow {
             Text(label)
@@ -241,6 +252,7 @@ struct DetailView: View {
         }
     }
 
+    /// An asset with a mark for whether it exists.
     private func asset(_ label: String, _ icon: String, _ present: Bool) -> some View {
         Label(label, systemImage: present ? icon : "minus.circle")
             .labelStyle(.titleAndIcon)
@@ -251,6 +263,7 @@ struct DetailView: View {
 
     // MARK: - Tags
 
+    /// The paper's tags, the add field, and suggestions from the library's common tags.
     private var tagsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel(title: L("Tags"), systemImage: "number", trailing: LibraryPresentation.badge(paper.tags.count))
@@ -286,6 +299,7 @@ struct DetailView: View {
 
     // MARK: - Manage
 
+    /// Regenerate audio, rerun, mind map, refresh metadata, show in Finder, delete audio, delete.
     private var manageCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             SectionLabel(title: L("Manage"), systemImage: "slider.horizontal.3")
@@ -337,6 +351,7 @@ struct DetailView: View {
 
     // MARK: - Actions
 
+    /// Open the stored PDF in its own window.
     private func openPDF() {
         guard paper.hasPdf else { return }
         Task {
@@ -346,6 +361,7 @@ struct DetailView: View {
         }
     }
 
+    /// Open the transcript sheet with the script as it is on disk now.
     private func openTranscript() {
         Task {
             // Always read the current file: a rerun may have replaced it.
@@ -353,6 +369,7 @@ struct DetailView: View {
         }
     }
 
+    /// Open the mind map window, reading the saved map now.
     private func openMindMap() {
         Task {
             // Always read the current file: Redraw may have replaced it.
@@ -399,13 +416,18 @@ private struct PaperBackdrop: View {
 
 // MARK: - Quick actions
 
+/// The glass action bar under the hero: play, PDF, transcript, mind map, favourite, edit.
 private struct QuickActionBar: View {
     @EnvironmentObject private var store: AppStore
     @ObservedObject var player: PlayerController
     let paper: Paper
+    /// Opens the PDF.
     var onPDF: () -> Void
+    /// Opens the transcript sheet.
     var onTranscript: () -> Void
+    /// Opens the mind map.
     var onMindMap: () -> Void
+    /// Opens the Edit paper sheet.
     var onEdit: () -> Void
 
     private var isLoaded: Bool { store.playingPaperId == paper.id }
@@ -425,6 +447,7 @@ private struct QuickActionBar: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// The large play/pause button; shows a spinner while the first turn is voiced.
     private func playButton(_ title: String, icon: String, busy: Bool, enabled: Bool) -> some View {
         Button(action: togglePlay) {
             HStack(spacing: 8) {
@@ -449,6 +472,7 @@ private struct QuickActionBar: View {
         .help(title)
     }
 
+    /// The row of small icon buttons.
     private func secondaryActions(_ favorite: (title: String, icon: String)) -> some View {
         HStack(alignment: .top, spacing: 0) {
             action(L("PDF"), icon: "doc.text", enabled: paper.hasPdf, perform: onPDF)
@@ -463,8 +487,10 @@ private struct QuickActionBar: View {
         }
     }
 
+    /// Play or pause this paper in the global player.
     private func togglePlay() { store.togglePlayback(paper.id) }
 
+    /// A small icon button with its label under it.
     private func action(_ title: String, icon: String, enabled: Bool = true, iconColor: Color? = nil,
                         perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
@@ -493,6 +519,8 @@ private struct QuickActionBar: View {
 
 // MARK: - Conversion status
 
+/// While converting: the stage checklist and progress bar, with Stop. After a failure: why,
+/// with Try again and Dismiss.
 private struct ConversionStatusCard: View {
     @EnvironmentObject private var store: AppStore
     let paper: Paper
@@ -503,6 +531,7 @@ private struct ConversionStatusCard: View {
         if paper.isError { errorBody } else { runningBody }
     }
 
+    /// The checklist of stages and the progress bar.
     private var runningBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionLabel(title: L("Converting"), systemImage: "gearshape.2",
@@ -546,6 +575,7 @@ private struct ConversionStatusCard: View {
         .glassCard(tint: Color.appAccent.opacity(0.10))
     }
 
+    /// What went wrong and the ways forward.
     private var errorBody: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(PaperPresentation.failureTitle(paper), systemImage: "exclamationmark.triangle.fill")
@@ -574,6 +604,7 @@ private struct ConversionStatusCard: View {
 
 // MARK: - Episode card
 
+/// Listening progress for this paper, its playback status, and the live-audio warning.
 private struct EpisodeCard: View {
     @EnvironmentObject private var store: AppStore
     @ObservedObject var player: PlayerController
@@ -644,6 +675,7 @@ private struct EpisodeCard: View {
 
 // MARK: - Small pieces
 
+/// Copies `value` and shows a check for a moment.
 private struct CopyButton: View {
     let value: String
     @State private var copied = false
@@ -669,6 +701,7 @@ private struct CopyButton: View {
 
 /// Presents a paper's LaTeX (BibTeX) citation with a copy button.
 private struct CitationView: View {
+    /// The citation as doi2bib returned it.
     let bibtex: String
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
@@ -707,11 +740,13 @@ private struct CitationView: View {
     }
 }
 
+/// A row of the Manage card: icon, title, optional subtitle; red when destructive.
 private struct ManageRow: View {
     let title: String
     let subtitle: String?
     let icon: String
     let tint: Color
+    /// Red, for actions that delete something.
     var destructive = false
     let action: () -> Void
 
@@ -756,6 +791,7 @@ private struct ManageRow: View {
 
 /// Inline "+ Add tag" capsule that expands into a text field.
 private struct TagEntryField: View {
+    /// Called with the typed tag.
     var onAdd: (String) -> Void
     @State private var text = ""
     @State private var editing = false
@@ -790,6 +826,7 @@ private struct TagEntryField: View {
         )
     }
 
+    /// Add the typed tag and close the field.
     private func submit() {
         onAdd(text)   // the store tidies the tag and ignores blanks
         text = ""
@@ -799,6 +836,7 @@ private struct TagEntryField: View {
 /// Inspector author line; opens that author's papers.
 private struct AuthorRow: View {
     let name: String
+    /// Their papers in the library, shown when more than this one.
     let paperCount: Int
     let action: () -> Void
     @State private var hovering = false

@@ -1,3 +1,5 @@
+// A first-come, first-served async gate, used to voice one paper at a time.
+
 import Foundation
 
 /// Lets one holder through at a time; the rest wait in arrival order.

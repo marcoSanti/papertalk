@@ -1,3 +1,5 @@
+// Tests of the update check.
+
 import XCTest
 @testable import Papertalk
 

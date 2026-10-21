@@ -1,3 +1,5 @@
+// Tests of `HttpStorage` against a fake storage server.
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking

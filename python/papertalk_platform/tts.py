@@ -18,16 +18,19 @@ _kokoro = None
 
 
 def model_dir() -> str:
+    """Where the model files are kept: $XDG_CACHE_HOME/papertalk/kokoro."""
     base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
     return os.path.join(base, "papertalk", "kokoro")
 
 
 def _paths():
+    """The model and voices file paths."""
     d = model_dir()
     return os.path.join(d, "kokoro-v1.0.onnx"), os.path.join(d, "voices-v1.0.bin")
 
 
 def models_present() -> bool:
+    """Whether both model files are downloaded."""
     return all(os.path.exists(p) for p in _paths())
 
 
@@ -39,6 +42,7 @@ def download_models(progress=None) -> None:
         partial = path + ".part"
 
         def hook(blocks, block_size, total, index=index):
+            """Report the overall fraction across both files."""
             if progress and total > 0:
                 progress((index + min(1.0, blocks * block_size / total)) / len(targets))
 
@@ -59,6 +63,7 @@ def prepare() -> None:
 
 
 def voices() -> list:
+    """Every voice id the loaded model has."""
     prepare()
     return sorted(_kokoro.get_voices())
 

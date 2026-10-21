@@ -1,3 +1,5 @@
+// The Linux import sheet (New episode), over the shared `ImportForm`.
+
 #if os(Linux)
 import Foundation
 import SwiftCrossUI
@@ -70,6 +72,7 @@ struct ImportSheet: View {
         }
     }
 
+    /// Read the chosen PDF into the form (a toast if it can't be read).
     private func load(_ url: URL) {
         do { form.setFile(name: url.lastPathComponent, data: try PDFFile.read(url)) }
         catch { bridge.store.show(error.localizedDescription) }

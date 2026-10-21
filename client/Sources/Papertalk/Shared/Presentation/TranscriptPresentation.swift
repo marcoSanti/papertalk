@@ -1,3 +1,5 @@
+// Transcript text for the reader sheet, the clipboard and the activity log pane.
+
 import Foundation
 
 /// Transcript text for the reader sheet and the clipboard.
@@ -11,6 +13,7 @@ enum TranscriptPresentation {
         return seen
     }
 
+    /// "12 segments" in the sheet's header.
     static func segmentCount(_ t: Transcript) -> String {
         LibraryPresentation.count(t.segments.count, L("1 segment"), L("{0} segments"))
     }

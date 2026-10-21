@@ -1,3 +1,5 @@
+// A layout test of the real macOS Settings window.
+
 #if os(macOS)
 import AppKit
 import SwiftUI
@@ -13,7 +15,7 @@ final class SettingsLayoutTests: PapertalkTestCase {
     func testSidebarIsVisibleOnEveryPage() async throws {
         _ = NSApplication.shared
         // The LLM page is left out: opening it asks the configured endpoint for models.
-        for page: AppStore.SettingsPage in [.clear, .voices, .server, .prompts, .presets, .language] {
+        for page: AppStore.SettingsPage in [.clear, .voices, .server, .prompts, .presets, .general] {
             let store = AppStore(storage: LocalStorage(root: Fixtures.tempDir()), speech: FakeSpeechBackend())
             store.settingsPage = page
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),

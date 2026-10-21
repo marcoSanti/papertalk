@@ -310,6 +310,9 @@ Still to do, in order:
 
 ## Style
 
+- Every source file (Swift, Python, shell) opens with a short comment saying what the file does,
+  above its imports and `#if os(...)` guard. Every type, and every function or property whose
+  name doesn't say it all, gets a short `///` doc comment (a docstring in Python).
 - Match the surrounding code: comments explain *why*, not what, and stay short. Keep the existing
   naming and idioms (glass styles, `Theme` helpers, `Color.appAccent`).
 - User-facing copy: plain and specific. Say what happened and what to do next.

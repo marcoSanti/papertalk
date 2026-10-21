@@ -1,9 +1,14 @@
+// The details panel's collapsible activity log for one paper.
+
 #if os(macOS)
 import SwiftUI
 
 // MARK: - Collapsible activity log card (bottom of the inspector)
+/// The paper's log lines, newest at the bottom, auto-scrolling as lines arrive.
 struct LogPane: View {
+    /// Timestamped lines (`AppStore.logLines(for:)`).
     let lines: [String]
+    /// Expanded or collapsed.
     @Binding var isOpen: Bool
 
     var body: some View {

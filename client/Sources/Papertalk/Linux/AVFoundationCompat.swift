@@ -1,3 +1,6 @@
+// Linux stand-in for AVFoundation's AVAudioPlayer: plays a WAV by piping its PCM to the
+// desktop's sound server.
+
 #if os(Linux)
 import Foundation
 
@@ -13,12 +16,17 @@ protocol AVAudioPlayerDelegate: AnyObject {
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool)
 }
 
+/// One sound, played through a sound-server process; pausing stops the process and remembers
+/// the position.
 final class AVAudioPlayer {
+    /// The data wasn't a WAV this player can stream.
     struct FormatError: LocalizedError {
         var errorDescription: String? { "The audio isn't a 16-bit PCM WAV file." }
     }
 
+    /// Told when the sound plays to its end.
     weak var delegate: AVAudioPlayerDelegate?
+    /// Seconds of audio.
     let duration: Double
 
     private let pcm: Data
@@ -31,6 +39,7 @@ final class AVAudioPlayer {
     private var offset: Double = 0
     private var finish: DispatchWorkItem?
 
+    /// A player for a 16-bit PCM WAV; throws `FormatError` for anything else.
     init(data: Data) throws {
         guard let wav = WAV(data) else { throw FormatError() }
         pcm = wav.pcm
@@ -39,6 +48,7 @@ final class AVAudioPlayer {
         duration = Double(pcm.count) / Double(wav.sampleRate * wav.channels * 2)
     }
 
+    /// A sound-server process is running.
     var isPlaying: Bool { sink != nil }
 
     /// Seconds into the sound, from the clock (the sound server's buffer makes
@@ -53,9 +63,11 @@ final class AVAudioPlayer {
         }
     }
 
+    /// Nothing to prepare: kept for API compatibility.
     @discardableResult
     func prepareToPlay() -> Bool { true }
 
+    /// Start (or resume) from the current position; false when no player program is available.
     @discardableResult
     func play() -> Bool {
         guard sink == nil else { return true }
@@ -92,14 +104,17 @@ final class AVAudioPlayer {
         return true
     }
 
+    /// Stop the sound, keeping the position.
     func pause() {
         let now = currentTime
         halt()
         offset = now
     }
 
+    /// As `pause`: the player is thrown away after stopping anyway.
     func stop() { pause() }
 
+    /// Kill the sound-server process and cancel the end-of-sound callback.
     private func halt() {
         finish?.cancel(); finish = nil
         if let sink, sink.isRunning { sink.terminate() }
@@ -136,10 +151,14 @@ final class AVAudioPlayer {
 
 /// The parts of a PCM WAV file the player needs.
 struct WAV {
+    /// Samples per second.
     let sampleRate: Int
+    /// Interleaved channels.
     let channels: Int
+    /// The `data` chunk: 16-bit little-endian samples.
     let pcm: Data
 
+    /// Parses the RIFF chunks; nil unless it's 16-bit PCM.
     init?(_ data: Data) {
         let bytes = [UInt8](data)
         guard bytes.count >= 12, bytes[0..<4] == [0x52, 0x49, 0x46, 0x46], bytes[8..<12] == [0x57, 0x41, 0x56, 0x45] else { return nil }

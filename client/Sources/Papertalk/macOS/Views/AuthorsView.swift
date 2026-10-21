@@ -1,3 +1,6 @@
+// The Authors screen: everyone in the library like a contact book, and the header shown above
+// one author's papers.
+
 #if os(macOS)
 import SwiftUI
 
@@ -52,6 +55,7 @@ struct AuthorsView: View {
 
     // MARK: pieces
 
+    /// An A–Z section's letter.
     private func sectionHeader(_ letter: String) -> some View {
         HStack {
             Text(letter)
@@ -65,6 +69,7 @@ struct AuthorsView: View {
         .padding(.bottom, 2)
     }
 
+    /// The jump strip down the right edge.
     private func letterIndex(_ letters: [String], proxy: ScrollViewProxy) -> some View {
         VStack(spacing: 1) {
             ForEach(letters, id: \.self) { l in
@@ -89,6 +94,7 @@ struct AuthorsView: View {
 
 // MARK: - Author card
 
+/// One author: avatar, name, paper count and a fan of covers; opens their papers.
 private struct AuthorCard: View {
     @EnvironmentObject private var store: AppStore
     let name: String
@@ -153,6 +159,7 @@ private struct AuthorCard: View {
 
 // MARK: - Single-author header (shown above the library when drilled in)
 
+/// Above one author's papers: avatar, name, counts and co-authors (each opening theirs).
 struct AuthorHeader: View {
     @EnvironmentObject private var store: AppStore
     let name: String

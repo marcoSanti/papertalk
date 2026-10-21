@@ -1,3 +1,6 @@
+// Linux stand-ins for FluidAudio's Kokoro API and the macOS `KokoroEngine`, backed by
+// kokoro-onnx through Python.
+
 #if os(Linux)
 import Foundation
 import PythonKit
@@ -6,15 +9,19 @@ import PythonKit
 // behind the same API the shared code uses from FluidAudio and the macOS
 // KokoroEngine, so AppStore, PlayerController and Kokoro.swift are unchanged.
 
+/// The model variant; only English exists here.
 enum KokoroAneVariant { case english }
 
+/// Model download phases, as FluidAudio reports them (only listing and downloading happen).
 enum DownloadPhase { case listing, downloading, compiling }
 
+/// A download progress report.
 struct DownloadProgress: Sendable {
     let fractionCompleted: Double
     let phase: DownloadPhase
 }
 
+/// Fetching the model files.
 enum KokoroAneResourceDownloader {
     /// Where tts.py keeps the model files (XDG cache, like the Python side).
     static var modelsRoot: URL {
@@ -43,6 +50,7 @@ enum KokoroAneResourceDownloader {
     }
 }
 
+/// The voice list.
 enum KokoroAneConstants {
     /// Kokoro v1.0's voices, the same set as FluidAudio's English list (and as
     /// voices-v1.0.bin), so a cast picked on macOS sounds the same here.
@@ -62,6 +70,7 @@ enum KokoroAneConstants {
 /// The one Kokoro instance, as on macOS. Calls are already serialised by the
 /// single Python thread, so there's no queue here.
 actor KokoroEngine {
+    /// The only instance.
     static let shared = KokoroEngine()
 
     /// Load the model (downloads it first if needed). Safe to call repeatedly.

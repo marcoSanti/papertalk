@@ -1,3 +1,5 @@
+// An opt-in end-to-end import with real Kokoro and a mocked LLM (PAPERTALK_E2E=1).
+
 import Foundation
 import XCTest
 @testable import Papertalk

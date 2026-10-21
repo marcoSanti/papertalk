@@ -1,6 +1,11 @@
+// The main window: sidebar, library and details panel, the toolbar, and every sheet, dialog,
+// alert and toast the store asks for.
+
 #if os(macOS)
 import SwiftUI
 
+/// The window's root. Sheets and confirmations are presented from here, once, driven by the
+/// store's state (a dialog attached inside a context menu would vanish with the menu).
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
     @AppStorage("papertalk.showInspector") private var showInspector = true
@@ -123,6 +128,7 @@ struct ContentView: View {
                 set: { if !$0 { store.cancelCast() } })
     }
 
+    /// The selected paper's details, or a placeholder.
     @ViewBuilder private var inspectorContent: some View {
         if let paper = store.selectedPaper() {
             DetailView(paper: paper, onEdit: { store.editingPaper = paper })
@@ -177,6 +183,7 @@ struct ContentView: View {
     }
 }
 
+/// The details panel with nothing selected.
 struct EmptyDetailPlaceholder: View {
     var body: some View {
         ContentUnavailableView {

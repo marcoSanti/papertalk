@@ -1,23 +1,34 @@
+// The Query Prompts settings page's catalog: every editable prompt the pipeline sends, with
+// when it is used and which {tokens} it is filled with.
+
 import Foundation
 
 /// One editable prompt on the Query Prompts settings page.
 struct PromptEntry: Identifiable {
+    /// Stable id, used as the page's picker tag.
     let id: String
+    /// The picker section it's listed under.
     let group: String
+    /// Its name in the picker.
     let title: String
+    /// When the pipeline sends it, shown above the editor.
     let usedWhen: String
     /// The {tokens} this prompt is filled with.
     let tokens: [String]
+    /// Where its text lives in `PromptSettings`.
     let keyPath: WritableKeyPath<PromptSettings, String>
 
+    /// "Tokens: {host}, {expert}" under the description.
     var tokensLabel: String {
         tokens.isEmpty ? L("No tokens.") : L("Tokens:") + " " + tokens.map { "{\($0)}" }.joined(separator: ", ")
     }
 
+    /// Unchanged from the shipped text (disables Reset).
     func isDefault(_ prompts: PromptSettings) -> Bool {
         prompts[keyPath: keyPath] == PromptSettings.defaults[keyPath: keyPath]
     }
 
+    /// Put the shipped text back.
     func reset(_ prompts: inout PromptSettings) {
         prompts[keyPath: keyPath] = PromptSettings.defaults[keyPath: keyPath]
     }
@@ -25,15 +36,18 @@ struct PromptEntry: Identifiable {
 
 /// Every prompt the pipeline sends, in the order an import uses them.
 enum PromptCatalog {
+    /// The page's explanation, under its title.
     static var intro: String {
         L("Everything the LLM is asked during an import. The reply formats (JSON schemas and the “Name: line” dialogue layout) are added automatically, so replies stay readable whatever you write here.")
     }
+    /// The reset button.
     static var resetTitle: String { L("Reset to default") }
 
     private static let segmentTokens = ["segmentNumber", "segmentCount", "segmentTitle", "goal", "keyPoints",
                                         "targetWords", "otherSegments", "covered", "recentTurns", "position",
                                         "host", "expert"]
 
+    /// One entry per `PromptSettings` field (a test checks none is missing).
     static var entries: [PromptEntry] { [
         PromptEntry(id: "metadata", group: L("Paper details"), title: L("Metadata"),
                     usedWhen: L("First, to read the title, authors, affiliations, DOI and tags from the paper's text."),
@@ -121,5 +135,6 @@ enum PromptCatalog {
         return out
     }
 
+    /// The entry with this id, else the first.
     static func entry(_ id: String) -> PromptEntry { entries.first { $0.id == id } ?? entries[0] }
 }

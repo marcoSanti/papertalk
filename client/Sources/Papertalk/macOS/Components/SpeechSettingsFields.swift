@@ -1,3 +1,5 @@
+// The Voices settings fields, shared by Settings and setup.
+
 #if os(macOS)
 import SwiftUI
 
@@ -63,6 +65,7 @@ struct SpeechSettingsFields: View {
         }
     }
 
+    /// A caption above a control.
     private func field(_ label: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.caption)
@@ -70,6 +73,7 @@ struct SpeechSettingsFields: View {
         }
     }
 
+    /// Ask the server for its models and voices, and show what came back.
     private func loadCatalog() {
         loading = true
         note = nil

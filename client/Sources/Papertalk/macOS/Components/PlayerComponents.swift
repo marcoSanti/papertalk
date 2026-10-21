@@ -1,10 +1,16 @@
+// The floating bottom bar: the episode player (transport, scrubber, turn counter) and the
+// progress of running imports and mind maps, side by side when both are there.
+
 #if os(macOS)
 import SwiftUI
 
 // MARK: - Player bar (transport + scrubber + now-playing info)
+/// Transport and scrubber for the loaded episode.
 struct PlayerBar: View {
     @ObservedObject var player: PlayerController
+    /// Called with the time (seconds) the scrubber was released at.
     let onSeek: (Double) -> Void
+    /// The turn playing, for the "3 of 40" label.
     let activeTurn: Int
     let paper: Paper
     @State private var isScrubbing = false
@@ -100,6 +106,7 @@ struct PlayerBar: View {
         }
     }
 
+    /// Previous/next turn button.
     private func skipButton(_ delta: Int, systemImage: String, help: String, enabled: Bool) -> some View {
         Button {
             player.skip(by: delta)
@@ -117,6 +124,7 @@ struct PlayerBar: View {
 }
 
 // MARK: - Floating glass "now playing" / import status capsule
+/// The bar under the library: what it holds is decided by `BottomBarContent`.
 struct BottomBar: View {
     @EnvironmentObject private var store: AppStore
     @ObservedObject var player: PlayerController
@@ -146,6 +154,7 @@ struct BottomBar: View {
         .animation(.spring(duration: 0.35), value: content)
     }
 
+    /// The player for `paper`: the transport once loaded, else a play button or why it can't play.
     @ViewBuilder
     private func playPane(_ paper: Paper) -> some View {
         pane {
@@ -192,17 +201,20 @@ struct BottomBar: View {
         }
     }
 
+    /// The progress of the import (or mind map) in focus.
     private func importPane(_ run: Paper) -> some View {
         pane {
             importProgress(run)
         }
     }
 
+    /// A pane's width rules inside the capsule.
     private func pane<C: View>(@ViewBuilder _ content: () -> C) -> some View {
         content()
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The glass capsule the bar's panes sit in.
     private func capsule<C: View>(maxWidth: CGFloat = 760,
                                   @ViewBuilder _ content: () -> C) -> some View {
         content()
@@ -218,6 +230,7 @@ struct BottomBar: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
+    /// Stage, message and progress bar of a run, with arrows to cycle through several.
     private func importProgress(_ p: Paper) -> some View {
         HStack(spacing: 12) {
             if let counter = ImportProgressPresentation.counter(index: store.activeRunIndex, count: store.progressItems.count) {
@@ -272,6 +285,7 @@ struct BottomBar: View {
         }
     }
 
+    /// Cycles the focus through running imports.
     private func arrowButton(_ systemImage: String, _ delta: Int) -> some View {
         Button {
             store.focusImport(delta)

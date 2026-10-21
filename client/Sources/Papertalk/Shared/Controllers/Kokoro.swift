@@ -1,3 +1,6 @@
+// Kokoro voices and speech text: the voice ids, pools and labels the cast uses, splitting a
+// turn into pieces for synthesis, and joining WAV pieces back into one turn.
+
 import Foundation
 #if canImport(FluidAudio)
 import FluidAudio
@@ -7,8 +10,11 @@ import FluidAudio
 /// (PlayerController) and import-time baking (AppStore), so baked audio and
 /// on-demand fallback sound identical.
 enum KokoroSpeech {
+    /// The interviewer's signature voice when male.
     static let maleVoice = "am_michael"
+    /// The interviewer's signature voice when female.
     static let femaleVoice = "af_heart"
+    /// For a speaker whose voice is unknown (e.g. a read-through's Reader).
     static let defaultVoice = "af_heart"
 
     /// Default voice id for a proposed speaker's gender (female unless male).

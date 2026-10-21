@@ -1,3 +1,5 @@
+// Tests of `LocalPipeline`'s LLM calls against the mock endpoint.
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking

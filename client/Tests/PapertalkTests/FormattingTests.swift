@@ -1,6 +1,9 @@
+// Tests of the small formatting helpers, author names and summary lengths.
+
 import XCTest
 @testable import Papertalk
 
+/// Times, stage labels and dates.
 final class FormattingTests: PapertalkTestCase {
     func testFormatTime() {
         XCTAssertEqual(formatT(0), "0:00")
@@ -62,6 +65,7 @@ final class FormattingTests: PapertalkTestCase {
     }
 }
 
+/// Cleaning, sorting, indexing and initials of author names.
 final class AuthorNameTests: PapertalkTestCase {
     func testClean() {
         XCTAssertEqual(AuthorName.clean("  Ada   Lovelace  "), "Ada Lovelace")
@@ -81,6 +85,7 @@ final class AuthorNameTests: PapertalkTestCase {
     }
 }
 
+/// Depth labels and the summary length's clamping.
 final class DepthTests: PapertalkTestCase {
     func testRawValuesAndLabels() {
         XCTAssertEqual(Depth.inDepth.rawValue, "in_depth")

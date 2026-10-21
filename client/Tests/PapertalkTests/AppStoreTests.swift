@@ -1,3 +1,6 @@
+// Tests of `AppStore`: library loading, edits and their saves, deletes, sidebar and keyboard
+// actions, audio baking and playback set-up, all on a temp-folder library.
+
 import XCTest
 @testable import Papertalk
 

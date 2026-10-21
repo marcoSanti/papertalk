@@ -1,3 +1,6 @@
+// Interface localization: the languages the app can show (`AppLanguage`), the current one,
+// and `L(_:_:)`, which every piece of interface text goes through.
+
 import Foundation
 
 /// A language the interface can be shown in. Only the interface: episodes,
@@ -61,6 +64,7 @@ enum Localization {
     /// Set once at launch (`load()`) and by `AppStore.setLanguage`. Tests run in English.
     nonisolated(unsafe) static var language: AppLanguage = .english
 
+    /// User-defaults key of the chosen language; absent until the user picks one.
     static let defaultsKey = "papertalk.language"
 
     /// The saved choice, else the system's language when the app has it.

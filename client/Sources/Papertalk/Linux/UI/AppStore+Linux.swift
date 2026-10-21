@@ -1,3 +1,5 @@
+// AppStore methods only the Linux interface needs.
+
 #if os(Linux)
 import Foundation
 

@@ -1,3 +1,6 @@
+// The mind map's geometry and wording: `MindMapLayout` places every concept on rings around
+// the paper and handles zoom and pan; `MindMapPresentation` words the window and its side panel.
+
 import Foundation
 
 /// Where every concept of a mind map sits: the paper in the centre, one
@@ -5,7 +8,9 @@ import Foundation
 /// and each concept's sector shared among its children by how many concepts
 /// they lead to. Rings move out until neighbours have room for their labels.
 struct MindMapLayout: Equatable {
+    /// A position in layout points.
     struct Point: Equatable { var x: Double; var y: Double }
+    /// A line between two nodes: a tree edge or a cross-branch link.
     struct Edge: Equatable, Identifiable {
         let from: String
         let to: String
@@ -49,6 +54,7 @@ struct MindMapLayout: Equatable {
         return Point(x: 0.25 * a.x + 0.5 * k.x + 0.25 * b.x, y: 0.25 * a.y + 0.5 * k.y + 0.25 * b.y)
     }
 
+    /// The paper's node id; "§" keeps it from clashing with the LLM's ids.
     static let centerId = "§paper"
     /// Node box the layout leaves room for.
     static let nodeWidth = 150.0, nodeHeight = 56.0
@@ -63,6 +69,7 @@ struct MindMapLayout: Equatable {
     /// Depth of each concept: 1 for a branch's main concept.
     private(set) var depth: [String: Int] = [:]
 
+    /// Zoom limits.
     static let minScale = 0.3, maxScale = 2.0
 
     /// The zoom that shows the whole map in a `width` × `height` viewport
@@ -72,6 +79,7 @@ struct MindMapLayout: Equatable {
         return max(Self.minScale, min(1, viewW / width, viewH / height))
     }
 
+    /// A zoom within the limits.
     static func clampScale(_ s: Double) -> Double { min(maxScale, max(minScale, s)) }
 
     /// Where the graph starts inside the scroll view at `scale`: after the
@@ -107,6 +115,7 @@ struct MindMapLayout: Equatable {
               y: min(max(0, content.height - viewport.height), max(0, start.y - dy)))
     }
 
+    /// Each branch's direction, in degrees (0 is right, 90 down).
     static func sectorCenter(_ b: MindMap.Branch) -> Double {
         switch b {
         case .problem: return 210
@@ -115,6 +124,7 @@ struct MindMapLayout: Equatable {
         }
     }
 
+    /// Lays the map out: angles by sector share, then rings far enough apart for the labels.
     init(_ map: MindMap) {
         var angle: [String: Double] = [:]
         func weight(_ id: String) -> Double {
@@ -184,18 +194,27 @@ struct MindMapLayout: Equatable {
 
 /// The mind map sheet's wording and the side panel's content.
 enum MindMapPresentation {
+    /// The window's title.
     static var heading: String { L("Mind map") }
+    /// The side panel's heading when the paper is selected.
     static var paperHeading: String { L("The paper") }
+    /// Above the three branches in the paper's panel.
     static var mainConceptsTitle: String { L("Main concepts") }
+    /// How to use the map, under the summary.
     static var hint: String { L("Click a concept or a connection to see it here; click the paper to come back.") }
+    /// Shown for maps saved before summaries existed.
     static var noSummary: String { L("This map was drawn before maps had a summary. Redraw mind map (under Manage) adds one.") }
 
+    /// The paper's summary, or the note that the map predates them.
     static func summary(_ map: MindMap) -> String { map.summary ?? noSummary }
+    /// Side panel section titles for a selected concept.
     static var coreTitle: String { L("Core") }
     static var descriptionTitle: String { L("What it is") }
     static var connectionsTitle: String { L("Connections") }
+    /// When the map's file can't be read.
     static var missingMessage: String { L("Couldn't open the mind map. Create it again from Manage.") }
 
+    /// Each branch's name.
     static func branchTitle(_ b: MindMap.Branch) -> String {
         switch b {
         case .problem: return L("The problem")
@@ -204,6 +223,7 @@ enum MindMapPresentation {
         }
     }
 
+    /// Each branch's SF Symbol.
     static func branchIcon(_ b: MindMap.Branch) -> String {
         switch b {
         case .problem: return "exclamationmark.triangle"
@@ -212,6 +232,7 @@ enum MindMapPresentation {
         }
     }
 
+    /// A concept next to the selected one, in the side panel.
     struct Connection: Equatable, Identifiable {
         let id: String
         let label: String
@@ -232,6 +253,7 @@ enum MindMapPresentation {
         return out
     }
 
+    /// The side panel's heading when an edge is selected.
     static var connectionHeading: String { L("Connection") }
 
     /// A selected edge: the two concepts it joins, top to bottom, and how.
@@ -249,10 +271,12 @@ enum MindMapPresentation {
         return EdgeDetail(top: a, bottom: b, relation: label.isEmpty ? L("linked to") : label)
     }
 
+    /// An edge's tooltip, read as a sentence: "Attention includes Softmax".
     static func edgeHelp(_ d: EdgeDetail) -> String { "\(d.top.label) \(d.relation) \(d.bottom.label)" }
 
     /// A node's tier, for its look: the paper, a main concept, or a detail.
     enum Tier { case paper, main, detail }
+    /// Which tier a node is in.
     static func tier(_ layout: MindMapLayout, _ id: String) -> Tier {
         id == MindMapLayout.centerId ? .paper : layout.depth[id] == 1 ? .main : .detail
     }

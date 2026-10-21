@@ -1,3 +1,7 @@
+// How one paper is described and what can be done with it: card and list subtitles, the details
+// panel's labels and enabled actions, status wording, the conversion checklist
+// (`ConversionPresentation`) and listening progress (`EpisodeProgress`).
+
 import Foundation
 
 /// How a single paper is described across the library and the details panel.
@@ -49,6 +53,7 @@ enum PaperPresentation {
     /// "3 papers" beside an author in the details panel, only when they have more than this one.
     static func otherPapersLabel(_ count: Int) -> String? { count > 1 ? LibraryPresentation.paperCount(count) : nil }
 
+    /// The doi.org link for a DOI, nil when there's none.
     static func doiURL(_ doi: String) -> URL? {
         doi.isEmpty ? nil : URL(string: "https://doi.org/\(doi)")
     }
@@ -67,12 +72,15 @@ enum PaperPresentation {
 
     // MARK: authors and tags
 
+    /// Authors listed before "Show all".
     static let authorPreviewLimit = 5
 
+    /// The authors to list: all, or the first `authorPreviewLimit`.
     static func visibleAuthors(_ authors: [String], showAll: Bool) -> [String] {
         showAll ? authors : Array(authors.prefix(authorPreviewLimit))
     }
 
+    /// The show-all / show-fewer button, nil when every author already fits.
     static func authorsToggleTitle(count: Int, showingAll: Bool) -> String? {
         guard count > authorPreviewLimit else { return nil }
         return showingAll ? L("Show fewer") : L("Show all {0} authors", count)
@@ -89,8 +97,11 @@ enum PaperPresentation {
 
     // MARK: sections and actions
 
+    /// The conversion card shows while converting and after a failure.
     static func showsConversionCard(_ p: Paper) -> Bool { p.isActive || p.isError }
+    /// The episode card shows once there's a script or audio.
     static func showsEpisodeCard(_ p: Paper) -> Bool { p.hasScript || p.hasAudio }
+    /// A script can be played (live) even without saved audio.
     static func isPlayable(_ p: Paper) -> Bool { p.hasScript || p.hasAudio }
 
     /// Regenerate needs a script, and waits while any conversion runs
@@ -99,6 +110,7 @@ enum PaperPresentation {
         p.hasScript && !anyConversionRunning
     }
 
+    /// A paper being converted can't be rerun until it stops.
     static func canRerun(_ p: Paper) -> Bool { !p.isActive }
 
     /// A script without saved audio plays with voices made live (`PlayerController.prepare(transcript:)`):
@@ -111,6 +123,7 @@ enum PaperPresentation {
     /// Shown when live playback starts, wherever Play was pressed.
     static var liveAudioToast: String { L("Playing with live voices. This audio isn't saved; Regenerate audio saves it.") }
 
+    /// Older records have no flag: no mind map.
     static func hasMindMap(_ p: Paper) -> Bool { p.hasMindMap == true }
 
     /// A mind map needs the PDF and the LLM, and waits for the paper's import
@@ -131,15 +144,18 @@ enum PaperPresentation {
 
     /// A converting paper can be stopped (and deleted) while it runs.
     static func canStop(_ p: Paper) -> Bool { p.isActive }
+    /// The stop button and menu item.
     static var stopTitle: String { L("Stop conversion") }
 
     /// Rerunning a paper that has an episode replaces it, so it's confirmed first.
     static func rerunNeedsConfirmation(_ p: Paper) -> Bool { p.hasScript || p.hasAudio }
 
+    /// The context menu's listened toggle: title and SF Symbol.
     static func listenedToggle(_ p: Paper) -> (title: String, icon: String) {
         p.read ? (L("Mark as unlistened"), "circle") : (L("Mark as listened"), "checkmark.circle")
     }
 
+    /// The context menu's favourite toggle: title and SF Symbol.
     static func favoriteToggle(_ p: Paper) -> (title: String, icon: String) {
         p.favorite ? (L("Remove from favorites"), "star.fill") : (L("Add to favorites"), "star")
     }
@@ -157,6 +173,7 @@ enum PaperPresentation {
 
     // MARK: status
 
+    /// The status badge's word.
     static func statusText(_ p: Paper) -> String {
         switch p.statusKind {
         case .running: return p.state == "queued" ? L("Queued") : L("Converting")
@@ -166,6 +183,7 @@ enum PaperPresentation {
         }
     }
 
+    /// The status badge's SF Symbol.
     static func statusIcon(_ p: Paper) -> String {
         switch p.statusKind {
         case .running: return "hourglass"
@@ -180,6 +198,7 @@ enum PaperPresentation {
         ConversionPresentation.isStopped(p) ? L("Conversion stopped") : L("Conversion failed")
     }
 
+    /// The error card's explanation.
     static func failureMessage(_ p: Paper) -> String {
         p.statusError ?? p.message ?? L("Something went wrong while converting this paper.")
     }
@@ -197,6 +216,7 @@ enum ConversionPresentation {
     /// The paper was stopped, whatever language the interface had then (the message is saved with the paper).
     static func isStopped(_ p: Paper) -> Bool { AppLanguage.allCases.contains { stopped(in: $0) == p.statusError } }
 
+    /// The checklist rows: each `Paper.stage` key with its label, in pipeline order.
     static var stages: [(key: String, label: String)] { [
         ("extract", L("Extract text")),
         ("notes", L("Summarize")),
@@ -211,7 +231,9 @@ enum ConversionPresentation {
         stages.firstIndex { $0.key == (stage ?? "") } ?? 0
     }
 
+    /// How a checklist row is drawn.
     enum StageState { case done, current, pending }
+    /// A row before the current one is done, after it pending.
     static func state(ofStage index: Int, current: Int) -> StageState {
         index < current ? .done : index == current ? .current : .pending
     }
@@ -219,6 +241,7 @@ enum ConversionPresentation {
     /// Progress bar value: never fully empty, so a just-started run shows movement.
     static func barValue(_ progress: Double) -> Double { min(1, max(0.02, progress)) }
 
+    /// "42%" beside the bar.
     static func percentLabel(_ progress: Double) -> String {
         "\(Int((max(0.02, progress) * 100).rounded()))%"
     }
@@ -227,11 +250,16 @@ enum ConversionPresentation {
 /// Listening progress for the details panel's episode card. Uses the live
 /// player position when this paper is the one loaded, else the saved one.
 struct EpisodeProgress: Equatable {
+    /// Seconds listened.
     let position: Double
+    /// The episode's length in seconds (0 until known).
     let length: Double
+    /// Listened to the end (or marked so).
     let isRead: Bool
+    /// Saved audio exists (else it plays live).
     let hasAudio: Bool
 
+    /// `isLoaded`: this paper is in the player, so its live position wins.
     init(paper: Paper, isLoaded: Bool, playerTime: Double, playerDuration: Double, playerIsPlaying: Bool) {
         position = isLoaded && (playerTime > 0 || playerIsPlaying) ? playerTime : paper.progress
         length = isLoaded && playerDuration > 0 ? playerDuration : paper.duration
@@ -239,13 +267,18 @@ struct EpisodeProgress: Equatable {
         hasAudio = paper.hasAudio
     }
 
+    /// Listened share of the episode, 0…1.
     var fraction: Double { length > 0 ? min(1, max(0, position / length)) : 0 }
 
+    /// "42%", nil until the length is known.
     var percentLabel: String? { length > 0 ? "\(Int((fraction * 100).rounded()))%" : nil }
 
+    /// Under the bar's left end.
     var elapsedLabel: String { formatT(position) }
+    /// Under the bar's right end, as time left.
     var remainingLabel: String { length > 0 ? "−" + formatT(max(0, length - position)) : "–:––" }
 
+    /// The card's big line: what's ready, how long, or how much is left.
     var headline: String {
         if length <= 0 { return hasAudio ? L("Ready to play") : L("Script ready") }
         if isRead && position <= 0.5 { return L("Listened") }

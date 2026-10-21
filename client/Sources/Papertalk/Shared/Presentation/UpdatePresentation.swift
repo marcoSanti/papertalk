@@ -1,3 +1,7 @@
+// Checking GitHub for a newer release: version parsing and ordering, the running build's
+// version, which release is newest on each channel, and the alert that reports it.
+// The network calls are in `UpdateChecker`.
+
 import Foundation
 
 /// Which kind of release "Check for Updates" looks at.
@@ -11,9 +15,12 @@ enum ReleaseChannel: Equatable {
 /// A release version as the release workflow writes it: `1.2.3` for stable
 /// builds, `1.2.3-dev.<short commit>` for dev builds. A leading `v` is accepted.
 struct ReleaseVersion: Equatable {
+    /// The MAJOR.MINOR.PATCH numbers.
     let major: Int, minor: Int, patch: Int
+    /// The short commit of a dev build; nil for a stable release.
     let devCommit: String?
 
+    /// Parses "1.2.3", "v1.2.3" or "1.2.3-dev.abc1234"; nil for anything else.
     init?(_ text: String) {
         var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("v") { s.removeFirst() }
@@ -29,6 +36,7 @@ struct ReleaseVersion: Equatable {
         }
     }
 
+    /// The version as tagged, without the "v".
     var text: String { "\(major).\(minor).\(patch)" + (devCommit.map { "-dev.\($0)" } ?? "") }
 
     /// Compares MAJOR.MINOR.PATCH only.
@@ -55,15 +63,20 @@ struct ReleaseVersion: Equatable {
 /// The running app's version and commit, read from its Info.plist (the
 /// Makefile stamps both; the build number is the short commit hash).
 struct AppBuild: Equatable {
+    /// CFBundleShortVersionString; nil when not built as an app (`swift run`).
     var version: String?
+    /// The short commit hash stamped as CFBundleVersion.
     var commit: String?
 
+    /// Read from an Info.plist dictionary (ignores a build number that isn't a hash).
     static func from(info: [String: Any]?) -> AppBuild {
         let commit = (info?["CFBundleVersion"] as? String).flatMap { isCommitHash($0) ? $0 : nil }
         return AppBuild(version: info?["CFBundleShortVersionString"] as? String, commit: commit)
     }
+    /// This running copy.
     static var current: AppBuild { from(info: Bundle.main.infoDictionary) }
 
+    /// The version, parsed.
     var release: ReleaseVersion? { version.flatMap(ReleaseVersion.init) }
 
     /// "0.0.1 (a1b2c3d)", as About Papertalk shows it.
@@ -80,9 +93,13 @@ struct AppBuild: Equatable {
 
 /// One entry of GitHub's release list.
 struct GitHubRelease: Decodable, Equatable {
+    /// e.g. "v1.2.3" or "v1.2.3-dev.abc1234".
     let tagName: String
+    /// The release page.
     let htmlURL: URL
+    /// Dev builds are published as pre-releases.
     let prerelease: Bool
+    /// Unpublished; never offered.
     let draft: Bool
 
     enum CodingKeys: String, CodingKey {
@@ -92,8 +109,11 @@ struct GitHubRelease: Decodable, Equatable {
 
 /// Deciding whether a newer release exists. The network part lives in `UpdateChecker`.
 enum UpdateCheck {
+    /// The GitHub repository releases are published to.
     static let repository = "marcoSanti/papertalk"
+    /// The API listing of releases (newest first).
     static let releasesURL = URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=100")!
+    /// The releases page, opened by the alert's button.
     static let releasesPage = URL(string: "https://github.com/\(repository)/releases")!
 
     /// GitHub's "compare two commits" endpoint, used to order dev builds.
@@ -101,11 +121,13 @@ enum UpdateCheck {
         URL(string: "https://api.github.com/repos/\(repository)/compare/\(base)...\(head)")!
     }
 
+    /// A release with its parsed version.
     struct Candidate: Equatable {
         let release: GitHubRelease
         let version: ReleaseVersion
     }
 
+    /// What a check found.
     enum Outcome: Equatable {
         case available(Candidate)
         case upToDate(Candidate)
@@ -177,6 +199,7 @@ enum UpdateCheck {
         }
     }
 
+    /// Why GitHub couldn't be asked, by HTTP status (nil: no answer at all).
     static func failureMessage(httpStatus: Int?) -> String {
         switch httpStatus {
         case nil:
@@ -187,18 +210,23 @@ enum UpdateCheck {
             return L("GitHub answered with an error (HTTP {0}). Try again later.", code)
         }
     }
+    /// GitHub answered, but not with a release list.
     static var unreadableMessage: String { L("GitHub’s answer couldn’t be read. Try again later, or look at the releases page.") }
 }
 
 /// What the update alert says, and where its button leads.
 struct UpdateAlert: Identifiable, Equatable {
+    /// The alert's title.
     let title: String
+    /// The alert's text.
     let message: String
     /// The button that opens `link`; nil for an alert with only OK.
     let actionLabel: String?
+    /// The page `actionLabel` opens.
     let link: URL?
     var id: String { title + message }
 
+    /// The alert for a check's outcome on `channel`.
     init(_ outcome: UpdateCheck.Outcome, channel: ReleaseChannel, build: AppBuild) {
         switch outcome {
         case .available(let c):

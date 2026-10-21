@@ -1,3 +1,6 @@
+// The episode player's wording and decisions: status lines, the transport's labels and enabled
+// buttons, what the bottom bar shows, the pane for one paper, and the import progress pane.
+
 import Foundation
 
 /// What the episode player is doing, for the status line under it. Derived
@@ -13,6 +16,7 @@ enum PlaybackStatus: Equatable {
         isLoaded ? PlaybackStatus(isRendering: isRendering, isBuffering: isBuffering, error: error) : .idle
     }
 
+    /// The status of the loaded episode, most urgent first.
     init(isRendering: Bool, isBuffering: Bool, error: String?) {
         if isRendering { self = .preparingFirstSection }
         else if isBuffering { self = .preparingNextSection }
@@ -20,6 +24,7 @@ enum PlaybackStatus: Equatable {
         else { self = .idle }
     }
 
+    /// The status line, nil when there's nothing to say.
     var message: String? {
         switch self {
         case .idle: return nil
@@ -54,14 +59,19 @@ enum PlayerBarPresentation {
         return base
     }
 
+    /// The play/pause button's SF Symbol and tooltip.
     static func playButton(isPlaying: Bool) -> (icon: String, help: String) {
         isPlaying ? ("pause.fill", L("Pause")) : ("play.fill", L("Play"))
     }
 
+    /// Previous turn needs one before the current one.
     static func canSkipBack(activeTurn: Int) -> Bool { max(activeTurn, 0) > 0 }
+    /// Next turn needs one after it.
     static func canSkipForward(activeTurn: Int, turnCount: Int) -> Bool { activeTurn + 1 < turnCount }
+    /// Play waits for the first voiced turn.
     static func canPlay(isRendering: Bool, turnCount: Int) -> Bool { !isRendering && turnCount > 0 }
 
+    /// "1:23 / 34:56".
     static func timeLabel(_ time: Double, of duration: Double) -> String {
         "\(formatT(time)) / \(formatT(duration))"
     }
@@ -101,6 +111,7 @@ enum PlayerPane: Equatable {
     /// Nothing to play, with the reason.
     case unavailable(String)
 
+    /// `playerHasAudio`: the player holds this paper's audio (or is voicing it).
     init(paper: Paper, playerHasAudio: Bool) {
         if playerHasAudio { self = .loaded; return }
         if !paper.isActive && PaperPresentation.isPlayable(paper) {
@@ -122,6 +133,7 @@ enum ImportProgressPresentation {
     /// A mind map is one LLM call with no progress to report: the bar creeps
     /// towards `creepCeiling` while it waits, and completes when the map arrives.
     static let creepCeiling = 0.92
+    /// One tick closer to `creepCeiling`, slowing as it nears it.
     static func creep(_ progress: Double) -> Double {
         progress >= creepCeiling ? progress : progress + (creepCeiling - progress) * 0.03
     }
@@ -131,5 +143,6 @@ enum ImportProgressPresentation {
         count > 1 ? "\((index % count) + 1)/\(count)" : nil
     }
 
+    /// The pane's stage line, e.g. "Writing dialogue".
     static func stage(_ p: Paper) -> String { stageLabel(p.stage ?? "extract") }
 }

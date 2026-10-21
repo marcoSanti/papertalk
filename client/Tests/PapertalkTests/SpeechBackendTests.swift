@@ -1,3 +1,6 @@
+// Tests of speech synthesis: audio normalization, speech settings, the speech server client,
+// the Voices form, and the store's use of the backend.
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -81,6 +84,7 @@ private func json(_ obj: Any) -> Data { try! JSONSerialization.data(withJSONObje
 
 private let remote = SpeechSettings(engine: .remote, baseUrl: "http://tts.test/api/v1/", apiKey: "sk-tts", model: "kokoro")
 
+/// Normalizing every WAV layout to the stored one.
 final class SpeechAudioTests: PapertalkTestCase {
     func testCanonicalWAVIsKeptAsIs() throws {
         let canonical = Fixtures.silentWAV(seconds: 0.2)
@@ -121,6 +125,7 @@ final class SpeechAudioTests: PapertalkTestCase {
     }
 }
 
+/// Saving speech settings, their key, and choosing the backend.
 final class SpeechSettingsTests: PapertalkTestCase {
     func testDecodingIsTolerant() throws {
         let empty = try JSONDecoder().decode(SpeechSettings.self, from: Data("{}".utf8))
@@ -165,6 +170,7 @@ final class SpeechSettingsTests: PapertalkTestCase {
     }
 }
 
+/// Requests to a speech server and how its errors are worded.
 final class RemoteSpeechClientTests: PapertalkTestCase {
     func testSpeechRequest() throws {
         let req = try RemoteSpeechClient(settings: remote).speechRequest(text: "Hello there.", voice: "af_heart", speed: 1.25)
@@ -347,6 +353,7 @@ final class RemoteSpeechClientTests: PapertalkTestCase {
     }
 }
 
+/// The Voices form and what a server's catalog shows.
 final class SpeechSettingsFormTests: PapertalkTestCase {
     func testSettingsAreTrimmedAndKeepRemoteFields() {
         var f = SpeechSettingsForm(SpeechSettings())
@@ -671,6 +678,25 @@ final class SpeechBackendStoreTests: PapertalkTestCase {
         XCTAssertGreaterThan(fake.calls.count, 2)
         XCTAssertTrue(fake.calls.dropFirst().allSatisfy { $0.voice == "am_michael" && $0.text.count <= 40 })
         XCTAssertEqual(player.duration, 0.25 + 0.35 + 0.25 * Double(fake.calls.count - 1), accuracy: 0.01)
+        player.stopAll()
+    }
+
+    func testLivePlaybackVoicesOnlyAWindowAndRevoicesDroppedTurns() async throws {
+        let fake = FakeSpeechBackend(seconds: 0.25)
+        let player = PlayerController(speechBackend: fake)
+        let lines = (0..<8).map { ("Ada", "Turn \($0).") }
+        player.prepare(transcript: Fixtures.transcript(lines), voiceMap: [:])
+        let window = PlayerController.liveAhead + 1
+        await waitUntil { player.renderedCount == window }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(fake.calls.count, window)           // stops at the window's end
+
+        player.skip(by: 3)                                  // the window moves; turn 0 is dropped
+        await waitUntil { player.renderedCount == 3 + window }
+        XCTAssertEqual(fake.calls.filter { $0.text == "Turn 0." }.count, 1)
+        player.skip(by: -3)                                 // back to a dropped turn: voiced again
+        XCTAssertEqual(player.activeTurn, 0)
+        await waitUntil { fake.calls.filter { $0.text == "Turn 0." }.count == 2 }
         player.stopAll()
     }
 }

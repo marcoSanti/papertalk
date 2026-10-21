@@ -1,3 +1,5 @@
+// The Linux settings sheet, also the first-run setup: language, LLM and storage server.
+
 #if os(Linux)
 import Foundation
 import SwiftCrossUI
@@ -6,12 +8,15 @@ import SwiftCrossUI
 /// Saves silently, with an inline "Saved", like the macOS Settings pages.
 struct SettingsSheet: View {
     var bridge: StoreBridge
+    /// First-run setup: Finish saves everything and closes.
     let isSetup: Bool
     @State var llm: LLMSettingsForm
     @State var server: ServerSettingsForm
     @State var models: [String] = []
+    /// The line by the buttons: "Saved" or why models couldn't be listed.
     @State var status = ""
 
+    /// The forms start from the saved settings.
     init(bridge: StoreBridge, isSetup: Bool) {
         self.bridge = bridge
         self.isSetup = isSetup
@@ -83,6 +88,7 @@ struct SettingsSheet: View {
         .frame(width: 560)
     }
 
+    /// List the endpoint's models into the picker.
     private func refreshModels() {
         Task {
             do {
@@ -95,6 +101,7 @@ struct SettingsSheet: View {
         }
     }
 
+    /// Finish setup, or save the changed settings and say so.
     private func save() {
         let store = bridge.store
         if isSetup {

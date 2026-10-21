@@ -1,8 +1,13 @@
+// The macOS sheets: import (New episode), Edit paper, the cast (Who should speak?), and the
+// Settings window with its pages (LLM, Voices, Server, Query Prompts, Prompt Presets,
+// Language, Clear Data). Settings pages save when they close or Save is pressed.
+
 #if os(macOS)
 import SwiftUI
 import UniformTypeIdentifiers
 
 // MARK: - Clear data page: library + settings, and (separately) voice models
+/// Erase the library and settings, the listened-audio question, and the voice models.
 struct ClearDataPage: View {
     @EnvironmentObject private var store: AppStore
     @State private var confirmErase = false
@@ -60,6 +65,7 @@ struct ClearDataPage: View {
         }
     }
 
+    /// A titled, explained group with its controls on one line.
     private func section<Content: View>(title: String, detail: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline)
@@ -75,6 +81,8 @@ struct ClearDataPage: View {
 }
 
 // MARK: - Upload sheet: pick (or drop) a PDF, choose episode depth, start.
+/// The import sheet: choose or drop a PDF, pick the depth (and a summary's length), optionally
+/// the episode language, then start.
 struct UploadSheet: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
@@ -103,7 +111,14 @@ struct UploadSheet: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 SectionLabel(title: L("Depth"), systemImage: "dial.medium")
-                ForEach(Depth.allCases) { depthChoice($0) }
+                // A 2×2 grid with one shared blurb keeps the sheet short enough for small screens.
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                    ForEach(Depth.allCases) { depthChoice($0) }
+                }
+                Text(form.depth.blurb)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
                 if form.depth == .custom {
                     TextField(L("Describe the depth you want…"), text: $form.depthNote, axis: .vertical)
                         .lineLimit(3, reservesSpace: true)
@@ -232,8 +247,10 @@ struct UploadSheet: View {
         }
     }
 
+    /// Open the file picker.
     private func pick() { isImporting = true }
 
+    /// Read the chosen PDF into the form (a toast if it can't be read).
     private func load(_ url: URL) {
         do {
             let data = try PDFFile.read(url)
@@ -294,24 +311,22 @@ struct UploadSheet: View {
         }
     }
 
+    /// A selectable depth card.
     private func depthChoice(_ d: Depth) -> some View {
         let selected = form.depth == d
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return Button {
             form.depth = d
         } label: {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
                 Image(systemName: ImportForm.icon(for: d))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(selected ? Color.white : Color.appAccent)
                     .frame(width: 32, height: 32)
                     .background(selected ? AnyShapeStyle(Color.appAccent.gradient) : AnyShapeStyle(Color.appAccent.opacity(0.12)),
                                 in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(d.label).font(.headline)
-                    Text(d.blurb).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
-                }
-                Spacer()
+                Text(d.label).font(.headline).lineLimit(1)
+                Spacer(minLength: 0)
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
                     .foregroundStyle(selected ? Color.appAccent : Color.secondary.opacity(0.5))
@@ -323,16 +338,19 @@ struct UploadSheet: View {
             .contentShape(shape)
         }
         .buttonStyle(.plain)
+        .help(d.blurb)
     }
 }
 
 // MARK: - Edit metadata sheet
+/// Edit a paper's title, file name, DOI, authors and affiliations.
 struct EditMetaSheet: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
     let paper: Paper
     @State private var form: MetadataForm
 
+    /// The form starts from the paper's current values.
     init(paper: Paper) {
         self.paper = paper
         _form = State(initialValue: MetadataForm(paper))
@@ -399,6 +417,7 @@ struct EditMetaSheet: View {
 }
 
 // MARK: - Server settings page (which server this app points at)
+/// The storage server's URL and token (empty URL: this Mac).
 struct ServerSettingsPage: View {
     @EnvironmentObject private var store: AppStore
     @State private var form = ServerSettingsForm(ServerConfig(apiBase: "", token: ""))
@@ -427,6 +446,7 @@ struct ServerSettingsPage: View {
 }
 
 // MARK: - LLM settings page
+/// The LLM endpoint, its key and the model (listed from `/models` when it answers).
 struct LLMSettingsPage: View {
     @EnvironmentObject private var store: AppStore
     @State private var form = LLMSettingsForm(LLMSettings(baseUrl: "", apiKey: "", model: "", keyEnv: ""))
@@ -489,6 +509,7 @@ struct LLMSettingsPage: View {
         }
     }
 
+    /// List the endpoint's models into the picker.
     private func loadModels() {
         loadingModels = true
         modelError = nil
@@ -504,6 +525,7 @@ struct LLMSettingsPage: View {
         }
     }
 
+    /// A caption above a control.
     private func field(_ label: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.caption)
@@ -513,6 +535,7 @@ struct LLMSettingsPage: View {
 }
 
 // MARK: - Voices page: where speech is synthesized
+/// Where voices are synthesized (`SpeechSettingsFields`).
 struct VoicesSettingsPage: View {
     @EnvironmentObject private var store: AppStore
     @State private var form = SpeechSettingsForm(SpeechSettings())
@@ -540,6 +563,7 @@ struct VoicesSettingsPage: View {
 
 /// The key fields under the key-source picker (shared by Settings and setup).
 struct KeySourceFields<Form: KeySourceEditing>: View {
+    /// The LLM or speech form whose key is edited.
     @Binding var form: Form
 
     var body: some View {
@@ -563,6 +587,7 @@ struct KeySourceFields<Form: KeySourceEditing>: View {
 }
 
 // MARK: - Editable LLM prompts (reply formats are appended by the pipeline)
+/// Every prompt the LLM is sent, editable one at a time, with Reset.
 struct PromptsSettingsPage: View {
     @EnvironmentObject private var store: AppStore
     @State private var prompts = PromptSettings.defaults
@@ -613,14 +638,17 @@ struct PromptsSettingsPage: View {
         }
     }
 
+    /// Keep the edited prompts.
     private func save() { store.savePrompts(prompts) }
 }
 
 // MARK: - Editable custom-depth prompt presets (the "Custom" option in import)
+/// The custom-depth presets: add, rename, edit, delete.
 struct CustomPresetsPage: View {
     @EnvironmentObject private var store: AppStore
     @State private var entries: [Entry] = []
 
+    /// A preset being edited (ids are only for the list).
     struct Entry: Identifiable {
         let id = UUID()
         var name: String
@@ -658,6 +686,7 @@ struct CustomPresetsPage: View {
         .onReceive(NotificationCenter.default.publisher(for: .papertalkSaveSettings)) { _ in save() }
     }
 
+    /// One preset: its name, delete button and instructions.
     private func card(_ e: Binding<Entry>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -679,22 +708,24 @@ struct CustomPresetsPage: View {
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
+    /// Keep the presets, cleaned (`PresetsForm.clean`).
     private func save() {
         store.savePresets(PresetsForm.clean(entries.map { ($0.name, $0.text) }))
     }
 }
 
-// MARK: - Interface language (applies at once; episodes keep their own)
+// MARK: - General: the interface language (applies at once; episodes keep their own)
 struct LanguageSettingsPage: View {
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(LanguagePresentation.title).font(.title3).fontWeight(.semibold)
+            Text(LanguagePresentation.generalTitle).font(.title3).fontWeight(.semibold)
             Text(LanguagePresentation.intro)
                 .font(.caption).foregroundStyle(.secondary)
             LanguagePicker()
-                .pickerStyle(.radioGroup)
+                .pickerStyle(.menu)
+                .fixedSize()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
@@ -713,6 +744,7 @@ struct LanguagePicker: View {
 }
 
 // MARK: - Unified settings window with a sidebar of pages
+/// The Settings window: a sidebar of pages and a bar with Save and Close.
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
@@ -734,12 +766,12 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             NavigationSplitView {
                 List(selection: selectedIndex) {
+                    Label(LanguagePresentation.generalTitle, systemImage: "gearshape").tag(AppStore.SettingsPage.general.rawValue)
                     Label(L("LLM Settings"), systemImage: "waveform").tag(0)
                     Label(L("Voices"), systemImage: "person.wave.2").tag(AppStore.SettingsPage.voices.rawValue)
                     Label(L("Server Settings"), systemImage: "server.rack").tag(1)
                     Label(L("Query Prompts"), systemImage: "quote.bubble").tag(2)
                     Label(L("Prompt Presets"), systemImage: "slider.horizontal.3").tag(3)
-                    Label(LanguagePresentation.title, systemImage: "globe").tag(AppStore.SettingsPage.language.rawValue)
                     Label(L("Clear Data"), systemImage: "trash").tag(4)
                 }
                 .listStyle(.sidebar)
@@ -753,7 +785,7 @@ struct SettingsView: View {
                     case .prompts: PromptsSettingsPage()
                     case .presets: CustomPresetsPage()
                     case .clear: ClearDataPage()
-                    case .language: LanguageSettingsPage()
+                    case .general: LanguageSettingsPage()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -778,10 +810,12 @@ struct SettingsView: View {
         .tint(Color.appAccent)
     }
 
+    /// Ask the prompts page to put every default back.
     private func restorePrompts() {
         NotificationCenter.default.post(name: .papertalkRestorePrompts, object: nil)
     }
 
+    /// Ask the open page to save, and flash "Saved".
     private func saveCurrent() {
         NotificationCenter.default.post(name: .papertalkSaveSettings, object: nil)
         withAnimation(.snappy) { showSaved = true }
@@ -795,6 +829,7 @@ struct SettingsView: View {
 
 /// Bottom action bar for the unified settings window.
 private struct SettingsActionBar<Content: View>: View {
+    /// The bar's buttons.
     @ViewBuilder let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
@@ -810,11 +845,15 @@ private struct SettingsActionBar<Content: View>: View {
 
 // MARK: - Cast confirmation: show the model's proposed speakers, let the user
 // rename each person and pick (and hear) their voice before the script is written.
+/// Confirm the cast before the script is written: each speaker's name, gender and voice (with a
+/// sample), the speaking pace, then cancel, skip audio, or use these voices.
 struct CastSheet: View {
+    /// Shown under the heading.
     let paperTitle: String
     @EnvironmentObject private var store: AppStore
     @State private var form: CastForm
 
+    /// The form starts from the LLM's proposal.
     init(paperTitle: String, proposals: [ProposedSpeaker], authors: [String], authorGenders: [String: String]) {
         self.paperTitle = paperTitle
         _form = State(initialValue: CastForm(proposals: proposals, authors: authors, authorGenders: authorGenders))
@@ -874,6 +913,7 @@ struct CastSheet: View {
         }
     }
 
+    /// One speaker: role, name (an author menu for the guest), gender, voice and sample.
     private func speakerCard(_ row: CastForm.Row) -> some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         return HStack(alignment: .top, spacing: 12) {
@@ -900,10 +940,12 @@ struct CastSheet: View {
         .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
     }
 
+    /// Renames go through the form, which re-voices a guest picked from the authors.
     private func nameBinding(_ row: CastForm.Row) -> Binding<String> {
         Binding(get: { row.name }, set: { form.rename(row.id, to: $0) })
     }
 
+    /// The guest picks from the authors; the interviewer's name is typed.
     @ViewBuilder private func nameField(_ row: CastForm.Row) -> some View {
         if form.picksFromAuthors(row) {
             Picker(L("Author"), selection: nameBinding(row)) {
@@ -922,6 +964,7 @@ struct CastSheet: View {
         }
     }
 
+    /// Voices grouped by accent and gender; choosing one plays a sample.
     private func voicePicker(_ row: CastForm.Row) -> some View {
         Picker(L("Voice"), selection: Binding(
             get: { row.voice },
@@ -941,6 +984,7 @@ struct CastSheet: View {
         .help(CastForm.voiceHelp(row.voice))
     }
 
+    /// Female/Male; switching picks a matching voice.
     private func genderPicker(_ row: CastForm.Row) -> some View {
         Picker(L("Gender"), selection: Binding(
             get: { row.gender ?? "" },
@@ -1033,6 +1077,7 @@ private struct SpeakingPaceControl: View {
         .animation(.snappy, value: SpeakingPacePresentation.warning(player.voiceSpeed) != nil)
     }
 
+    /// Hear the pace with the sample voice.
     private func playSample() {
         if let v = sampleVoice() { player.previewVoice(v) }
     }
@@ -1099,13 +1144,16 @@ private struct VoiceSampleButton: View {
     private var label: String { VoiceSamplePresentation.label(phase, loadingModel: player.sampleLoadsModel) }
     private var help: String { VoiceSamplePresentation.help(phase, voice: voice) }
 
+    /// Stop the sample, or play it.
     private func tap() {
         if VoiceSamplePresentation.tapStops(phase) { player.stopPreview() } else { player.previewVoice(voice) }
     }
 }
 
 extension Notification.Name {
+    /// The Settings window's Save: each page saves its own form.
     static let papertalkSaveSettings = Notification.Name("papertalkSaveSettings")
+    /// "Restore prompt defaults" on the prompts page.
     static let papertalkRestorePrompts = Notification.Name("papertalkRestorePrompts")
 }
 #endif

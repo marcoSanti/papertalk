@@ -154,6 +154,7 @@ extension LanguagePacks {
         "Turn a paper into a podcast, converted on {0}.": "Trasforma un articolo in un podcast, convertito su {0}.",
         "No LLM is configured, so this paper will be read out as-is instead of as a discussion.": "Nessun LLM configurato: l’articolo verrà letto così com’è invece che come una conversazione.",
         "Could not read {0}": "Impossibile leggere {0}",
+        "General": "Generale",
         "Language": "Lingua",
         "Interface language": "Lingua dell’interfaccia",
         "Menus, buttons and messages appear in this language. Episodes, transcripts and mind maps are written in English unless you ask for this language when you import a paper.": "Menu, pulsanti e messaggi appaiono in questa lingua. Episodi, trascrizioni e mappe mentali sono scritti in inglese, a meno che tu non chieda questa lingua quando importi un articolo.",

@@ -1,53 +1,77 @@
+// Where the library's files live: the `Storage` protocol, its two backends (a folder in
+// Application Support, or `server/storage_server.py` over HTTP), and the key layout `K` that
+// names every file of a paper.
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
 
+/// Picks the backend for a server configuration.
 enum StorageFactory {
+    /// Local storage without a server URL, else the HTTP store.
     static func make(config: ServerConfig) -> Storage {
         if config.apiBase.isEmpty { return LocalStorage() }
         return HttpStorage(apiBase: config.apiBase, token: config.token)
     }
 }
 
-// MARK: - Storage: where paper artifacts live. Local disk (self-host) or an
-// HTTP storage server (network without SMB). Matches server/storage_server.py.
+// MARK: - Storage protocol
 
+/// A flat key/value file store. Keys are paths like "papers/<id>/paper.json".
 protocol Storage: AnyObject {
+    /// The bytes stored under `key`; throws when there are none.
     func read(_ key: String) async throws -> Data
+    /// Store `data` under `key`, replacing what was there.
     func write(_ key: String, _ data: Data) async throws
+    /// Remove `key`; a missing key isn't an error locally.
     func delete(_ key: String) async throws
     /// Remove every key under `prefix` (a folder such as "papers/<id>/").
     func deleteFolder(_ prefix: String) async throws
+    /// The ids of every paper with a `paper.json`.
     func list() async throws -> [String]
     /// A playable/addressable URL for a stored key (file:// for local, http:// for remote).
     func url(for key: String) async -> URL?
 
+    /// The JSON value under `key`, nil when it's missing or doesn't decode.
     func exists<T: Decodable>(_ type: T.Type, _ key: String) async -> T?
+    /// Store `value` as JSON; failures are ignored (best-effort saves).
     func save<T: Encodable>(_ value: T, _ key: String) async
 }
 
-// Keys / artifact layout.
+/// The storage key of every file the app writes.
 enum K {
     /// Everything belonging to one paper lives under this prefix.
     static func folder(_ id: String) -> String { "papers/\(id)/" }
+    /// The folder holding every paper (Clear Data removes it).
     static let papersRoot = "papers/"
+    /// The library record (`Paper`).
     static func paper(_ id: String) -> String { "papers/\(id)/paper.json" }
+    /// A script file older builds wrote; only deleted now.
     static func script(_ id: String) -> String { "papers/\(id)/script.json" }
+    /// The episode script (`Transcript`).
     static func transcript(_ id: String) -> String { "papers/\(id)/transcript.json" }
+    /// The mind map (`MindMap`).
     static func mindMap(_ id: String) -> String { "papers/\(id)/mindmap.json" }
+    /// Unused: from an older audio format.
     static func captions(_ id: String) -> String { "papers/\(id)/captions.json" }
+    /// Unused: from an older audio format (episodes are baked per turn now).
     static func audio(_ id: String) -> String { "papers/\(id)/podcast.m4a" }
+    /// The imported PDF.
     static func pdf(_ id: String) -> String { "papers/\(id)/source.pdf" }
     /// Baked per-turn WAVs. `i` is the 0-based turn index.
     static func turn(_ id: String, _ i: Int) -> String { "papers/\(id)/turns/\(i).wav" }
+    /// The durations of the baked turns (`AudioManifest`); written last, so its presence means the audio is complete.
     static func audioManifest(_ id: String) -> String { "papers/\(id)/audio.json" }
 }
 
 // MARK: - Local disk storage (self-hosted)
+/// Files under `~/Library/Application Support/papertalk/` (or a test's temp folder).
 final class LocalStorage: Storage {
+    /// The library folder; keys are paths under it.
     let root: URL
 
+    /// `root` pins the folder (tests); otherwise Application Support, moving an old "paper2pod" library over first.
     init(root: URL? = nil) {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let dir = root ?? LocalStorage.migrateLibrary(from: base.appendingPathComponent("paper2pod", isDirectory: true),
@@ -71,6 +95,7 @@ final class LocalStorage: Storage {
         return new
     }
 
+    /// The file for `key`.
     private func path(_ key: String) -> URL { root.appendingPathComponent(key) }
 
     func read(_ key: String) async throws -> Data {
@@ -90,6 +115,7 @@ final class LocalStorage: Storage {
     func deleteFolder(_ prefix: String) async throws {
         try await delete(prefix)   // a directory on disk: removed with its contents
     }
+    /// Whether a file is there (without reading it).
     private func existsFile(_ path: URL) -> Bool {
         (try? path.checkResourceIsReachable()) ?? false
     }
@@ -112,8 +138,11 @@ final class LocalStorage: Storage {
 }
 
 // MARK: - Remote HTTP storage (storage_server.py)
+/// `server/storage_server.py`: GET/PUT/DELETE of keys, and GET of the root for the key list.
 final class HttpStorage: Storage {
+    /// The server's root URL.
     let base: URL
+    /// Sent as a bearer token when not empty.
     let token: String
 
     init(apiBase: String, token: String) {
@@ -122,6 +151,7 @@ final class HttpStorage: Storage {
         self.token = token
     }
 
+    /// A request for `key`, with the token when there is one.
     private func request(_ key: String, method: String) -> URLRequest {
         var req = URLRequest(url: base.appendingPathComponent(key))
         req.httpMethod = method
@@ -130,6 +160,7 @@ final class HttpStorage: Storage {
         }
         return req
     }
+    /// Throw unless the answer was a 2xx.
     private func check(_ r: URLResponse) throws {
         guard let http = r as? HTTPURLResponse else { throw StorageError.badResponse }
         guard (200..<300).contains(http.statusCode) else { throw StorageError.status(http.statusCode) }
@@ -182,6 +213,7 @@ final class HttpStorage: Storage {
     }
 }
 
+/// An HTTP store answer that wasn't a success.
 enum StorageError: Error, LocalizedError {
     case badResponse, status(Int)
     var errorDescription: String? {

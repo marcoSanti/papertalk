@@ -6,6 +6,7 @@ import sys
 
 
 def pdf(lines):
+    """A minimal one-page PDF with `lines` of text."""
     ops = ["BT /F1 22 Tf 60 720 Td 28 TL"] + [f"({l}) Tj T*" for l in lines] + ["ET"]
     stream = "\n".join(ops).encode()
     objects = [

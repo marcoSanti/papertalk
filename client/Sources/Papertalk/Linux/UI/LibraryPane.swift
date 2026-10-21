@@ -1,3 +1,5 @@
+// The Linux library pane: search and the list of papers in the current scope, with covers.
+
 #if os(Linux)
 import Foundation
 import SwiftCrossUI
@@ -65,6 +67,7 @@ struct PaperRow: View {
 /// A paper's first page, or a plain placeholder until it's rendered.
 struct CoverView: View {
     var bridge: StoreBridge
+    /// Whose cover.
     var paperId: String
     var width: Double
     var height: Double

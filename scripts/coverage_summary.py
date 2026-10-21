@@ -18,15 +18,18 @@ UI_PREFIXES = ("macOS/Views/", "macOS/Components/", "macOS/App/", "macOS/Support
 
 
 def relative(path: str) -> str:
+    """A source path relative to Sources/Papertalk/."""
     marker = "/Sources/Papertalk/"
     return path.split(marker, 1)[1] if marker in path else path
 
 
 def pct(covered: int, count: int) -> float:
+    """Percentage covered; 100 when there's nothing to cover."""
     return 100.0 * covered / count if count else 100.0
 
 
 def main() -> None:
+    """Write summary.md and totals.json from the llvm-cov summary JSON."""
     src, out = Path(sys.argv[1]), Path(sys.argv[2])
     data = json.loads(src.read_text())["data"][0]
 

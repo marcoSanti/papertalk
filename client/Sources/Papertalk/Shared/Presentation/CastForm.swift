@@ -1,8 +1,12 @@
+// The cast sheet's logic: who speaks, their gender and voice, validation of the names, plus
+// the speaking-pace control and the voice-sample button's wording.
+
 import Foundation
 
 /// The voice selection sheet's state and rules: who speaks, their gender and
 /// voice, and whether the cast can be confirmed. The sheet lays it out.
 struct CastForm: Equatable {
+    /// One speaker card.
     struct Row: Identifiable, Equatable {
         let id = UUID()
         var role: String
@@ -18,6 +22,7 @@ struct CastForm: Equatable {
     /// Author full name -> gender, from the LLM.
     let authorGenders: [String: String]
 
+    /// Rows from the LLM's proposal, with distinct default voices.
     init(proposals: [ProposedSpeaker], authors: [String], authorGenders: [String: String]) {
         rows = Self.initialRows(proposals)
         self.authors = authors
@@ -60,12 +65,15 @@ struct CastForm: Equatable {
         return row.name.isEmpty ? L("Choose an author…") : row.name
     }
 
+    /// Initials come from the name, or the role until one is typed.
     static func avatarName(_ row: Row) -> String { row.name.isEmpty ? row.role : row.name }
 
+    /// Tooltip on the gender switch.
     static func genderHelp(_ row: Row) -> String {
         row.gender == nil ? L("Gender unknown — pick one so the voice fits") : L("Switching gender picks a matching voice")
     }
 
+    /// Tooltip on the voice menu: accent and gender, e.g. "British · female".
     static func voiceHelp(_ voice: String) -> String {
         "\(KokoroSpeech.accentLabel(voice)) · \(KokoroSpeech.genderLabel(KokoroSpeech.voiceGender(voice)) ?? L("voice"))"
     }
@@ -95,6 +103,7 @@ struct CastForm: Equatable {
             : KokoroSpeech.guestVoice(forGender: gender, name: rows[i].name, avoiding: others)
     }
 
+    /// Pick a voice by hand (it may match another speaker's: that's only a warning).
     mutating func setVoice(_ id: Row.ID, _ voice: String) {
         guard let i = rows.firstIndex(where: { $0.id == id }) else { return }
         rows[i].voice = voice
@@ -104,6 +113,7 @@ struct CastForm: Equatable {
 
     private var trimmedNames: [String] { rows.map { $0.name.trimmingCharacters(in: .whitespaces) } }
 
+    /// What can be wrong with a cast, most serious first.
     enum Issue: Equatable {
         case emptyName, duplicateName, unknownGender(String), sharedVoice
     }
@@ -119,6 +129,7 @@ struct CastForm: Equatable {
         return nil
     }
 
+    /// How the note under the cards is drawn; only errors block confirming.
     enum Severity { case error, warning, info }
 
     /// The line under the speaker cards.
@@ -133,6 +144,7 @@ struct CastForm: Equatable {
         }
     }
 
+    /// Confirming needs a speaker and a unique name for each.
     var canConfirm: Bool {
         guard !rows.isEmpty else { return false }
         return issue != .emptyName && issue != .duplicateName
@@ -140,6 +152,7 @@ struct CastForm: Equatable {
 
     /// The second confirm button: write the script with these names, but no audio yet.
     static var scriptOnlyTitle: String { L("Skip audio") }
+    /// Its tooltip.
     static var scriptOnlyHelp: String { L("Write the script without voicing it. You can voice it later with Regenerate audio.") }
 
     /// The confirmed cast: trimmed names with their voices.
@@ -150,8 +163,10 @@ struct CastForm: Equatable {
 
 /// The speaking-pace control under the speaker cards.
 enum SpeakingPacePresentation {
+    /// "0.95×" beside the slider.
     static func label(_ speed: Double) -> String { String(format: "%.2f×", speed) }
 
+    /// Hides Reset at the default pace.
     static func isDefault(_ speed: Double) -> Bool { abs(speed - PlayerController.defaultSpeed) < 0.001 }
 
     /// Above this, Kokoro (trained on natural-pace speech) may slur words.
@@ -173,6 +188,7 @@ enum VoiceSamplePresentation {
         preview?.voice == voice ? preview : nil
     }
 
+    /// The button's word for each phase.
     static func label(_ phase: PlayerController.PreviewPhase?, loadingModel: Bool) -> String {
         switch phase {
         case .generating: return loadingModel ? L("Loading voices…") : L("Generating…")
@@ -182,6 +198,7 @@ enum VoiceSamplePresentation {
         }
     }
 
+    /// The button's tooltip for each phase.
     static func help(_ phase: PlayerController.PreviewPhase?, voice: String) -> String {
         switch phase {
         case .generating: return L("Synthesizing a sample of {0} — click to cancel", KokoroSpeech.displayName(voice))

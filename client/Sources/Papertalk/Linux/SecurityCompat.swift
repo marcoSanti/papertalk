@@ -1,3 +1,5 @@
+// Linux stand-in for the macOS Keychain store: API keys in the desktop keyring.
+
 #if os(Linux)
 import Foundation
 import PythonKit
@@ -6,10 +8,12 @@ import PythonKit
 /// GNOME Keyring or KWallet) through python/papertalk_platform/keychain.py,
 /// under the same service name as the macOS Keychain entry.
 enum KeychainStore {
+    /// Store `value` under `account`, replacing what was there.
     static func set(_ value: String, account: String) {
         _ = try? PythonRuntime.shared.runSync { PythonRuntime.shared.module("keychain").write(account, value) }
     }
 
+    /// The string saved under `account`, if any.
     static func get(_ account: String) -> String? {
         let value = try? PythonRuntime.shared.runSync {
             String(PythonRuntime.shared.module("keychain").read(account)) ?? ""
@@ -17,6 +21,7 @@ enum KeychainStore {
         return value?.isEmpty == false ? value : nil
     }
 
+    /// Remove `account`'s entry.
     static func delete(_ account: String) {
         _ = try? PythonRuntime.shared.runSync { PythonRuntime.shared.module("keychain").delete(account) }
     }

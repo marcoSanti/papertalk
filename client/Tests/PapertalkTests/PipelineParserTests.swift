@@ -1,3 +1,5 @@
+// Tests of the pipeline's parsing helpers (dialogue lines, JSON extraction, trimming).
+
 import XCTest
 @testable import Papertalk
 

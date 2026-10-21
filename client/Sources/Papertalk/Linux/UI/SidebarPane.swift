@@ -1,3 +1,6 @@
+// The Linux sidebar: library sections and tags. Its comment below also holds the SwiftCrossUI
+// layout rules every pane follows.
+
 #if os(Linux)
 import Foundation
 import SwiftCrossUI
@@ -44,6 +47,7 @@ struct SidebarPane: View {
 
 /// An invisible strut that gives a split-view pane its minimum width (the
 /// column starts at 200 points and can't be widened from outside the pane).
+/// An invisible strut that sets its pane's width (see the layout note on `SidebarPane`).
 struct PaneWidth: View {
     let width: Double
     init(_ width: Double) { self.width = width }

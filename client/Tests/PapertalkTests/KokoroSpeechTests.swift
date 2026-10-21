@@ -1,6 +1,9 @@
+// Tests of Kokoro voice choice, labels and splitting turns into pieces.
+
 import XCTest
 @testable import Papertalk
 
+/// Voice pools, guest voices, gender guesses, labels, WAV helpers and `pieces`.
 final class KokoroSpeechTests: PapertalkTestCase {
     func testDefaultVoiceByGender() {
         XCTAssertEqual(KokoroSpeech.defaultVoice(forGender: "male"), "am_michael")

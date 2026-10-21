@@ -1,8 +1,12 @@
+// How a paper looks in the library: its grid card, its cover (the PDF's first page, or a
+// placeholder), its list row, and the context menu both share.
+
 #if os(macOS)
 import SwiftUI
 
 // MARK: - Grid card
 
+/// A paper in the cover grid: cover with status badge and progress strip, title and first author.
 struct PaperCard: View {
     @EnvironmentObject private var store: AppStore
     let paper: Paper
@@ -102,6 +106,8 @@ struct PaperCard: View {
 
 /// First page of the paper as a "cover", at page aspect ratio. Falls back to a
 /// soft gradient tile with a document glyph while loading / when there's no PDF.
+/// The paper's cover: its PDF's first page, loaded once per `artworkRevision`, or a tinted
+/// placeholder until it's there.
 struct PaperArtwork: View {
     @EnvironmentObject private var store: AppStore
     let paper: Paper
@@ -144,6 +150,8 @@ struct PaperArtwork: View {
 // MARK: - Context menu
 
 /// Context menu shared by the grid card and list row.
+/// The right-click menu of a paper (grid and list): play, open, favourite, listened, rerun,
+/// audio and delete actions.
 struct ContextMenuItems: View {
     @EnvironmentObject private var store: AppStore
     let paper: Paper
@@ -217,6 +225,7 @@ struct ContextMenuItems: View {
 
 /// Compact row for the list layout (lives inside a native `List`, which owns
 /// selection highlighting and keyboard navigation).
+/// A paper in the list layout: small cover, title, authors and status.
 struct PaperListRow: View {
     let paper: Paper
 

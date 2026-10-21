@@ -1,3 +1,6 @@
+// The library's wording and navigation: sidebar rows and titles, counts, status filters,
+// empty states, and how arrow keys move through the cover grid.
+
 import Foundation
 
 /// What the sidebar can point the library at.
@@ -8,6 +11,7 @@ enum SidebarItem: Hashable {
 /// Library wording and keyboard navigation. Pure functions: the library and
 /// sidebar views only lay out what these return.
 enum LibraryPresentation {
+    /// The heading above the library for the current scope.
     static func title(view: AppStore.ViewMode, tag: String?, author: String?) -> String {
         switch view {
         case .all: return L("All Papers")
@@ -32,7 +36,9 @@ enum LibraryPresentation {
     static func count(_ n: Int, _ one: String, _ other: String) -> String {
         n == 1 ? one : other.replacingOccurrences(of: "{0}", with: "\(n)")
     }
+    /// "1 paper" / "3 papers".
     static func paperCount(_ n: Int) -> String { count(n, L("1 paper"), L("{0} papers")) }
+    /// "1 author" / "3 authors".
     static func authorCount(_ n: Int) -> String { count(n, L("1 author"), L("{0} authors")) }
 
     /// A count shown beside a section title, hidden when there's nothing.
@@ -52,6 +58,7 @@ enum LibraryPresentation {
         let value: String, title: String, icon: String
         var id: String { value }
     }
+    /// The capsules, left to right.
     static var statusFilters: [StatusFilter] { [
         .init(value: "all", title: L("All"), icon: "square.stack"),
         .init(value: "running", title: L("Converting"), icon: "hourglass"),
@@ -78,10 +85,12 @@ enum LibraryPresentation {
         }
     }
 
+    /// The details pane with nothing selected.
     static var noSelection: (title: String, message: String) {
         (L("No paper selected"), L("Select a paper to see its details and episode."))
     }
 
+    /// Which empty state applies: an empty library, a search with no hits, or filters that hide everything.
     static func emptyState(libraryIsEmpty: Bool, search: String) -> EmptyState {
         if libraryIsEmpty { return .emptyLibrary }
         if !search.trimmingCharacters(in: .whitespaces).isEmpty { return .noSearchResults(search) }
@@ -101,6 +110,7 @@ enum LibraryPresentation {
         max(1, Int((width - 2 * Grid.sidePadding + Grid.spacing) / (Grid.minTile + Grid.spacing)))
     }
 
+    /// An arrow key.
     enum Move { case left, right, up, down }
 
     /// Index to select after an arrow key: left/right step one paper, up/down a

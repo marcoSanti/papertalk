@@ -1,3 +1,6 @@
+// Speech synthesis behind one protocol: Kokoro on this machine (`LocalSpeechBackend`) or an
+// OpenAI-compatible speech server (`RemoteSpeechBackend`, over `RemoteSpeechClient`).
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -27,6 +30,7 @@ protocol SpeechBackend: Sendable {
 }
 
 extension SpeechBackend {
+    /// Get ready without reporting progress.
     func prepare() async throws { try await prepare { _, _ in } }
 
     /// A turn split into the pieces this backend takes per call.
@@ -44,14 +48,20 @@ extension SpeechBackend {
 }
 
 /// Kokoro on this machine (Core ML on macOS, ONNX on Linux): the one shared engine.
+/// Kokoro on this machine, through `KokoroEngine.shared`.
 struct LocalSpeechBackend: SpeechBackend {
+    /// The first half of the audio band is the model download and load.
     var preparingMessage: String { L("Preparing Kokoro…") }
+    /// Half the audio band goes to the download and load.
     var preparationShare: Double { 0.5 }
+    /// The model loads on first use, so the first sample is slow.
     var loadsModel: Bool { true }
     /// One model, one call at a time (see `KokoroEngine`, `AppStore.audioGate`).
     var parallelRequests: Int { 1 }
+    /// Short pieces keep Core ML's memory flat (see `KokoroSpeech.maxPieceLength`).
     var maxPieceLength: Int { KokoroSpeech.maxPieceLength }
 
+    /// Download the English Kokoro models if missing, then load them.
     func prepare(progress: @escaping @Sendable (Double, String) -> Void) async throws {
         // No-op when the models are cached, but still reports progress.
         try await KokoroAneResourceDownloader.ensureModels(variant: .english) { p in
@@ -67,6 +77,7 @@ struct LocalSpeechBackend: SpeechBackend {
         try await KokoroEngine.shared.prepare()
     }
 
+    /// Through the one shared engine, never a second model.
     func synthesize(text: String, voice: String, speed: Float) async throws -> Data {
         try await KokoroEngine.shared.synthesize(text: text, voice: voice, speed: speed)
     }
@@ -75,33 +86,42 @@ struct LocalSpeechBackend: SpeechBackend {
 /// An OpenAI-compatible text-to-speech server (Open WebUI, Kokoro-FastAPI,
 /// OpenAI). Nothing is loaded locally, which spares the memory Core ML needs.
 struct RemoteSpeechBackend: SpeechBackend {
+    /// The server, model and parallelism to use.
     let settings: SpeechSettings
     /// Resolved once, so an env-sourced key isn't looked up for every piece.
     let apiKey: String
 
+    /// `apiKey` overrides the settings' key (tests).
     init(settings: SpeechSettings, apiKey: String? = nil) {
         self.settings = settings
         self.apiKey = apiKey ?? settings.resolvedKey()
     }
 
+    /// Nothing to download, so no share of the band for preparing.
     var preparingMessage: String { L("Connecting to the speech server…") }
+    /// Nothing to prepare, so voicing gets the whole band.
     var preparationShare: Double { 0 }
+    /// Nothing loads here.
     var loadsModel: Bool { false }
+    /// As many turns at once as the user allows.
     var parallelRequests: Int { settings.parallelRequests }
     /// Memory isn't ours to save here, and longer pieces mean fewer requests and
     /// smoother intonation; still well under OpenAI's 4,096-character limit.
     var maxPieceLength: Int { 1000 }
 
+    /// Only checks the URL; the server is first asked for audio by the first turn.
     func prepare(progress: @escaping @Sendable (Double, String) -> Void) async throws {
         _ = try RemoteSpeechClient(settings: settings, apiKey: apiKey).endpoint("audio/speech")
     }
 
+    /// One request per piece, normalized to the stored WAV layout.
     func synthesize(text: String, voice: String, speed: Float) async throws -> Data {
         let client = RemoteSpeechClient(settings: settings, apiKey: apiKey)
         return try SpeechAudio.normalizedWAV(try await client.speech(text: text, voice: voice, speed: speed))
     }
 }
 
+/// What went wrong talking to a speech server, worded for the user.
 enum RemoteSpeechError: Error, LocalizedError, Equatable {
     case noURL, badURL, unreachable(String), unauthorized, http(Int, String?), notAudio(String?), noSpeechEndpoint(String)
 
@@ -128,16 +148,21 @@ enum RemoteSpeechError: Error, LocalizedError, Equatable {
 /// HTTP calls to an OpenAI-compatible speech server: `POST /audio/speech`, and
 /// the model and voice lists, which servers expose under different paths (or not at all).
 struct RemoteSpeechClient {
+    /// The server, model and key to use.
     let settings: SpeechSettings
+    /// Resolved once (see `SpeechSettings.resolvedKey`).
     let apiKey: String
+    /// Tries per request (transient failures are retried with backoff).
     var attempts = 3
 
+    /// `apiKey` overrides the settings' key; `attempts` 1 for one-shot checks (Settings).
     init(settings: SpeechSettings, apiKey: String? = nil, attempts: Int = 3) {
         self.settings = settings
         self.apiKey = apiKey ?? settings.resolvedKey()
         self.attempts = attempts
     }
 
+    /// The server URL without surrounding spaces or a trailing slash.
     var base: String {
         settings.baseUrl.trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
@@ -151,6 +176,7 @@ struct RemoteSpeechClient {
     /// Status codes meaning "no such endpoint here".
     static let missing: Set<Int> = [404, 405, 501]
 
+    /// `path` under `root` (default: `base`); throws when no URL is set or it isn't http(s).
     func endpoint(_ path: String, at root: String? = nil) throws -> URL {
         guard !base.isEmpty else { throw RemoteSpeechError.noURL }
         guard let url = URL(string: (root ?? base) + "/" + path), let scheme = url.scheme?.lowercased(),
@@ -158,6 +184,7 @@ struct RemoteSpeechClient {
         return url
     }
 
+    /// A request to `path` with the key and a generous timeout (long turns take a while).
     private func request(_ path: String, at root: String? = nil) throws -> URLRequest {
         var req = URLRequest(url: try endpoint(path, at: root))
         req.timeoutInterval = 120
@@ -257,6 +284,7 @@ struct RemoteSpeechClient {
         return obj["message"] as? String
     }
 
+    /// Turn an error status into the `RemoteSpeechError` that explains it.
     private func check(_ http: HTTPURLResponse, _ data: Data) throws {
         switch http.statusCode {
         case 200..<300: return
@@ -286,5 +314,6 @@ struct RemoteSpeechClient {
 }
 
 private extension UInt8 {
+    /// ASCII whitespace, for sniffing a JSON body.
     var isWhitespaceByte: Bool { self == 0x20 || self == 0x0A || self == 0x0D || self == 0x09 }
 }

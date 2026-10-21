@@ -1,3 +1,5 @@
+// The fake LLM endpoint every pipeline test talks to.
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking

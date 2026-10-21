@@ -1,3 +1,5 @@
+// Tests of the player over baked audio (timeline, skip, seek, stop, pace) and of the notifier.
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking

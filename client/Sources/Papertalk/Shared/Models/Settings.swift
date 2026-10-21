@@ -1,3 +1,7 @@
+// Everything the user configures, and where it is kept: the storage server, the LLM, where
+// voices are synthesized, the editable LLM prompts and the custom-depth presets. Settings live
+// in user defaults as JSON; API keys only ever in the Keychain (`KeychainStore`).
+
 import Foundation
 #if canImport(Security)
 import Security
@@ -9,6 +13,7 @@ import Security
 /// GUI-launched apps, which don't inherit shell env vars, can still resolve it).
 enum KeychainStore {
     private static let service = "com.papertalk.key"
+    /// Store `value` under `account`, replacing what was there.
     static func set(_ value: String, account: String) {
         let data = Data(value.utf8)
         let query: [String: Any] = [
@@ -21,6 +26,7 @@ enum KeychainStore {
         attrs[kSecValueData as String] = data
         SecItemAdd(attrs as CFDictionary, nil)
     }
+    /// The string saved under `account`, if any.
     static func get(_ account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -34,6 +40,7 @@ enum KeychainStore {
               let data = item as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
+    /// Remove `account`'s entry (no error if there is none).
     static func delete(_ account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -46,10 +53,15 @@ enum KeychainStore {
 #endif
 
 // MARK: - Server configuration (persisted in the app)
+/// Where the library lives: an empty `apiBase` means this machine (`LocalStorage`),
+/// a URL means `storage_server.py` (`HttpStorage`).
 struct ServerConfig: Codable, Equatable {
+    /// The storage server's URL without a trailing slash; empty for local storage.
     var apiBase: String
+    /// Sent as a bearer token when the server requires one.
     var token: String
 
+    /// The saved configuration, else one from `PAPERTALK_SERVER_URL` / `PAPERTALK_API_TOKEN`.
     static func load() -> ServerConfig {
         let defaults = UserDefaults.standard
         let envBase = ProcessInfo.processInfo.environment["PAPERTALK_SERVER_URL"] ?? ""
@@ -61,6 +73,7 @@ struct ServerConfig: Codable, Equatable {
         }
         return ServerConfig(apiBase: envBase.replacingOccurrences(of: "/+$", with: "", options: .regularExpression), token: envToken)
     }
+    /// Write to user defaults (the token included: it isn't a provider key).
     func save() {
         if let data = try? JSONEncoder().encode(self) {
             UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: "papertalk.server.json")
@@ -69,9 +82,14 @@ struct ServerConfig: Codable, Equatable {
 }
 
 // MARK: - LLM settings for the in-process pipeline (persisted locally)
+/// The OpenAI-compatible endpoint that writes episodes. The key is held in memory and the
+/// Keychain; user defaults get `persisted`, without it.
 struct LLMSettings: Codable, Equatable {
+    /// The API's base URL, e.g. `http://localhost:3000/api`; `/chat/completions` and `/models` go under it.
     var baseUrl: String
+    /// A key typed into Settings (empty when it comes from `keyEnv` or there is none).
     var apiKey: String
+    /// The model id sent with every request; empty falls back to `llama3.1:70b`.
     var model: String
     /// Optional env var name whose value supplies the API key at request time.
     /// When set, `apiKey` is ignored and the key is never persisted.
@@ -100,6 +118,8 @@ struct LLMSettings: Codable, Equatable {
     /// to user defaults.
     static let typedKeyAccount = "papertalk.llm.apiKey"
 
+    /// The saved settings, else defaults seeded from the environment (`OPENWEBUI_BASE_URL`,
+    /// `LLM_BASE_URL`, `PAPERTALK_MODEL` and the first key variable that is set).
     static func load() -> LLMSettings {
         // Stored value wins; otherwise seed from the environment.
         if let raw = UserDefaults.standard.string(forKey: "papertalk.llm.json"),
@@ -129,6 +149,7 @@ struct LLMSettings: Codable, Equatable {
         return copy
     }
 
+    /// Keep the typed key in the Keychain and the rest in user defaults.
     func save() {
         if apiKey.isEmpty {
             KeychainStore.delete(Self.typedKeyAccount)
@@ -143,8 +164,12 @@ struct LLMSettings: Codable, Equatable {
 
 // MARK: - Where speech is synthesized (persisted locally)
 
+/// Where episode audio is synthesized: Kokoro on this machine, or an OpenAI-compatible speech
+/// server. Saved like `LLMSettings`, key in the Keychain only.
 struct SpeechSettings: Codable, Equatable {
+    /// `local` is Kokoro on this machine; `remote` a speech server at `baseUrl`.
     enum Engine: String, Codable, CaseIterable { case local, remote }
+    /// Where speech is made; this machine unless the user picks a server.
     var engine: Engine = .local
     /// OpenAI-compatible base URL; `/audio/speech` is appended.
     var baseUrl = ""
@@ -152,17 +177,21 @@ struct SpeechSettings: Codable, Equatable {
     var apiKey = ""
     /// Env var whose value is the key; when set, `apiKey` is ignored (as for the LLM).
     var keyEnv = ""
+    /// The server's model id; empty sends `fallbackModel`.
     var model = ""
     /// Speech requests sent at once while voicing a paper (remote only; Kokoro
     /// on this machine always takes one call at a time).
     var parallelRequests = SpeechSettings.defaultParallelRequests
 
+    /// Requests in flight at once on a server, unless the user changes it.
     static let defaultParallelRequests = 4
+    /// What the parallel-requests stepper allows.
     static let parallelRange = 1...16
 
     /// Sent when no model is chosen: OpenAI, Kokoro-FastAPI and Open WebUI all accept it.
     static let fallbackModel = "tts-1"
 
+    /// Clamps `parallelRequests` into `parallelRange`.
     init(engine: Engine = .local, baseUrl: String = "", apiKey: String = "", keyEnv: String = "", model: String = "",
          parallelRequests: Int = SpeechSettings.defaultParallelRequests) {
         self.engine = engine
@@ -199,6 +228,7 @@ struct SpeechSettings: Codable, Equatable {
         KeychainStore.set(v, account: keyEnv)
     }
 
+    /// `n` kept within `parallelRange`.
     static func clampParallel(_ n: Int) -> Int { min(max(n, parallelRange.lowerBound), parallelRange.upperBound) }
 
     /// The backend these settings ask for. The one place a backend is chosen.
@@ -209,9 +239,12 @@ struct SpeechSettings: Codable, Equatable {
         }
     }
 
+    /// Keychain account holding a key typed into Settings → Voices.
     static let typedKeyAccount = "papertalk.speech.apiKey"
+    /// User-defaults key of the saved settings (without the key).
     static let defaultsKey = "papertalk.speech.json"
 
+    /// The saved settings with the typed key from the Keychain, else the defaults (local Kokoro).
     static func load() -> SpeechSettings {
         guard let raw = UserDefaults.standard.string(forKey: defaultsKey),
               let data = raw.data(using: .utf8),
@@ -227,6 +260,7 @@ struct SpeechSettings: Codable, Equatable {
         return copy
     }
 
+    /// Keep the typed key in the Keychain and the rest in user defaults.
     func save() {
         if apiKey.isEmpty {
             KeychainStore.delete(Self.typedKeyAccount)
@@ -298,6 +332,7 @@ struct PromptSettings: Codable, Equatable {
         values.reduce(template) { $0.replacingOccurrences(of: "{\($1.key)}", with: $1.value) }
     }
 
+    /// The prompts as shipped, also what "Reset to default" restores.
     static let defaults = PromptSettings(
         metadata: """
         You extract bibliographic metadata from a research paper's raw OCR/PDF text.
@@ -419,6 +454,7 @@ extension PromptSettings {
                   blockMiddle: try v(.blockMiddle, d.blockMiddle), blockLast: try v(.blockLast, d.blockLast),
                   outputLanguage: try v(.outputLanguage, d.outputLanguage))
     }
+    /// The saved prompts, else the defaults.
     static func load() -> PromptSettings {
         if let raw = UserDefaults.standard.string(forKey: "papertalk.prompts.json"),
            let data = raw.data(using: .utf8),
@@ -427,6 +463,7 @@ extension PromptSettings {
         }
         return defaults
     }
+    /// Write to user defaults (they hold no secrets).
     func save() {
         if let data = try? JSONEncoder().encode(self) {
             UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: "papertalk.prompts.json")
@@ -434,14 +471,18 @@ extension PromptSettings {
     }
 }
 
+/// Named instructions for the Custom depth, picked from the import sheet.
 struct CustomDepthPresets: Codable {
+    /// One preset: a unique name and the instructions sent as the depth guide.
     struct Entry: Codable, Identifiable, Equatable {
         let name: String
         let text: String
         var id: String { name }
     }
+    /// In the order they were added; names are unique (`PresetsForm.clean`).
     var entries: [Entry]
 
+    /// The saved presets, else none.
     static func load() -> CustomDepthPresets {
         if let raw = UserDefaults.standard.string(forKey: "papertalk.customDepths.json"),
            let data = raw.data(using: .utf8),
@@ -450,6 +491,7 @@ struct CustomDepthPresets: Codable {
         }
         return CustomDepthPresets(entries: [])
     }
+    /// Write to user defaults.
     func save() {
         if let data = try? JSONEncoder().encode(self) {
             UserDefaults.standard.set(String(data: data, encoding: .utf8), forKey: "papertalk.customDepths.json")
@@ -465,6 +507,7 @@ func candidateKeyEnvs() -> [String] {
         .filter { !(env[$0] ?? "").isEmpty }
 }
 
+/// The first of `keys` with a non-empty value in `env`, or "".
 private func firstSet(_ env: [String: String], _ keys: [String]) -> String {
     keys.first { !(env[$0] ?? "").isEmpty } ?? ""
 }

@@ -1,3 +1,5 @@
+// The Linux cast sheet (who speaks, with which voice), over the shared `CastForm`.
+
 #if os(Linux)
 import Foundation
 import SwiftCrossUI
@@ -5,10 +7,14 @@ import SwiftCrossUI
 /// Who should speak: rename each speaker and pick (and hear) their voice
 /// before the script is written (macOS CastSheet). The import waits on it.
 struct CastSheet: View {
+    /// The store, observed.
     var bridge: StoreBridge
+    /// Shown under the heading.
     let paperTitle: String
+    /// Names, genders and voices being edited.
     @State var form: CastForm
 
+    /// The form starts from the LLM's proposal.
     init(bridge: StoreBridge, prompt: AppStore.CastPrompt) {
         self.bridge = bridge
         paperTitle = prompt.paperTitle

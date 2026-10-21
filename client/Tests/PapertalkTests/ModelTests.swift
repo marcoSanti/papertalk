@@ -1,6 +1,9 @@
+// Tests of the stored models: decoding old and new records, and the storage key layout.
+
 import XCTest
 @testable import Papertalk
 
+/// `Paper` decoding (older records included), status and the dismissed-error states.
 final class PaperModelTests: PapertalkTestCase {
     private func makeJSON(speakers: Bool = true, extra: [String: Any] = [:]) -> [String: Any] {
         var obj: [String: Any] = [
@@ -130,6 +133,7 @@ final class PaperModelTests: PapertalkTestCase {
     }
 }
 
+/// `Transcript` round-trips and tolerant decoding.
 final class TranscriptModelTests: PapertalkTestCase {
     func testRoundTrip() throws {
         let t = Transcript(paperTitle: "P",
@@ -155,6 +159,7 @@ final class TranscriptModelTests: PapertalkTestCase {
     }
 }
 
+/// The baked-audio manifest.
 final class AudioManifestTests: PapertalkTestCase {
     func testRoundTrip() throws {
         let m = AudioManifest(durations: [1.5, 2.0])
@@ -163,6 +168,7 @@ final class AudioManifestTests: PapertalkTestCase {
     }
 }
 
+/// The `K` key layout every backend shares.
 final class ServerKeyLayoutTests: PapertalkTestCase {
     func testKeys() {
         XCTAssertEqual(K.folder("abc"), "papers/abc/")

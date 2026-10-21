@@ -1,3 +1,6 @@
+// Normalizing speech audio: whatever a backend returns (WAV of any layout, or compressed
+// audio) becomes the 24 kHz mono 16-bit WAV every stored turn uses.
+
 import Foundation
 
 /// Turns whatever a speech backend returns into the one WAV layout the app
@@ -6,8 +9,10 @@ import Foundation
 /// machine already produces it; a remote server may send another rate, stereo,
 /// float samples, extra header chunks, or a compressed format.
 enum SpeechAudio {
+    /// Hz of every stored and played WAV (Kokoro's native rate).
     static let sampleRate = 24_000
 
+    /// Why a server's audio couldn't be used; shown in the paper's error.
     enum Failure: Error, LocalizedError, Equatable {
         case empty, unreadable, compressedUnsupported
         var errorDescription: String? {
@@ -44,12 +49,17 @@ enum SpeechAudio {
 
     // MARK: - WAV parsing
 
+    /// A WAV's format and raw sample bytes, as read by `parseWAV`.
     struct ParsedWAV {
         var format: UInt16          // 1 = integer PCM, 3 = float
+        /// Interleaved channels in `samples`.
         var channels: Int
+        /// Samples per second.
         var rate: Double
+        /// Bits per sample: 8, 16, 24, 32 or 64.
         var bits: Int
         var dataOffset: Int         // from the start of the file
+        /// The `data` chunk's bytes.
         var samples: Data
 
         /// Already the app's layout, so it can be stored untouched.
@@ -74,6 +84,7 @@ enum SpeechAudio {
             return out
         }
 
+        /// One sample at byte offset `i`, as -1…1, whatever the format.
         private func sample(_ raw: UnsafeRawBufferPointer, at i: Int) -> Float {
             switch (format, bits) {
             case (3, 32): return Float(bitPattern: raw.loadUnaligned(fromByteOffset: i, as: UInt32.self).littleEndian)

@@ -1,5 +1,6 @@
 // Settings forms shared by the Settings window and the first-run setup: the API key source, the
-// LLM and storage server fields, setup's steps, custom-depth presets and the Clear Data page.
+// LLM and storage server fields, setup's steps, custom-depth presets, the Clear Data page and
+// the library folder.
 
 import Foundation
 
@@ -250,5 +251,23 @@ enum ClearDataPresentation {
     /// Deleting needs models on disk and no conversion using them.
     static func canDeleteVoiceModels(bytes: Int64, conversionRunning: Bool) -> Bool {
         bytes > 0 && !conversionRunning
+    }
+}
+
+/// The General page's library folder section: its wording and when the folder can change.
+enum LibraryFolderPresentation {
+    /// Moving the library needs it on this Mac and no conversion writing into it.
+    static func canChange(isStandalone: Bool, converting: Bool) -> Bool { isStandalone && !converting }
+
+    /// The line under the buttons: why it's disabled, else what a change does.
+    static func note(isStandalone: Bool, converting: Bool) -> String {
+        if !isStandalone { return L("The library is on the storage server; the folder applies only without one.") }
+        if converting { return L("Wait for the conversion to finish to move the library.") }
+        return L("Papers move to the new folder. Papers already in it join the library.")
+    }
+
+    /// "Use Default" only applies away from the default folder.
+    static func isDefault(_ folder: URL) -> Bool {
+        folder.standardizedFileURL == LocalStorage.defaultRoot.standardizedFileURL
     }
 }

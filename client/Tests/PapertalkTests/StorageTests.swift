@@ -77,6 +77,49 @@ final class LocalStorageTests: PapertalkTestCase {
         let url = await s.url(for: K.paper("1"))
         XCTAssertTrue(url?.isFileURL ?? false)
     }
+
+    func testEachPaperIsAPackageOnDisk() async throws {
+        let s = store
+        try await s.write(K.paper("p"), Data("{}".utf8))
+        try await s.write(K.turn("p", 0), Data([1]))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("papers/p.papertalk/paper.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.appendingPathComponent("papers/p.papertalk/turns/0.wav").path))
+        let url = await s.url(for: K.folder("p"))
+        XCTAssertEqual(url?.lastPathComponent, "p.papertalk")
+        try await s.deleteFolder(K.folder("p"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("papers/p.papertalk").path))
+    }
+
+    func testListMovesOldPlainFoldersIntoPackages() async throws {
+        let fm = FileManager.default
+        let old = dir.appendingPathComponent("papers/old", isDirectory: true)
+        try fm.createDirectory(at: old, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: old.appendingPathComponent("paper.json"))
+        try Data().write(to: dir.appendingPathComponent("papers/.DS_Store"))
+
+        let ids = try await store.list()
+
+        XCTAssertEqual(ids, ["old"])
+        XCTAssertTrue(fm.fileExists(atPath: dir.appendingPathComponent("papers/old.papertalk/paper.json").path))
+        XCTAssertFalse(fm.fileExists(atPath: old.path))
+        XCTAssertTrue(fm.fileExists(atPath: dir.appendingPathComponent("papers/.DS_Store").path), "only folders are moved")
+    }
+
+    func testMoveLibraryKeepsPapersAlreadyThere() async throws {
+        let other = dir.appendingPathComponent("other", isDirectory: true)
+        try await LocalStorage(root: dir).write(K.paper("a"), Data("from-old".utf8))
+        try await LocalStorage(root: dir).write(K.paper("b"), Data("from-old".utf8))
+        try await LocalStorage(root: other).write(K.paper("b"), Data("kept".utf8))
+
+        let moved = try LocalStorage.moveLibrary(from: dir, to: other)
+
+        XCTAssertEqual(moved, 1)
+        let a = try await LocalStorage(root: other).read(K.paper("a"))
+        let b = try await LocalStorage(root: other).read(K.paper("b"))
+        XCTAssertEqual(String(decoding: a, as: UTF8.self), "from-old")
+        XCTAssertEqual(String(decoding: b, as: UTF8.self), "kept")
+        XCTAssertEqual(try LocalStorage.moveLibrary(from: other, to: other), 0, "same folder: nothing moves")
+    }
 }
 
 /// `HttpStorage`'s folder deletes and paper listing, from the server's key list.

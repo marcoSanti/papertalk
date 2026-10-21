@@ -51,9 +51,7 @@ struct LibraryView: View {
             if id != nil { libraryFocused = true }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            guard let url = ImportPresentation.firstPDF(in: urls) else { return false }
-            store.beginImport(url)
-            return true
+            store.openFiles(urls)
         } isTargeted: { dropTargeted = $0 }
         .overlay {
             if dropTargeted {
@@ -61,7 +59,7 @@ struct LibraryView: View {
                     .strokeBorder(Color.appAccent, style: StrokeStyle(lineWidth: 2, dash: [8, 5]))
                     .background(Color.appAccent.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay {
-                        Label(L("Drop a PDF to import it"), systemImage: "arrow.down.doc")
+                        Label(L("Drop a PDF or a Papertalk paper to import it"), systemImage: "arrow.down.doc")
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(Color.appAccent)
                     }

@@ -888,3 +888,61 @@ final class EpisodeExportTests: PapertalkTestCase {
         XCTAssertFalse(EpisodeExport.canExport(Fixtures.paper(state: "running", hasAudio: true)))
     }
 }
+
+/// The `.papertalk` bundle rules and the library folder section.
+final class PaperBundleTests: PapertalkTestCase {
+    func testKeysAndRelativePaths() {
+        XCTAssertEqual(PaperBundle.keys("p", turns: 2, includePDF: true).map { PaperBundle.relative($0, "p") },
+                       ["paper.json", "transcript.json", "mindmap.json", "turns/0.wav", "turns/1.wav", "audio.json", "source.pdf"])
+        XCTAssertEqual(PaperBundle.keys("p", turns: 0, includePDF: false).count, 3)
+        XCTAssertTrue(PaperBundle.isBundle(URL(fileURLWithPath: "/x/Waves.PAPERTALK")))
+        XCTAssertFalse(PaperBundle.isBundle(URL(fileURLWithPath: "/x/Waves.pdf")))
+    }
+
+    func testImportIdIsAFreeUUIDOrANewOne() {
+        let free = UUID().uuidString
+        XCTAssertEqual(PaperBundle.importId(free) { _ in false }, free)
+        XCTAssertNotEqual(PaperBundle.importId(free) { _ in true }, free)
+        let traversal = PaperBundle.importId("../../etc") { _ in false }
+        XCTAssertNotNil(UUID(uuidString: traversal), "an id that isn't a UUID never names a folder")
+    }
+
+    func testImportedRecordFollowsItsFiles() {
+        let done = PaperBundle.imported(Fixtures.paper(hasAudio: true), id: "n", hasPdf: false, hasScript: true, hasAudio: false, hasMindMap: true)
+        XCTAssertEqual(done.id, "n")
+        XCTAssertEqual(done.state, "done")
+        XCTAssertFalse(done.hasPdf)
+        XCTAssertFalse(done.hasAudio)
+        XCTAssertEqual(done.hasMindMap, true)
+
+        let noScript = PaperBundle.imported(Fixtures.paper(state: "queued"), id: "n", hasPdf: true, hasScript: false, hasAudio: false, hasMindMap: false)
+        XCTAssertEqual(noScript.state, "error")
+        XCTAssertFalse(noScript.isActive)
+        XCTAssertEqual(noScript.statusError, "The imported file has no script. Rerun the episode to write one.")
+    }
+
+    func testBundleFileNameAndExport() {
+        XCTAssertEqual(PaperPresentation.bundleFileName(Fixtures.paper(title: "A/B: C")), "A-B- C.papertalk")
+        XCTAssertTrue(PaperPresentation.canExportPaper(Fixtures.paper()))
+        XCTAssertFalse(PaperPresentation.canExportPaper(Fixtures.paper(state: "running")))
+        let q = PaperPresentation.exportPDFQuestion
+        XCTAssertEqual(q.title, "Include the paper's PDF?")
+        XCTAssertEqual(q.withoutPDF, "Export Without PDF")
+        XCTAssertEqual(q.withPDF, "Include the PDF")
+        XCTAssertEqual(q.cancel, "Cancel")
+    }
+
+    func testLibraryFolderSection() {
+        XCTAssertTrue(LibraryFolderPresentation.canChange(isStandalone: true, converting: false))
+        XCTAssertFalse(LibraryFolderPresentation.canChange(isStandalone: false, converting: false))
+        XCTAssertFalse(LibraryFolderPresentation.canChange(isStandalone: true, converting: true))
+        XCTAssertEqual(LibraryFolderPresentation.note(isStandalone: false, converting: true),
+                       "The library is on the storage server; the folder applies only without one.")
+        XCTAssertEqual(LibraryFolderPresentation.note(isStandalone: true, converting: true),
+                       "Wait for the conversion to finish to move the library.")
+        XCTAssertEqual(LibraryFolderPresentation.note(isStandalone: true, converting: false),
+                       "Papers move to the new folder. Papers already in it join the library.")
+        XCTAssertTrue(LibraryFolderPresentation.isDefault(LocalStorage.defaultRoot))
+        XCTAssertFalse(LibraryFolderPresentation.isDefault(URL(fileURLWithPath: "/tmp/elsewhere")))
+    }
+}

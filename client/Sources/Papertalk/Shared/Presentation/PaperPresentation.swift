@@ -139,6 +139,26 @@ enum PaperPresentation {
             : (L("Create mind map"), L("Map the paper's key concepts and how they connect"))
     }
 
+    /// The paper's title as a file name: path separators replaced, kept to a sane length.
+    static func fileName(_ p: Paper, extension ext: String) -> String {
+        let safe = p.displayTitle.components(separatedBy: CharacterSet(charactersIn: "/:\\\n\r\t")).joined(separator: "-")
+        return String(safe.trimmingCharacters(in: .whitespaces).prefix(200)) + "." + ext
+    }
+
+    /// The suggested name of an exported `.papertalk` bundle.
+    static func bundleFileName(_ p: Paper) -> String { fileName(p, extension: PaperBundle.pathExtension) }
+
+    /// The question asked before exporting a paper that has a PDF. Leaving the PDF out is
+    /// the default button: most papers' PDFs are under copyright.
+    static var exportPDFQuestion: (title: String, message: String, withoutPDF: String, withPDF: String, cancel: String) {
+        (L("Include the paper's PDF?"),
+         L("Most papers' PDFs are under copyright, so you may not be allowed to share them. Include it only if you have the right to; without it, the episode, script and mind map still come along."),
+         L("Export Without PDF"), L("Include the PDF"), L("Cancel"))
+    }
+
+    /// A paper can be exported once it isn't being converted.
+    static func canExportPaper(_ p: Paper) -> Bool { !p.isActive }
+
     /// Baked audio can go once the paper isn't being converted; the script stays.
     static func canDeleteAudio(_ p: Paper) -> Bool { p.hasAudio && !p.isActive }
 

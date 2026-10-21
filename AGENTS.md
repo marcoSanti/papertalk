@@ -91,7 +91,9 @@ It's run from anywhere; from `client/` prefix it with `../`.
   release (a `VERSION` bump merged to `main`) builds with `CHANNEL=stable` and gets the official
   `shared/icon.icns`; every other build (local, CI, dev pre-releases) gets a "DEV" stripe version
   generated into `client/.build/icons/` by `scripts/dev_icon.swift`. Don't ship the official icon
-  from anything but a stable release.
+  from anything but a stable release. The exception is the Finder icon of `.papertalk` files
+  (`PaperDocument.icns`, a page with the app icon on it, from `scripts/document_icon.swift`): it's
+  made from the official icon on every channel, so a file's icon doesn't depend on the build.
 - `app.sh release` also writes `dist/Papertalk-<version>-source.tar.gz` (`git archive` of HEAD);
   the release workflow publishes it, with checksums, beside the app zip.
 - Dev builds: every push to `main` that didn't bump the version publishes a **pre-release**
@@ -193,10 +195,15 @@ Still to do, in order:
 
 ## Data and storage
 
-- Local library: `~/Library/Application Support/papertalk/papers/<id>/`, containing
+- Local library: `~/Library/Application Support/papertalk/papers/<id>.papertalk/` (or the folder
+  picked in Settings, `LocalStorage.folderDefaultsKey`), containing
   `paper.json`, `source.pdf`, `transcript.json`, `mindmap.json`, `audio.json` (manifest) and
   `turns/<n>.wav`.
   Kokoro models: `~/.cache/fluidaudio/Models/kokoro*`.
+- Keys stay `papers/<id>/…` on every backend; only `LocalStorage.path(_:)` adds the `.papertalk`
+  extension (a package declared in Info.plist, so Finder shows one item), and its `list()` renames
+  older plain folders. Exports are the same layout (`PaperBundle`); imports read only its known
+  files, validate them, and never use the file's id unless it's a free UUID.
 - Everything for a paper lives under `K.folder(id)`. Delete a paper with
   `storage.deleteFolder(K.folder(id))`, never with a hand-written list of keys (that left
   orphaned folders before).

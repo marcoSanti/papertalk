@@ -30,9 +30,6 @@ struct EpisodeExport: Equatable {
     /// Only a fully voiced paper that isn't being converted has a track to export.
     static func canExport(_ p: Paper) -> Bool { p.hasAudio && !p.isActive }
 
-    /// The paper's title as a file name: path separators replaced, kept to a sane length.
-    static func fileName(_ p: Paper) -> String {
-        let safe = p.displayTitle.components(separatedBy: CharacterSet(charactersIn: "/:\\\n\r\t")).joined(separator: "-")
-        return String(safe.trimmingCharacters(in: .whitespaces).prefix(200)) + ".m4a"
-    }
+    /// The paper's title as an .m4a file name.
+    static func fileName(_ p: Paper) -> String { PaperPresentation.fileName(p, extension: "m4a") }
 }

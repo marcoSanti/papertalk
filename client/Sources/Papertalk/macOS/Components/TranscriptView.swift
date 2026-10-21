@@ -1,10 +1,14 @@
+// The transcript sheet: the episode's script to read along, segment by segment, with copy.
+
 #if os(macOS)
 import SwiftUI
 import AppKit
 
 // MARK: - Transcript sheet
+/// Every segment with its turns, speakers marked by avatar; copies as plain text.
 struct TranscriptView: View {
     let transcript: Transcript
+    /// The paper's title, in the header.
     let title: String
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
@@ -78,6 +82,7 @@ struct TranscriptView: View {
         .padding(20)
     }
 
+    /// One segment: number, title and its turns.
     private func segment(_ index: Int, _ seg: Transcript.Segment) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -109,6 +114,7 @@ struct TranscriptView: View {
         }
     }
 
+    /// Copy the whole transcript and show "Copied" for a moment.
     private func copyAll() {
         Clipboard.copy(TranscriptPresentation.plainText(transcript))
         withAnimation(.snappy) { copied = true }

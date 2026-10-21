@@ -1,3 +1,6 @@
+// Settings forms shared by the Settings window and the first-run setup: the API key source, the
+// LLM and storage server fields, setup's steps, custom-depth presets and the Clear Data page.
+
 import Foundation
 
 /// Where an API key (the LLM's or the speech server's) comes from.
@@ -7,6 +10,7 @@ enum LLMKeySource: String, CaseIterable, Identifiable {
     case manual = "Type a key"
     var id: String { rawValue }
 
+    /// The segmented picker's title.
     var label: String {
         switch self {
         case .none: return L("No key")
@@ -24,8 +28,11 @@ enum LLMKeySource: String, CaseIterable, Identifiable {
 /// A form with an API key that is typed, read from an environment variable, or
 /// absent. `KeySourceFields` edits any of them the same way.
 protocol KeySourceEditing {
+    /// Where the key comes from.
     var keySource: LLMKeySource { get set }
+    /// The chosen environment variable, when `keySource` is `.env`.
     var selectedEnv: String { get set }
+    /// The typed key, when `keySource` is `.manual`.
     var manualKey: String { get set }
     /// Key environment variables that are set (`candidateKeyEnvs()`).
     var setEnvVars: [String] { get }
@@ -64,14 +71,20 @@ extension KeySourceEditing {
 
 /// The LLM settings as edited in Settings and in the setup wizard.
 struct LLMSettingsForm: Equatable, KeySourceEditing {
+    /// The endpoint as typed (trimmed when saved).
     var baseUrl = ""
+    /// Typed, or picked from the endpoint's `/models`.
     var model = ""
+    /// Where the API key comes from.
     var keySource: LLMKeySource = .none
+    /// Used when `keySource` is `.env`.
     var selectedEnv = ""
+    /// Used when `keySource` is `.manual`.
     var manualKey = ""
     /// Key environment variables that are set (`candidateKeyEnvs()`).
     let setEnvVars: [String]
 
+    /// The form showing the saved settings `s`.
     init(_ s: LLMSettings, setEnvVars: [String] = candidateKeyEnvs()) {
         self.setEnvVars = setEnvVars
         baseUrl = s.baseUrl
@@ -83,6 +96,7 @@ struct LLMSettingsForm: Equatable, KeySourceEditing {
 
     private var trimmedBaseURL: String { baseUrl.trimmingCharacters(in: .whitespaces) }
 
+    /// Models can be listed once there's a URL.
     var canFetchModels: Bool { !trimmedBaseURL.isEmpty }
 
     /// The settings to save. Only the chosen key source's value is kept.
@@ -106,11 +120,16 @@ struct LLMSettingsForm: Equatable, KeySourceEditing {
 
 /// The storage server settings, in Settings and in the setup wizard.
 struct ServerSettingsForm: Equatable {
+    /// Local: papers on this machine; remote: on `storage_server.py`.
     enum Mode: String { case local, remote }
+    /// Chosen in setup; Settings derives it from the URL (`configFromURL`).
     var mode: Mode
+    /// The server URL as typed.
     var apiBase: String
+    /// The server's bearer token, if it needs one.
     var token: String
 
+    /// The form showing the saved configuration.
     init(_ c: ServerConfig) {
         apiBase = c.apiBase
         token = c.token
@@ -144,10 +163,15 @@ struct ServerSettingsForm: Equatable {
 /// Wording for the single-page settings sheet (Linux), which doubles as
 /// first-run setup.
 enum SettingsSheetPresentation {
+    /// The sheet's title: setup on first launch, else Settings.
     static func title(isSetup: Bool) -> String { isSetup ? L("Welcome to Papertalk") : L("Settings") }
+    /// The confirm button.
     static func saveTitle(isSetup: Bool) -> String { isSetup ? L("Finish setup") : L("Save") }
+    /// What the app needs, under the title.
     static var intro: String { L("Papertalk writes each episode with an OpenAI-compatible LLM, then synthesizes the voices on {0} with Kokoro.", Device.this) }
+    /// When "From environment" is chosen but no key variable is set.
     static var noEnvVars: String { L("No API-key environment variables are set. Add one (e.g. OPENWEBUI_API_KEY) and reopen this window.") }
+    /// Under the storage server fields.
     static var serverHelp: String { L("Optional storage_server.py for sharing the library. Leave empty to keep papers on {0}.", Device.this) }
 }
 
@@ -155,6 +179,7 @@ enum SettingsSheetPresentation {
 enum SetupStep: Equatable {
     case storage, llm, voices, review
 
+    /// The step after this one; nil on the last.
     var next: SetupStep? {
         switch self {
         case .storage: return .llm
@@ -164,6 +189,7 @@ enum SetupStep: Equatable {
         }
     }
 
+    /// The step before this one; nil on the first.
     var previous: SetupStep? {
         switch self {
         case .storage: return nil
@@ -176,6 +202,7 @@ enum SetupStep: Equatable {
     /// "Skip setup" is offered until the review step.
     var canSkip: Bool { self != .review }
 
+    /// The forward button's title on this step.
     var nextTitle: String {
         switch self {
         case .storage, .llm: return L("Continue")
@@ -210,14 +237,17 @@ enum PresetsForm {
 
 /// Settings → Clear Data.
 enum ClearDataPresentation {
+    /// The models' size on disk, or that they aren't downloaded.
     static func voiceModels(bytes: Int64) -> String {
         bytes > 0 ? ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) : L("Not downloaded")
     }
 
+    /// Why Delete is disabled, if it is.
     static func deleteVoiceModelsHelp(conversionRunning: Bool) -> String {
         conversionRunning ? L("Wait for conversions to finish") : ""
     }
 
+    /// Deleting needs models on disk and no conversion using them.
     static func canDeleteVoiceModels(bytes: Int64, conversionRunning: Bool) -> Bool {
         bytes > 0 && !conversionRunning
     }

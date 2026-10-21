@@ -1,3 +1,5 @@
+// Regression tests for the pipeline rules in AGENTS.md.
+
 import XCTest
 @testable import Papertalk
 

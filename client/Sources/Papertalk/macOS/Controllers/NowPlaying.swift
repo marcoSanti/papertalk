@@ -1,3 +1,5 @@
+// The bridge to the system's Now Playing (Control Center, media keys) on macOS.
+
 #if os(macOS)
 import AppKit
 import Combine
@@ -8,6 +10,7 @@ import MediaPlayer
 /// methods as the player bar; what is shown comes from `NowPlayingPresentation`.
 @MainActor
 final class NowPlaying {
+    /// There is one system Now Playing, so one bridge.
     static let shared = NowPlaying()
 
     private weak var store: AppStore?
@@ -28,6 +31,7 @@ final class NowPlaying {
         queueRefresh()
     }
 
+    /// Coalesce the store's and player's changes into one refresh on the next run loop turn.
     private func queueRefresh() {
         guard !refreshQueued else { return }
         refreshQueued = true
@@ -39,6 +43,7 @@ final class NowPlaying {
         }
     }
 
+    /// Work out what to show and publish it if it changed enough.
     private func refresh() {
         guard let store else { return }
         let player = store.player
@@ -51,6 +56,7 @@ final class NowPlaying {
         publish(info)
     }
 
+    /// Hand the info (and cover) to the system, or clear it.
     private func publish(_ info: NowPlayingInfo?) {
         published = info
         publishedAt = Date()
@@ -93,6 +99,7 @@ final class NowPlaying {
 
     // MARK: - Remote commands
 
+    /// Answer play, pause, toggle, skip ±15 s and scrubbing from the system.
     private func registerCommands() {
         let c = MPRemoteCommandCenter.shared()
         c.playCommand.addTarget { [weak self] _ in self?.forward { $0.playPause(.play) } ?? .commandFailed }
@@ -122,6 +129,7 @@ final class NowPlaying {
                 c.changePlaybackPositionCommand]
     }
 
+    /// Grey out the system's buttons when nothing is loaded.
     private func setCommandsEnabled(_ enabled: Bool) {
         for command in commands where command.isEnabled != enabled { command.isEnabled = enabled }
     }
@@ -135,12 +143,14 @@ final class NowPlaying {
         return .success
     }
 
+    /// Play, pause or toggle through the store, like the player bar.
     private func playPause(_ command: NowPlayingPresentation.Command) {
         guard let store, let id = store.playingPaperId,
               NowPlayingPresentation.shouldToggle(command, isPlaying: store.player.isPlaying) else { return }
         store.togglePlayback(id)
     }
 
+    /// Jump within the episode.
     private func skip(_ seconds: Double) {
         guard let player = store?.player else { return }
         player.seek(toTime: NowPlayingPresentation.skipTarget(from: player.currentTime, by: seconds,
@@ -150,6 +160,7 @@ final class NowPlaying {
 
 /// Lets the artwork handler, which the system may call on any thread, hand
 /// back an image that is never mutated after loading.
+/// Carries the cover into the artwork's sendable closure.
 private final class ImageBox: @unchecked Sendable {
     let image: NSImage
     init(image: NSImage) { self.image = image }

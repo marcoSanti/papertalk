@@ -1,9 +1,12 @@
+// The Linux app's entry point (SwiftCrossUI on GTK 4) and its root view.
+
 #if os(Linux)
 import Foundation
 import GtkBackend
 import SwiftCrossUI
 
 /// The Linux app: the shared AppStore behind a GTK 4 window (SwiftCrossUI).
+/// One window over one `AppStore`, created in the saved interface language.
 @main
 struct PapertalkGTK: App {
     typealias Backend = GtkBackend

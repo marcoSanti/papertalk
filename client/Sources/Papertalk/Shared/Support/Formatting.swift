@@ -1,3 +1,6 @@
+// Small formatting helpers shared by every view: playback times, pipeline stage names,
+// publication dates, and how the app names the machine it runs on.
+
 import Foundation
 
 /// mm:ss for playhead / duration values; "–:––" when not finite.
@@ -47,13 +50,18 @@ func formatDate(_ iso: String) -> String {
 /// How the app refers to the machine it runs on, in user-facing copy.
 enum Device {
     #if os(Linux)
+    /// The machine in a sentence, e.g. "converted on this computer".
     static var this: String { L("this computer") }
     /// The machine as a choice or a place, e.g. the storage options.
     static var thisTitle: String { L("This computer") }
+    /// A choice of where something happens, e.g. the voices' engine.
     static var on: String { L("On this computer") }
     #else
+    /// The machine in a sentence, e.g. "converted on this Mac".
     static var this: String { L("this Mac") }
+    /// The machine on its own, e.g. the storage review line.
     static var thisTitle: String { L("This Mac") }
+    /// A choice of where something happens, e.g. the voices' engine.
     static var on: String { L("On this Mac") }
     #endif
 }

@@ -1,3 +1,6 @@
+// The app's shared look on macOS: metrics, glass cards, tinted buttons, section labels, status
+// badges, a wrapping layout, the window background and per-name colours.
+
 #if os(macOS)
 import SwiftUI
 
@@ -9,8 +12,11 @@ import SwiftUI
 // over thumbnails); scrolling content stays opaque/quiet so the glass has
 // something to refract.
 enum Theme {
+    /// Corner radius of glass cards.
     static let cardRadius: CGFloat = 18
+    /// Corner radius of grid tiles.
     static let tileRadius: CGFloat = 12
+    /// Corner radius of small covers.
     static let thumbRadius: CGFloat = 8
     /// Typical paper page aspect ratio (US Letter / A4 ≈ 0.71–0.77).
     static let pageAspect: CGFloat = 0.75
@@ -21,8 +27,11 @@ enum Theme {
 /// A rounded Liquid Glass panel used to group content (inspector sections,
 /// floating bars). Pass `tint` to give the glass a faint colour cast.
 struct GlassCard: ViewModifier {
+    /// Corner radius.
     var radius: CGFloat = Theme.cardRadius
+    /// Inner padding.
     var padding: CGFloat = 14
+    /// A faint colour cast; nil for plain glass.
     var tint: Color? = nil
 
     func body(content: Content) -> some View {
@@ -34,6 +43,7 @@ struct GlassCard: ViewModifier {
 }
 
 extension View {
+    /// Wrap the view in a `GlassCard`.
     func glassCard(radius: CGFloat = Theme.cardRadius, padding: CGFloat = 14, tint: Color? = nil) -> some View {
         modifier(GlassCard(radius: radius, padding: padding, tint: tint))
     }
@@ -46,7 +56,9 @@ extension View {
 /// plain capsule. Prominent: filled with `color`, white label; otherwise a
 /// faint wash with the label in `color`.
 struct TintedButtonStyle: ButtonStyle {
+    /// The label colour, or the fill when prominent.
     var color: Color
+    /// Filled with `color` and a white label, for the main action.
     var prominent = false
     @Environment(\.isEnabled) private var isEnabled
 
@@ -63,6 +75,7 @@ struct TintedButtonStyle: ButtonStyle {
 }
 
 extension ButtonStyle where Self == TintedButtonStyle {
+    /// `.buttonStyle(.tinted(.red))`.
     static func tinted(_ color: Color, prominent: Bool = false) -> TintedButtonStyle {
         TintedButtonStyle(color: color, prominent: prominent)
     }
@@ -74,6 +87,7 @@ extension ButtonStyle where Self == TintedButtonStyle {
 struct SectionLabel: View {
     let title: String
     var systemImage: String? = nil
+    /// Small text at the right end (e.g. a percentage).
     var trailing: String? = nil
 
     var body: some View {
@@ -98,6 +112,7 @@ struct SectionLabel: View {
 /// Glass capsule describing where a paper is in the pipeline.
 struct StatusBadge: View {
     let paper: Paper
+    /// Icon only, for small covers.
     var compact = false
 
     var body: some View {
@@ -131,9 +146,12 @@ struct StatusBadge: View {
 
 /// Wraps children onto as many lines as needed (tag chips, author pills).
 struct FlowLayout: Layout {
+    /// Between items on a line.
     var spacing: CGFloat = 6
+    /// Between lines.
     var lineSpacing: CGFloat = 6
 
+    /// The height of every line once wrapped at the proposed width.
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0, widest: CGFloat = 0
@@ -151,6 +169,7 @@ struct FlowLayout: Layout {
         return CGSize(width: proposal.width ?? widest, height: y + lineHeight)
     }
 
+    /// Place items left to right, wrapping at the edge.
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX, y = bounds.minY, lineHeight: CGFloat = 0
         for view in subviews {
@@ -167,6 +186,7 @@ struct FlowLayout: Layout {
         }
     }
 
+    /// A child's size, never wider than the line.
     private func measured(_ view: LayoutSubview, maxWidth: CGFloat) -> CGSize {
         let ideal = view.sizeThatFits(.unspecified)
         guard ideal.width > maxWidth else { return ideal }

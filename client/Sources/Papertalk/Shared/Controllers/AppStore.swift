@@ -1,3 +1,8 @@
+// The app's single source of truth: every piece of state the views show, every action they
+// can take, and the import pipeline that ties the LLM, the speech backend and storage together
+// (extract text → metadata → duplicate check → cast → script → mind map → audio).
+// Both the macOS and the Linux interfaces drive this same store.
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -17,6 +22,8 @@ import FluidAudio
 import PDFKit
 #endif
 
+/// All app state and mutations, on the main actor. Views read its `@Published` properties and
+/// call its methods; long work (conversions, mind maps) runs in tasks it tracks.
 @MainActor
 final class AppStore: ObservableObject {
     /// Storage backend: local disk (self-host) or remote HTTP storage server.
@@ -28,6 +35,7 @@ final class AppStore: ObservableObject {
     }
     /// Fixed backend for tests, so they never touch the real library.
     private let storageOverride: Storage?
+    /// The library is on this machine (no storage server), so Finder can show its files.
     var isStandalone: Bool {
         if let storageOverride { return storageOverride is LocalStorage }
         return config.apiBase.isEmpty
@@ -43,7 +51,9 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// Every paper in the library, by id. Records are saved through `persist`.
     @Published var papers: [String: Paper] = [:]
+    /// The paper shown in the details panel.
     @Published var selectedId: String?
     /// Global audio player shown in the bottom status bar (iTunes-style).
     @Published var player: PlayerController
@@ -56,7 +66,9 @@ final class AppStore: ObservableObject {
     /// Whether the import sheet is open, and a file to pre-load into it
     /// (set when a PDF is dropped on the library).
     @Published var showUpload = false
+    /// A PDF dropped on the library, loaded into the import sheet when it opens.
     @Published var pendingUploadURL: URL?
+    /// Open the import sheet, optionally with a dropped PDF already in it.
     func beginImport(_ url: URL? = nil) {
         pendingUploadURL = url
         showUpload = true
@@ -166,6 +178,7 @@ final class AppStore: ObservableObject {
         if case .finishedListening = pending { askToDeleteListenedAudio = false }
     }
 
+    /// A destructive action waiting for the user's yes (see `ConfirmationText` for the wording).
     enum PendingConfirmation: Identifiable {
         case delete(Paper), rerun(Paper), deleteAudio(Paper)
         /// An episode was listened to the end: keep its audio or free the space?
@@ -184,6 +197,7 @@ final class AppStore: ObservableObject {
     @Published var askToDeleteListenedAudio = UserDefaults.standard.object(forKey: AppStore.askDeleteKey) as? Bool ?? true {
         didSet { UserDefaults.standard.set(askToDeleteListenedAudio, forKey: Self.askDeleteKey) }
     }
+    /// User-defaults key of `askToDeleteListenedAudio`.
     nonisolated static let askDeleteKey = "papertalk.askDeleteListenedAudio"
 
     /// Delete a paper's voiced audio, keeping its script: it can still be read,
@@ -212,6 +226,7 @@ final class AppStore: ObservableObject {
         let duplicateOf: Paper
         let cont: CheckedContinuation<Bool, Never>
     }
+    /// The duplicate question on screen, if any; imports queue for it one at a time.
     @Published var pendingDuplicate: DuplicatePrompt?
 
     /// Pending cast-selection prompt (shown once the model has proposed names
@@ -230,6 +245,7 @@ final class AppStore: ObservableObject {
         let speakers: [SpeakerConfig]
         let voiceAudio: Bool
     }
+    /// The cast question on screen, if any; imports queue for it one at a time.
     @Published var pendingCast: CastPrompt?
     /// System notifications while the app is in the background.
     let notifier = Notifier()
@@ -285,17 +301,19 @@ final class AppStore: ObservableObject {
     private static let logFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f
     }()
+    /// Add a timestamped line to the activity log (kept in English, for bug reports).
     func appendLog(_ line: String, paper id: String? = nil) {
         logEntries.append(LogEntry(paperId: id, text: "[\(Self.logFmt.string(from: Date()))] \(line)"))
         if logEntries.count > 2000 { logEntries.removeFirst(logEntries.count - 2000) }
     }
+    /// One paper's lines, for its activity pane.
     func logLines(for id: String) -> [String] {
         logEntries.filter { $0.paperId == id }.map(\.text)
     }
 
     /// Raw values are remembered between launches: add new pages at the end.
     enum SettingsPage: Int, Identifiable {
-        case llm, server, prompts, presets, clear, voices, language
+        case llm, server, prompts, presets, clear, voices, general
         var id: Int { rawValue }
     }
     /// Whether the unified settings sheet is open.
@@ -306,6 +324,7 @@ final class AppStore: ObservableObject {
     private var toastTask: Task<Void, Never>?
     private var playbackCancelables: Set<AnyCancellable> = []
 
+    /// What the library shows: everything, favourites, the Authors screen, one tag or one author.
     enum ViewMode { case all, fav, authors, tag, author }
 
     /// `storage` pins the backend (tests pass a temp-folder `LocalStorage`);
@@ -350,6 +369,7 @@ final class AppStore: ObservableObject {
     static func didOnboard() -> Bool {
         UserDefaults.standard.bool(forKey: "papertalk.onboarded")
     }
+    /// Remember that setup ran, and close it.
     func markOnboarded() {
         UserDefaults.standard.set(true, forKey: "papertalk.onboarded")
         showOnboarding = false
@@ -412,8 +432,11 @@ final class AppStore: ObservableObject {
         return status == "all" ? scoped.count : scoped.filter { Self.matches($0, status: status) }.count
     }
 
+    /// The Favorites row's count.
     var favoritesCount: Int { papers.values.filter(\.favorite).count }
 
+    /// The papers the library shows: the sidebar scope, then the status filter and the search
+    /// ("#…" searches tags only), sorted by the chosen order.
     func filteredPapers() -> [Paper] {
         var out = papers.values.filter(inScope)
         if statusFilter != "all" { out = out.filter { Self.matches($0, status: statusFilter) } }
@@ -451,6 +474,7 @@ final class AppStore: ObservableObject {
         status == "running" ? p.isActive : p.state == status
     }
 
+    /// The selected paper's current record.
     func selectedPaper() -> Paper? { selectedId.flatMap { papers[$0] } }
 
     // MARK: Sidebar
@@ -568,6 +592,7 @@ final class AppStore: ObservableObject {
         activeRunIndex = (activeRunIndex + delta + runs.count) % runs.count
     }
 
+    /// Every tag with how many papers have it, A–Z.
     var tagCounts: [(String, Int)] {
         var counts: [String: Int] = [:]
         for p in papers.values {
@@ -576,6 +601,7 @@ final class AppStore: ObservableObject {
         return counts.sorted { $0.key.localizedCompare($1.key) == .orderedAscending }
     }
 
+    /// Every author with how many papers they're on, A–Z.
     var authorCounts: [(String, Int)] {
         papersByAuthor.map { ($0.key, $0.value.count) }
             .sorted { $0.0.localizedCompare($1.0) == .orderedAscending }
@@ -605,16 +631,9 @@ final class AppStore: ObservableObject {
         await storage.exists(Transcript.self, K.transcript(id))
     }
 
+    /// A paper's saved mind map, nil when there's none or it can't be read.
     func mindMap(for id: String) async -> MindMap? {
         await storage.exists(MindMap.self, K.mindMap(id))
-    }
-
-    /// Audio is always synthesized live from the transcript (AVSpeechSynthesizer),
-    /// so there is no baked audio URL to fetch.
-    func audioURL(for p: Paper) -> URL? { nil }
-
-    func url(for key: String) async -> URL? {
-        await storage.url(for: key)
     }
 
     // MARK: Library
@@ -654,6 +673,7 @@ final class AppStore: ObservableObject {
     /// paper's state *when its turn comes*, so quick successive edits can't
     /// land on disk out of order (an older snapshot overwriting a newer one).
     private var saveQueue: Task<Void, Never>?
+    /// Queue a save of the paper's record (see `saveQueue`).
     private func persist(_ id: String) {
         let previous = saveQueue
         saveQueue = Task {
@@ -663,35 +683,42 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// Change a paper in memory now, and save it.
     private func optimistic(_ id: String, _ mutate: (inout Paper) -> Void) {
         guard var p = papers[id] else { return }
         mutate(&p)
         papers[id] = p
         persist(id)
     }
+    /// Star or unstar a paper.
     func toggleFavorite(_ id: String) {
         optimistic(id, { $0.favorite.toggle() })
     }
+    /// Mark a paper listened or not; `force` sets it instead of toggling.
     func toggleRead(_ id: String, force: Bool? = nil) {
         optimistic(id, { $0.read = force ?? !$0.read })
     }
+    /// Rename a paper (whitespace tidied); an empty title is refused with a toast.
     func saveTitle(_ id: String, _ title: String) {
         let clean = title.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
         guard !clean.isEmpty else { show(L("Title cannot be empty")); return }
         guard clean != (papers[id]?.title ?? "") else { return }
         optimistic(id, { $0.title = clean })
     }
+    /// Add a tag; spaces become underscores, and an existing tag is ignored.
     func addTag(_ id: String, _ tag: String) {
         let clean = tag.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: #"\s+"#, with: "_", options: .regularExpression)
         guard !clean.isEmpty, let p = papers[id], !p.tags.contains(clean) else { return }
         optimistic(id, { $0.tags = $0.tags + [clean] })
     }
+    /// Remove a tag from a paper.
     func removeTag(_ id: String, _ tag: String) {
         guard let p = papers[id] else { return }
         let next = p.tags.filter { $0 != tag }
         guard next.count != p.tags.count else { return }
         optimistic(id, { $0.tags = next })
     }
+    /// Remember where the listener is (seconds) and the episode's length.
     func saveProgress(_ id: String, _ progress: Double, _ duration: Double) {
         guard var p = papers[id] else { return }
         p.progress = progress
@@ -705,6 +732,7 @@ final class AppStore: ObservableObject {
                          affiliations: form.affiliationList, doi: form.doi)
     }
 
+    /// Save edited metadata: fields trimmed, empty list entries dropped.
     func saveEditableMeta(_ id: String, title: String, filename: String, authors: [String], affiliations: [String], doi: String) {
         let split: (String) -> [String] = { $0.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
         guard var p = papers[id] else { return }
@@ -740,6 +768,7 @@ final class AppStore: ObservableObject {
         try? await storage.delete(K.transcript(id))
         await deleteBakedAudio(id)
     }
+    /// Dismiss a failure: back to done if an episode is kept, else to an unconverted draft.
     func resetError(_ id: String) {
         guard let p = papers[id] else { return }
         let next = p.dismissingError()
@@ -793,6 +822,7 @@ final class AppStore: ObservableObject {
         appendLog("Stopped.", paper: id)
     }
 
+    /// Delete a paper and its whole folder, stopping its conversion and playback first.
     func delete(_ id: String) {
         Task {
             // A running conversion would recreate the folder as it writes:
@@ -994,10 +1024,12 @@ final class AppStore: ObservableObject {
     /// Papers whose mind map is being drawn from the detail pane.
     var drawingMindMaps: Set<String> { Set(mindMapJobs.keys) }
 
+    /// Show a mind map being drawn in the bottom bar's progress pane.
     func beginMindMapJob(_ id: String) {
         mindMapJobs[id] = MindMapJob(progress: 0.02, message: L("Reading the PDF…"))
     }
 
+    /// Move a drawing's progress bar or change its line.
     func updateMindMapJob(_ id: String, progress: Double? = nil, message: String? = nil) {
         guard var job = mindMapJobs[id] else { return }
         if let progress { job.progress = progress }
@@ -1005,8 +1037,10 @@ final class AppStore: ObservableObject {
         mindMapJobs[id] = job
     }
 
+    /// The drawing finished or failed: drop it from the progress pane.
     func endMindMapJob(_ id: String) { mindMapJobs[id] = nil }
 
+    /// Whether Create/Redraw mind map is available for `p` right now.
     func canCreateMindMap(_ p: Paper) -> Bool {
         PaperPresentation.canCreateMindMap(p, llmConfigured: !llm.baseUrl.isEmpty, drawing: drawingMindMaps.contains(p.id))
     }
@@ -1059,6 +1093,7 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// Ask the LLM for the paper's metadata again (fills only empty fields).
     func refreshMeta(_ id: String) {
         Task {
             appendLog("Extracting metadata with LLM…", paper: id)
@@ -1259,6 +1294,7 @@ final class AppStore: ObservableObject {
         } else {
             let vm = castVoices(for: id, speakers: t.segments.flatMap { $0.turns.map(\.speaker) })
             player.prepare(transcript: t, voiceMap: vm)
+            show(PaperPresentation.liveAudioToast)
         }
     }
 
@@ -1339,6 +1375,9 @@ final class AppStore: ObservableObject {
     }
 
     // MARK: Pipeline (always local)
+    /// The whole import (or a rerun or resume when `existing` is given): store the PDF, read its
+    /// text, then metadata, the duplicate and cast questions, the script, the mind map and the audio.
+    /// Each step's result is saved as it lands, so a stopped or quit run resumes from there.
     private func runPipeline(_ existing: Paper?, id newId: String? = nil, pdf: Data? = nil, filename: String = "",
                              depth: Depth = .inDepth, depthNote: String = "", targetMinutes: Int? = nil,
                              scriptLanguage: AppLanguage? = nil) async {
@@ -1512,6 +1551,7 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// Pick up an import a quit left unfinished.
     private func resumePipeline(_ id: String) async {
         guard let existing = papers[id] else { return }
         let depth = Depth(rawValue: existing.depth ?? "") ?? .inDepth
@@ -1519,6 +1559,7 @@ final class AppStore: ObservableObject {
         await runPipeline(existing, depth: depth)
     }
 
+    /// Save the script and mark the paper done (`hasAudio` says whether it was voiced).
     private func finish(_ id: String, _ t: Transcript, _ title: String, authors: [String], pdfData: Data?, depth: Depth = .inDepth, hasAudio: Bool) async {
         await storage.save(t, K.transcript(id))
         if let pdfData, !pdfData.isEmpty { try? await storage.write(K.pdf(id), pdfData) }
@@ -1534,6 +1575,7 @@ final class AppStore: ObservableObject {
         show(L("Converted"))
     }
 
+    /// Change a paper in memory without saving (progress ticks), posting a notification when a run ends.
     private func updateRec(_ id: String, _ mutate: (inout Paper) -> Void) {
         guard var p = papers[id] else { return }
         let wasActive = p.isActive
@@ -1610,6 +1652,7 @@ final class AppStore: ObservableObject {
         Task { await checkForUpdates(channel) }
     }
 
+    /// Ask GitHub for the newest release on `channel` and show the result as an alert.
     func checkForUpdates(_ channel: ReleaseChannel, checker: UpdateChecker = UpdateChecker()) async {
         guard !isCheckingForUpdates else { return }
         isCheckingForUpdates = true
@@ -1628,11 +1671,13 @@ final class AppStore: ObservableObject {
         updateAlert = UpdateAlert(outcome, channel: channel, build: build)
     }
 
+    /// Close the update alert and open its release page.
     func openUpdateLink(_ alert: UpdateAlert) {
         updateAlert = nil
         if let link = alert.link { NSWorkspace.shared.open(link) }
     }
 
+    /// Show a toast for a few seconds; a newer one replaces it.
     func show(_ message: String) {
         toastTask?.cancel()
         toast = message
@@ -1642,6 +1687,7 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// Save the import sheet's custom depth as a named preset (same name: replaced).
     func saveCustomPreset(name: String, text: String) {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1653,14 +1699,17 @@ final class AppStore: ObservableObject {
         show(L("Saved prompt “{0}”", cleanName))
     }
 
+    /// Select a paper (nil: none).
     func select(_ id: String?) { selectedId = id }
 }
 
+/// The library's sort orders (wording in `SortOption.label`).
 enum SortOption: String, CaseIterable, Identifiable {
     case newest, oldest, title = "Title", recent = "Recently converted"
     var id: String { rawValue }
 }
 
+/// Covers in a grid, or rows in a list.
 enum LibraryLayout: String, CaseIterable, Identifiable {
     case grid = "Grid", list = "List"
     var id: String { rawValue }

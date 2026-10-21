@@ -1,8 +1,13 @@
+// The library: the papers in the current scope as a cover grid or a list, with status filters,
+// keyboard navigation, drop-to-import, and empty states.
+
 #if os(macOS)
 import SwiftUI
 
+/// The middle column of the main window.
 struct LibraryView: View {
     @EnvironmentObject private var store: AppStore
+    /// Opens the import sheet (from the empty state's button).
     var onImport: () -> Void = {}
 
     @Namespace private var filterNS
@@ -93,6 +98,7 @@ struct LibraryView: View {
 
     // MARK: status filter bar (floating glass)
 
+    /// The status filter capsules (All, Converting, Ready, Failed) with their counts.
     private var filterBar: some View {
         HStack {
             HStack(spacing: 2) {
@@ -107,6 +113,7 @@ struct LibraryView: View {
         .padding(.bottom, 8)
     }
 
+    /// One filter capsule; the selected one slides under it.
     private func filterButton(_ f: LibraryPresentation.StatusFilter) -> some View {
         let selected = store.statusFilter == f.value
         let n = store.count(status: f.value)
@@ -140,6 +147,7 @@ struct LibraryView: View {
 
     // MARK: layouts
 
+    /// Cover cards on an adaptive grid (its columns match `LibraryPresentation.gridColumns`).
     private func grid(_ papers: [Paper]) -> some View {
         typealias G = LibraryPresentation.Grid
         let columns = [GridItem(.adaptive(minimum: G.minTile, maximum: G.maxTile), spacing: G.spacing, alignment: .top)]
@@ -156,6 +164,7 @@ struct LibraryView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
     }
 
+    /// Compact rows.
     private func list(_ papers: [Paper]) -> some View {
         List(papers, selection: $store.selectedId) { paper in
             PaperListRow(paper: paper)
@@ -167,6 +176,7 @@ struct LibraryView: View {
 
     // MARK: empty states
 
+    /// An empty library, a search with no results, or filters that hide everything.
     @ViewBuilder private var emptyState: some View {
         switch LibraryPresentation.emptyState(libraryIsEmpty: store.papers.isEmpty, search: store.search) {
         case .emptyLibrary:

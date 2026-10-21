@@ -1,3 +1,5 @@
+// Tests of the storage backends.
+
 import XCTest
 @testable import Papertalk
 
@@ -77,6 +79,7 @@ final class LocalStorageTests: PapertalkTestCase {
     }
 }
 
+/// `HttpStorage`'s folder deletes and paper listing, from the server's key list.
 final class HttpStorageTests: PapertalkTestCase {
     func testFolderAndListParsing() async throws {
         // Cover the pure URL/key derivations in HttpStorage without a server.

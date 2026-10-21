@@ -1,3 +1,5 @@
+// The mind map's own window on macOS.
+
 #if os(macOS)
 import AppKit
 import SwiftUI
@@ -12,6 +14,7 @@ final class MindMapWindow: NSObject, NSWindowDelegate {
     private let paperId: String
     private let window: NSWindow
 
+    /// Open the paper's mind map window, or bring it forward showing `map`.
     static func present(map: MindMap, title: String, paperId: String) {
         if let existing = open[paperId] {
             existing.show(map: map, title: title)
@@ -36,12 +39,14 @@ final class MindMapWindow: NSObject, NSWindowDelegate {
         window.delegate = self
     }
 
+    /// Put `map` in the window and bring it forward.
     private func show(map: MindMap, title: String) {
         window.title = "\(MindMapPresentation.heading) — \(title)"
         window.contentView = NSHostingView(rootView: MindMapView(map: map, title: title))
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// Forget the window, so the paper's next open makes a new one.
     func windowWillClose(_ notification: Notification) {
         Self.open[paperId] = nil
     }

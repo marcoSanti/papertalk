@@ -1,17 +1,26 @@
+// What the system's Now Playing (Control Center, media keys, the lock screen) is told about
+// the loaded episode, and how its commands map to the player.
+
 import Foundation
 
 /// What the system's Now Playing (Control Center, media keys) is told about the
 /// loaded episode. Pure values; the macOS bridge only copies them across.
 struct NowPlayingInfo: Equatable {
+    /// The loaded paper; artwork is looked up by it.
     var paperId: String
+    /// The paper's title.
     var title: String
+    /// The authors, shortened ("A, B, C et al.").
     var artist: String?
+    /// Seconds.
     var duration: Double
+    /// Seconds, within 0…duration.
     var elapsed: Double
     /// Audio is actually advancing: playing and not waiting on a section.
     var isAdvancing: Bool
 }
 
+/// Pure decisions behind the `NowPlaying` bridge.
 enum NowPlayingPresentation {
     /// Seconds jumped by the system's skip-forward / skip-back buttons.
     static let skipInterval: Double = 15
@@ -48,6 +57,7 @@ enum NowPlayingPresentation {
     /// The system's play / pause / toggle commands, as a toggle or nothing:
     /// "play" while already playing does nothing.
     enum Command { case play, pause, toggle }
+    /// Whether a system command should toggle playback now.
     static func shouldToggle(_ command: Command, isPlaying: Bool) -> Bool {
         switch command {
         case .play: return !isPlaying

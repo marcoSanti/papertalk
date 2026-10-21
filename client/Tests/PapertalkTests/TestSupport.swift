@@ -1,3 +1,5 @@
+// Shared test helpers: the network guard, fixtures and waiting.
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -63,6 +65,7 @@ final class NetworkGuard: URLProtocol {
 
 // MARK: - Fixtures
 
+/// Builders for papers, transcripts, WAVs, PDFs and temp folders.
 enum Fixtures {
     /// A fresh, empty folder under the temp directory.
     static func tempDir() -> URL {

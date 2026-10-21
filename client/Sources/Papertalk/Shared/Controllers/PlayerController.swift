@@ -1,3 +1,6 @@
+// Episode playback and voice samples (`PlayerController`), shared by every player control and
+// by the system's Now Playing.
+
 import Foundation
 #if canImport(AVFoundation)
 import AVFoundation
@@ -11,20 +14,23 @@ import OpenCombine
 import FluidAudio
 #endif
 
-/// Speaks a paper's transcript using Kokoro neural voices (on-device Core ML /
-/// Neural Engine via FluidAudio, or a speech server: see `SpeechBackend`).
-/// Each turn is synthesized to a 24 kHz WAV and played sequentially with AVAudioPlayer.
-///
-/// Real audio gives us accurate per-turn durations (no char-based estimates).
-/// The fluent interface mirrors the old AVSpeechSynthesizer player, so the UI
-/// (DetailView / PlayerBar) is unchanged.
+/// The one episode player. It plays an episode as a sequence of per-turn WAVs (one
+/// AVAudioPlayer at a time, a short pause between turns): baked audio loaded from disk
+/// (`prepare(baked:)`), or, for a paper without saved audio, turns voiced live as it plays
+/// (`prepare(transcript:voiceMap:)`). It also plays the cast sheet's voice samples.
 @MainActor
 final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate {
+    /// Audio is playing (false while paused, stopped or buffering a live turn).
     @Published var isPlaying = false
+    /// Seconds into the whole episode, pauses between turns included.
     @Published var currentTime: Double = 0
+    /// The episode's length in seconds; grows while a live render runs.
     @Published var duration: Double = 0
+    /// The turn playing, -1 before the first.
     @Published private(set) var activeTurn: Int = -1
+    /// Turns in the loaded episode; 0 when nothing is loaded.
     @Published private(set) var turnCount = 0
+    /// Set when the last turn finishes (the store saves progress and offers to delete the audio).
     @Published var didEnd = false
     /// True until the first turn of a live render is ready to play. Later turns
     /// keep rendering in the background while the episode plays.
@@ -33,6 +39,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     @Published private(set) var isBuffering = false
     /// Turns rendered so far in a live render (equals `turnCount` when complete).
     @Published private(set) var renderedCount = 0
+    /// Why live voicing stopped, if it did; what's voiced stays playable.
     @Published private(set) var renderError: String?
     /// Turn playback is waiting on (see `isBuffering`).
     private var waitingForTurn: Int?
@@ -45,6 +52,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
             switch self { case .generating(let v), .playing(let v), .failed(let v, _): return v }
         }
     }
+    /// The voice sample in progress, if any.
     @Published private(set) var preview: PreviewPhase?
     /// Fraction of the playing sample already heard (0…1), for the ring.
     @Published private(set) var previewProgress: Double = 0
@@ -57,8 +65,11 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     /// rather than `@AppStorage`, which doesn't notify views from an
     /// ObservableObject (the slider wouldn't redraw).
     nonisolated static let speedKey = "papertalk.voiceSpeed"
+    /// Slightly under 1: Kokoro reads clearer a little slower.
     nonisolated static let defaultSpeed = 0.95
+    /// What the pace slider allows.
     nonisolated static let speedRange = 0.5...2.0
+    /// The chosen pace, saved for the next launch.
     @Published var voiceSpeed: Double = PlayerController.storedSpeed() {
         didSet { UserDefaults.standard.set(voiceSpeed, forKey: Self.speedKey) }
     }
@@ -70,6 +81,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     private var previewGeneration = 0
     private var previewTimer: Timer?
 
+    /// A voiced turn ready to play.
     private struct RenderedTurn {
         let wav: Data
         let duration: Double
@@ -89,11 +101,13 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     /// in step with the speech settings.
     var speechBackend: any SpeechBackend
 
+    /// A player that voices samples and live renders with `speechBackend`.
     init(speechBackend: any SpeechBackend) {
         self.speechBackend = speechBackend
         super.init()
     }
 
+    /// Stop and unload the episode; an in-flight live render is abandoned.
     func stopAll() {
         generation += 1
         timer?.invalidate(); timer = nil
@@ -167,9 +181,16 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         preview = nil
     }
 
-    /// Renders the transcript turn by turn. Playable as soon as the first turn
-    /// is ready (`isRendering` clears); the rest render in the background and
-    /// playback waits (`isBuffering`) if it catches up with the renderer.
+    /// Turns a live render voices ahead of the playing one.
+    nonisolated static let liveAhead = 3
+    /// Turns a live render keeps behind the playing one (for a quick skip back).
+    nonisolated static let liveBehind = 1
+
+    /// Voices the transcript as it plays, through a window around the playing turn: up to
+    /// `liveAhead` turns ahead are voiced, turns outside the window are dropped from memory, and
+    /// nothing is written to disk. Playable as soon as the first turn is ready (`isRendering`
+    /// clears); playback waits (`isBuffering`) on a turn not voiced yet, including one dropped
+    /// earlier and voiced again after a seek back.
     func prepare(transcript: Transcript, voiceMap: [String: String]) {
         let flat = transcript.segments.flatMap { $0.turns.map { (speaker: $0.speaker, text: $0.text) } }
         stopAll()
@@ -185,41 +206,66 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         let backend = speechBackend
         isRendering = true
         renderError = nil
-        Task {
+        Task { [weak self] in
             var running = 0.0
-            for (i, text) in turns.enumerated() {
-                if generation != gen { return }
+            while let self, self.generation == gen {
+                guard let i = self.nextTurnToVoice() else {
+                    // The window is full: wait for playback to move it.
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    continue
+                }
                 do {
                     // Short calls keep memory flat on long turns (see `KokoroSpeech.pieces`).
                     var parts: [Data] = []
-                    for piece in backend.pieces(of: text) {
-                        if generation != gen { return }
-                        parts.append(try await backend.synthesize(text: piece, voice: voices[i], speed: Float(voiceSpeed)))
+                    for piece in backend.pieces(of: self.turns[i]) {
+                        if self.generation != gen { return }
+                        parts.append(try await backend.synthesize(text: piece, voice: self.voices[i], speed: Float(self.voiceSpeed)))
                     }
                     let wav = KokoroSpeech.joinWAVs(parts)
-                    if generation != gen { return }
+                    if self.generation != gen { return }
                     let d = KokoroSpeech.wavDuration(wav)
-                    rendered[i] = RenderedTurn(wav: wav, duration: d)
-                    totalBefore.append(running)
-                    running += d + 0.35
-                    duration = max(0, running - 0.35)   // grows as turns arrive
-                    renderedCount = i + 1
-                    isRendering = false
-                    if waitingForTurn == i {
-                        waitingForTurn = nil
-                        isBuffering = false
-                        startTurn(i)
-                        player?.play()
+                    self.rendered[i] = RenderedTurn(wav: wav, duration: d)
+                    if i == self.renderedCount {
+                        // First time this turn is voiced: extend the timeline.
+                        self.totalBefore.append(running)
+                        running += d + 0.35
+                        self.duration = max(0, running - 0.35)   // grows as turns arrive
+                        self.renderedCount = i + 1
+                    }
+                    self.isRendering = false
+                    if self.waitingForTurn == i {
+                        self.waitingForTurn = nil
+                        self.isBuffering = false
+                        self.startTurn(i)
+                        self.player?.play()
                     }
                 } catch {
-                    if generation != gen { return }
-                    renderError = L("Couldn't voice section {0} of {1}: {2}", i + 1, turns.count, error.localizedDescription)
-                    isRendering = false
-                    if isBuffering { isBuffering = false; isPlaying = false; stopTimer() }
+                    if self.generation != gen { return }
+                    self.renderError = L("Couldn't voice section {0} of {1}: {2}", i + 1, self.turns.count, error.localizedDescription)
+                    self.isRendering = false
+                    if self.isBuffering { self.isBuffering = false; self.isPlaying = false; self.stopTimer() }
                     return
                 }
             }
         }
+    }
+
+    /// The live window around the playing turn (empty for baked audio).
+    private var liveWindow: ClosedRange<Int> {
+        let at = max(activeTurn, 0)
+        return max(0, at - Self.liveBehind)...min(turnCount - 1, at + Self.liveAhead)
+    }
+
+    /// The first turn from the playing one to the window's end that isn't voiced.
+    private func nextTurnToVoice() -> Int? {
+        (max(activeTurn, 0)...liveWindow.upperBound).first { rendered[$0] == nil }
+    }
+
+    /// Frees live turns that fell out of the window.
+    private func dropTurnsOutsideWindow() {
+        guard !turns.isEmpty else { return }
+        let window = liveWindow
+        for i in rendered.indices where !window.contains(i) { rendered[i] = nil }
     }
 
     /// Loads a pre-baked episode (one WAV per turn, as saved during import).
@@ -244,6 +290,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
     // MARK: - Transport
 
+    /// Toggle playback of the loaded episode.
     func playPause() {
         if isPlaying {
             pause()
@@ -260,6 +307,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         play()
     }
 
+    /// Start or resume; on a live turn not voiced yet, wait for it (`isBuffering`).
     private func play() {
         guard !isRendering else { return }
         let turn = activeTurn >= 0 ? activeTurn : 0
@@ -278,6 +326,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         startTimer()
     }
 
+    /// Pause, keeping the position.
     private func pause() {
         player?.pause()
         isPlaying = false
@@ -292,11 +341,9 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         var idx = 0
         for i in 0..<totalBefore.count where totalBefore[i] <= t { idx = i }
         let offset = max(0, min(t - totalBefore[idx], rendered[idx]?.duration ?? 0))
-        player?.stop(); player = nil
-        startTurn(idx)
+        jump(to: idx)
         player?.currentTime = offset
-        currentTime = totalBefore[idx] + offset
-        if isPlaying { player?.play(); startTimer() }
+        currentTime = totalBefore[idx] + (player == nil ? 0 : offset)
     }
 
     /// Jump to the turn `delta` away from the current one (whole-turn skip).
@@ -305,15 +352,29 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         let current = activeTurn >= 0 ? activeTurn : 0
         // Only turns that have been rendered can be jumped to.
         let target = min(max(current + delta, 0), max(0, renderedCount - 1))
-        player?.stop(); player = nil
-        startTurn(target)
+        jump(to: target)
         currentTime = target < totalBefore.count ? totalBefore[target] : 0
-        if isPlaying { player?.play(); startTimer() }
     }
 
+    /// Move to turn `index`, keeping play or pause. A live turn dropped from memory starts over
+    /// from its beginning once it's voiced again.
+    private func jump(to index: Int) {
+        player?.stop(); player = nil
+        startTurn(index)
+        if player == nil {
+            activeTurn = index
+            dropTurnsOutsideWindow()
+            if isPlaying { waitingForTurn = index; isBuffering = true }
+        } else if isPlaying {
+            player?.play(); startTimer()
+        }
+    }
+
+    /// Load turn `index` into a fresh AVAudioPlayer (it doesn't start playing).
     private func startTurn(_ index: Int) {
         guard index >= 0, index < rendered.count, let r = rendered[index] else { return }
         activeTurn = index
+        dropTurnsOutsideWindow()
         do {
             let p = try AVAudioPlayer(data: r.wav)
             p.delegate = self
@@ -326,6 +387,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
     // MARK: - AVAudioPlayerDelegate
 
+    /// A turn (or a sample) finished: move to the next turn, wait for it, or end.
     func audioPlayerDidFinishPlaying(_ audioPlayer: AVAudioPlayer, successfully flag: Bool) {
         if audioPlayer === previewPlayer { stopPreview(); return }
         guard player === audioPlayer else { return }
@@ -356,6 +418,7 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
     // MARK: - Progress timing
 
+    /// Update `currentTime` five times a second while playing.
     private func startTimer() {
         stopTimer()
         let t = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
@@ -366,8 +429,10 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
         t.tolerance = 0.05
     }
 
+    /// Stop updating `currentTime`.
     private func stopTimer() { timer?.invalidate(); timer = nil }
 
+    /// The episode position: the turns before this one plus the position in it.
     private func tick() {
         guard activeTurn >= 0, activeTurn < totalBefore.count else { return }
         let p = player?.currentTime ?? 0

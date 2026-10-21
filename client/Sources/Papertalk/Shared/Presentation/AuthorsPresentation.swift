@@ -1,7 +1,11 @@
+// The Authors screen: author names normalised and sorted like a contact book, grouped A–Z,
+// with co-authors and cover stacks for each.
+
 import Foundation
 
 /// Author names as the library treats them: tidied, sorted by surname.
 enum AuthorName {
+    /// The name with runs of whitespace collapsed, so "Ada  Lovelace" is one author.
     static func clean(_ s: String) -> String {
         s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
@@ -13,6 +17,7 @@ enum AuthorName {
         return last + " " + parts.dropLast().joined(separator: " ")
     }
 
+    /// The A–Z section a name falls in (by surname, accents ignored); "#" for the rest.
     static func indexLetter(_ name: String) -> String {
         let c = sortKey(name).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).first
         guard let c, c.isLetter else { return "#" }
@@ -30,12 +35,14 @@ enum AuthorName {
 
 /// The Authors screen and the single-author header.
 enum AuthorsPresentation {
+    /// One author with their papers, newest first.
     struct Entry: Identifiable, Equatable {
         let name: String
         let papers: [Paper]
         var id: String { name }
     }
 
+    /// The authors under one index letter.
     struct Section: Equatable {
         let letter: String
         var entries: [Entry]

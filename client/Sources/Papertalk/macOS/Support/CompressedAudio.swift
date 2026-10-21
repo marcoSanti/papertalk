@@ -1,3 +1,5 @@
+// Decoding compressed speech audio on macOS (Linux has its own in `Linux/CompressedAudioCompat`).
+
 #if os(macOS)
 import AVFoundation
 import Foundation
@@ -5,6 +7,7 @@ import Foundation
 /// Decodes compressed audio (MP3, AAC, FLAC, …) a speech server may send
 /// instead of WAV, through AVFoundation. `SpeechAudio` resamples the result.
 enum CompressedAudio {
+    /// Mono samples in -1…1 at the file's own rate; throws when AVFoundation can't read it.
     static func decode(_ data: Data) throws -> (samples: [Float], sampleRate: Double) {
         // AVAudioFile reads from a file, and picks the decoder partly by extension.
         let url = FileManager.default.temporaryDirectory
@@ -32,6 +35,7 @@ enum CompressedAudio {
         }
     }
 
+    /// An extension AVAudioFile recognizes, guessed from the magic bytes.
     private static func fileExtension(_ data: Data) -> String {
         let head = [UInt8](data.prefix(12))
         if head.starts(with: Array("fLaC".utf8)) { return "flac" }

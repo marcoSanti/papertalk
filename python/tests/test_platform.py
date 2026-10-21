@@ -12,6 +12,7 @@ from papertalk_platform import keychain, pdf, tts
 
 
 def wav(seconds: float, rate: int = 24_000) -> bytes:
+    """Silent 16-bit WAV bytes."""
     out = io.BytesIO()
     sf.write(out, np.zeros(int(seconds * rate), np.float32), rate, format="WAV", subtype="PCM_16")
     return out.getvalue()

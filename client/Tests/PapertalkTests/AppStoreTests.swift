@@ -1,3 +1,6 @@
+// Tests of `AppStore`: library loading, edits and their saves, deletes, sidebar and keyboard
+// actions, audio baking and playback set-up, all on a temp-folder library.
+
 import XCTest
 @testable import Papertalk
 
@@ -421,6 +424,28 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertEqual(store.player.turnCount, 2)
         XCTAssertFalse(store.player.isRendering)       // baked: nothing to render
         XCTAssertEqual(store.player.renderedCount, 2)
+    }
+
+    func testLivePlaybackWarnsThatTheAudioIsNotSaved() async {
+        await storage.save(Fixtures.paper(id: "p", hasAudio: false), K.paper("p"))
+        await storage.save(Fixtures.transcript([("Jordan", "Hi"), ("Ada", "Hello")]), K.transcript("p"))
+        let store = AppStore(storage: storage, speech: FakeSpeechBackend())
+        await waitUntil { store.papers.count == 1 }
+
+        await store.prepareAudio(for: "p")
+        XCTAssertEqual(store.player.turnCount, 2)
+        XCTAssertEqual(store.toast, PaperPresentation.liveAudioToast)
+        await waitUntil { store.player.renderedCount == 2 }
+        store.player.stopAll()
+    }
+
+    func testBakedPlaybackDoesNotWarn() async throws {
+        let store = await makeStore([Fixtures.paper(id: "p")])
+        await storage.save(Fixtures.transcript([("Jordan", "Hi")]), K.transcript("p"))
+        await storage.save(AudioManifest(durations: [0.5]), K.audioManifest("p"))
+        try await storage.write(K.turn("p", 0), Fixtures.silentWAV(seconds: 0.5))
+        await store.prepareAudio(for: "p")
+        XCTAssertNil(store.toast)
     }
 
     func testPrepareAudioWithoutTranscriptUnloadsPlayer() async {

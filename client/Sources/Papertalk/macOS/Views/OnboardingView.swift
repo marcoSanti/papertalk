@@ -1,7 +1,11 @@
+// First-run setup: where the library lives, which LLM writes episodes, where voices are made,
+// then a review with a connection test. Opens on first launch and after Clear Data.
+
 #if os(macOS)
 import SwiftUI
 
 // MARK: - First-run setup wizard: storage backend + LLM endpoint.
+/// The setup wizard, one step at a time (`SetupStep`); it saves only when finished.
 struct OnboardingView: View {
     @EnvironmentObject private var store: AppStore
 
@@ -43,6 +47,7 @@ struct OnboardingView: View {
         }
     }
 
+    /// Title, explanation and the interface language menu.
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: "gearshape.2")
@@ -60,11 +65,13 @@ struct OnboardingView: View {
         }
     }
 
+    /// A step's question.
     private func stepTitle(_ t: String) -> some View {
         Text(t).font(.headline)
     }
 
     // MARK: Step 1 — storage
+    /// Step 1: on this Mac, or a storage server.
     private var storageView: some View {
         VStack(alignment: .leading, spacing: 14) {
             stepTitle(L("1. Where should your library be stored?"))
@@ -85,6 +92,7 @@ struct OnboardingView: View {
         }
     }
 
+    /// A selectable choice card for the storage step.
     private func storageCard(_ mode: ServerSettingsForm.Mode, icon: String, title: String, desc: String) -> some View {
         let selected = server.mode == mode
         return Button {
@@ -112,6 +120,7 @@ struct OnboardingView: View {
     }
 
     // MARK: Step 2 — LLM
+    /// Step 2: the LLM endpoint, key and model.
     private var llmView: some View {
         VStack(alignment: .leading, spacing: 14) {
             stepTitle(L("2. Which LLM writes the episodes?"))
@@ -140,6 +149,7 @@ struct OnboardingView: View {
         }
     }
 
+    /// The endpoint's models once listed, else a text field.
     @ViewBuilder private var modelPicker: some View {
         if loadingModels {
             ProgressView().controlSize(.small)
@@ -154,6 +164,7 @@ struct OnboardingView: View {
     }
 
     // MARK: Step 3 — voices
+    /// Step 3: where voices are synthesized.
     private var voicesView: some View {
         VStack(alignment: .leading, spacing: 14) {
             stepTitle(L("3. Where should the voices be synthesized?"))
@@ -162,6 +173,7 @@ struct OnboardingView: View {
     }
 
     // MARK: Step 4 — review + test
+    /// Step 4: what will be saved, and a connection test.
     private var reviewView: some View {
         VStack(alignment: .leading, spacing: 14) {
             stepTitle(L("4. Review"))
@@ -189,6 +201,7 @@ struct OnboardingView: View {
         }
     }
 
+    /// A label and value in the review.
     private func summaryRow(_ label: String, _ value: String) -> some View {
         HStack(alignment: .top) {
             Text(label).font(.callout).foregroundStyle(.secondary).frame(width: 110, alignment: .leading)
@@ -196,6 +209,7 @@ struct OnboardingView: View {
         }
     }
 
+    /// Check that the storage server (if any) and the LLM answer.
     private func runTests() {
         testing = true
         testResult = nil
@@ -207,6 +221,7 @@ struct OnboardingView: View {
         }
     }
 
+    /// List the endpoint's models for the picker.
     private func loadModels() {
         loadingModels = true
         Task {
@@ -219,6 +234,7 @@ struct OnboardingView: View {
     }
 
     // MARK: footer
+    /// Skip, Back and Continue / Finish.
     private var footer: some View {
         HStack {
             if step.canSkip {

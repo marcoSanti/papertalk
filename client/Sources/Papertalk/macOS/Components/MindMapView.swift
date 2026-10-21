@@ -1,10 +1,15 @@
+// The mind map window's content: the radial graph (zoom, pinch and drag to pan) and the side
+// panel describing the selected concept or connection.
+
 #if os(macOS)
 import SwiftUI
 
 /// The paper's mind map: a radial graph of its concepts, with the selected
 /// concept's description, core idea and connections in a panel beside it.
 struct MindMapView: View {
+    /// The map to draw.
     let map: MindMap
+    /// The paper's title, shown on the centre node.
     let title: String
     /// What the side panel shows: a concept, or an edge with both its concepts.
     private enum Selection: Equatable { case node(String), edge(String) }
@@ -39,6 +44,7 @@ struct MindMapView: View {
     private let nodes: [String: MindMap.Node]
     private let ids: [String]
 
+    /// `selected` / `selectedEdge` open with a concept or an edge already selected (previews, tests).
     init(map: MindMap, title: String, selected: String? = nil, selectedEdge: String? = nil) {
         self.map = map
         self.title = title
@@ -125,6 +131,7 @@ struct MindMapView: View {
         .frame(minWidth: 760, maxWidth: .infinity, minHeight: 480, maxHeight: .infinity)
     }
 
+    /// Zoom out, the current zoom (click to fit), zoom in.
     private func zoomControls(_ scale: Double) -> some View {
         HStack(spacing: 2) {
             Button { zoom(to: scale / 1.25, around: viewportCenter) } label: {
@@ -151,6 +158,7 @@ struct MindMapView: View {
 
     // MARK: graph
 
+    /// Edges drawn on a canvas, then the nodes and edge handles over it, at `scale`.
     private func graph(_ layout: MindMapLayout, scale: Double) -> some View {
         ZStack(alignment: .topLeading) {
             Canvas { ctx, _ in
@@ -195,6 +203,7 @@ struct MindMapView: View {
         .onTapGesture { selection = nil }
     }
 
+    /// A concept's box, styled by tier (paper, main concept, detail); clicking selects it.
     @ViewBuilder
     private func nodeView(_ id: String, layout: MindMapLayout) -> some View {
         let tier = MindMapPresentation.tier(layout, id)
@@ -233,11 +242,13 @@ struct MindMapView: View {
         .help(node?.label ?? title)
     }
 
+    /// Tree edges take their child's branch colour; links are grey.
     private func edgeColor(_ e: MindMapLayout.Edge) -> Color {
         if e.label != nil { return .secondary }
         return nodes[e.to].map { Self.color($0.branch) } ?? .secondary
     }
 
+    /// Each branch's colour, also used by the side panel.
     static func color(_ b: MindMap.Branch) -> Color {
         switch b {
         case .problem: return .red
@@ -378,6 +389,7 @@ struct MindMapView: View {
         .buttonStyle(.plain)
     }
 
+    /// The side panel for a selected concept: branch, name, core, description and connections.
     private func detail(_ node: MindMap.Node) -> some View {
         let color = Self.color(node.branch)
         return VStack(alignment: .leading, spacing: 14) {

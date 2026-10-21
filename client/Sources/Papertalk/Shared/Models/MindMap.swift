@@ -1,32 +1,44 @@
+// The mind map model (`mindmap.json`) and the lenient parser that turns the LLM's reply into
+// one: concepts in a tree under three branches, plus labelled links across them.
+
 import Foundation
 
 /// A paper's mind map ("mappa mentale"): its key concepts as a tree under
 /// three pillars (the problem, the method, the demonstration), plus a few
 /// links across branches. Saved as `mindmap.json` beside the paper.
 struct MindMap: Codable, Equatable {
+    /// The three pillars every map is built around: what the paper tackles, how, and what shows it works.
     enum Branch: String, Codable, CaseIterable {
         case problem, method, evidence
     }
 
+    /// One concept. Ids are the LLM's own, unique within a map.
     struct Node: Codable, Equatable, Identifiable {
+        /// The LLM's id for the concept; parents and links refer to it.
         var id: String
         /// The concept's name, short enough to label a node.
         var label: String
+        /// Inherited from the nearest ancestor when the LLM left it out.
         var branch: Branch
         /// nil for the branch's main concept.
         var parent: String?
+        /// What the concept is, in a few sentences.
         var description: String
         /// Its key feature, finding or number, in one sentence.
         var core: String
     }
 
+    /// A relation between concepts of different branches (tree edges aren't links).
     struct Link: Codable, Equatable {
         var from: String
         var to: String
+        /// How `from` relates to `to`, read in that order (e.g. "measured by").
         var label: String
     }
 
+    /// Every concept, the three branch roots included.
     var nodes: [Node]
+    /// Cross-branch relations; duplicates and tree edges are dropped by `parse`.
     var links: [Link]
     /// The paper in a few plain sentences (its abstract restated). nil in maps
     /// drawn before summaries, which still decode.
@@ -34,7 +46,9 @@ struct MindMap: Codable, Equatable {
 
     /// The branch's main concept.
     func root(_ branch: Branch) -> Node? { nodes.first { $0.branch == branch && $0.parent == nil } }
+    /// The concept with this id, if any.
     func node(_ id: String) -> Node? { nodes.first { $0.id == id } }
+    /// A concept's direct parts, in the order the LLM listed them.
     func children(of id: String) -> [Node] { nodes.filter { $0.parent == id } }
 
     /// Whether every pillar is broken down into at least two parts.
@@ -42,6 +56,7 @@ struct MindMap: Codable, Equatable {
         Branch.allCases.allSatisfy { b in root(b).map { children(of: $0.id).count >= 2 } ?? false }
     }
 
+    /// Longest node label, in characters; longer ones are cut by `shortLabel`.
     static let maxLabelLength = 32
 
     /// A label that fits a node: at most `maxLabelLength` characters, cut at a word.

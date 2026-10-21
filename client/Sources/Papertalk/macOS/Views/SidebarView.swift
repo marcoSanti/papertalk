@@ -1,6 +1,10 @@
+// The main window's sidebar: the library sections, the tags, and where the library lives.
+
 #if os(macOS)
 import SwiftUI
 
+/// All Papers, Favorites, Authors and one row per tag, with counts; a native `List(selection:)`
+/// (its highlight follows the system accent on purpose).
 struct SidebarView: View {
     @EnvironmentObject private var store: AppStore
 
@@ -49,6 +53,7 @@ struct SidebarView: View {
 
     // MARK: footer
 
+    /// Where the library is stored: this Mac or a library server.
     private var footer: some View {
         HStack(spacing: 8) {
             let location = LibraryPresentation.storageLocation(isStandalone: store.isStandalone)
@@ -63,7 +68,7 @@ struct SidebarView: View {
             }
             Spacer()
             Button {
-                store.settingsPage = .llm
+                store.settingsPage = .general
                 store.showSettings = true
             } label: {
                 Image(systemName: "gearshape")

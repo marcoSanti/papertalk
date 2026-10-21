@@ -1,3 +1,5 @@
+// Readable labels for SwiftCrossUI pickers on Linux.
+
 #if os(Linux)
 import Foundation
 
@@ -11,11 +13,14 @@ struct PickerOption<Value: Equatable>: Equatable, CustomStringConvertible {
 }
 
 extension PickerOption where Value == Depth {
+    /// Every depth under its name.
     static var depths: [PickerOption] { Depth.allCases.map { PickerOption(value: $0, description: $0.label) } }
 }
 
 extension PickerOption where Value == String {
+    /// Every Kokoro voice, "Heart · female".
     static var voices: [PickerOption] { KokoroSpeech.allVoices.map { PickerOption(value: $0, description: KokoroSpeech.label($0)) } }
+    /// Female and Male.
     static var genders: [PickerOption] { [PickerOption(value: "female", description: L("Female")),
                                           PickerOption(value: "male", description: L("Male"))] }
 }

@@ -1,3 +1,6 @@
+// System notifications on macOS: an episode ready or failed, or an import waiting for an answer,
+// posted only while the app is in the background.
+
 #if os(macOS)
 import AppKit
 import UserNotifications
@@ -16,6 +19,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         Bundle.main.bundleURL.pathExtension == "app" ? .current() : nil
     private var askedPermission = false
 
+    /// Becomes the notification centre's delegate, so clicking a notification opens its paper.
     override init() {
         super.init()
         center?.delegate = self
@@ -28,10 +32,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
+    /// What a notification says: ready, failed (with why), or a question waiting (with the question).
     enum Event {
         case ready, failed(String), needsInput(String)
     }
 
+    /// Post about the paper titled `title`; nothing happens while the app is frontmost or not bundled.
     func post(_ event: Event, paperId: String, title: String) {
         // No app bundle (tests, `swift run`) or frontmost: nothing to post.
         guard let center, !(NSApp?.isActive ?? true) else { return }
@@ -66,6 +72,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: UNUserNotificationCenterDelegate
 
+    /// A notification was clicked: bring the app forward on its paper.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {

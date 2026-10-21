@@ -1,3 +1,5 @@
+// Linux stand-in for PDFKit: page text and the cover image of a PDF, through pypdfium2.
+
 #if os(Linux)
 import Foundation
 import PythonKit
@@ -5,6 +7,7 @@ import PythonKit
 // PDFKit's PDFDocument/PDFPage as far as Pipeline.extractText uses them,
 // backed by pypdfium2 (python/papertalk_platform/pdf.py).
 
+/// A PDF's pages as text (only what `LocalPipeline.extractText` needs).
 final class PDFDocument {
     private let texts: [String]
 
@@ -18,8 +21,10 @@ final class PDFDocument {
         texts = pages
     }
 
+    /// Pages in the document.
     var pageCount: Int { texts.count }
 
+    /// The page at `index`, nil out of range.
     func page(at index: Int) -> PDFPage? {
         texts.indices.contains(index) ? PDFPage(string: texts[index]) : nil
     }
@@ -33,7 +38,9 @@ final class PDFDocument {
     }
 }
 
+/// A page: just its text.
 final class PDFPage {
+    /// The page's extracted text.
     let string: String?
     init(string: String?) { self.string = string }
 }

@@ -1,3 +1,5 @@
+// The Linux details pane: the selected paper's metadata, episode, actions and conversion state.
+
 #if os(Linux)
 import Foundation
 import SwiftCrossUI
@@ -20,6 +22,7 @@ struct DetailPane: View {
     }
 }
 
+/// One paper's details, below the pane's empty state.
 struct PaperDetail: View {
     var bridge: StoreBridge
     var paper: Paper
@@ -74,6 +77,9 @@ struct PaperDetail: View {
                     ProgressView("", value: progress.fraction)
                     Button(play.title) { store.togglePlayback(paper.id) }
                         .disabled(!PaperPresentation.isPlayable(paper))
+                    if let warning = PaperPresentation.liveAudioWarning(paper) {
+                        Text(warning).font(.caption).foregroundColor(.orange)
+                    }
                 }
             }
 

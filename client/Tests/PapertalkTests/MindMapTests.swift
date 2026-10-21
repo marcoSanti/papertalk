@@ -1,3 +1,6 @@
+// Tests of the mind map: parsing the LLM's reply, the layout, the side panel's wording, and the
+// pipeline call that asks for it.
+
 import XCTest
 @testable import Papertalk
 
@@ -20,6 +23,7 @@ enum MindMapFixtures {
     }
 }
 
+/// Repairing the LLM's reply into a valid map.
 final class MindMapParseTests: PapertalkTestCase {
     func testParsesTheThreePillarsAndTheirParts() throws {
         let map = try XCTUnwrap(MindMap.parse("Here you go:\n" + MindMapFixtures.reply(parts: 3)))
@@ -109,6 +113,7 @@ final class MindMapParseTests: PapertalkTestCase {
     }
 }
 
+/// Node placement, link bends, zoom and pan.
 final class MindMapLayoutTests: PapertalkTestCase {
     private func crowded() throws -> MindMap {
         // One busy branch: 10 parts, each with 3 details.
@@ -282,6 +287,7 @@ final class MindMapLayoutTests: PapertalkTestCase {
     }
 }
 
+/// The side panel's connections and wording.
 final class MindMapPresentationTests: PapertalkTestCase {
     func testConnectionsListParentPartsAndLinks() throws {
         let links = #"[{"from":"evidence0","to":"method0","label":"validates"},{"from":"method0","to":"problem1","label":""}]"#
@@ -338,6 +344,7 @@ final class MindMapPresentationTests: PapertalkTestCase {
     }
 }
 
+/// `LocalPipeline.mindMap`: the request, and asking again when a pillar isn't broken down.
 final class MindMapPipelineTests: PapertalkTestCase {
     private final class Box: @unchecked Sendable {
         private let lock = NSLock()

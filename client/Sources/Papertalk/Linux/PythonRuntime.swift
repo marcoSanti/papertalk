@@ -1,3 +1,6 @@
+// The Python bridge on Linux: one interpreter on one thread, for PDF reading, Kokoro and the
+// keyring (python/papertalk_platform).
+
 #if os(Linux)
 import Foundation
 import PythonKit
@@ -9,6 +12,7 @@ import PythonKit
 /// naturally serialised. Shims exchange only plain values with Python (str,
 /// bytes, numbers), never Python objects held across calls, except `Handle`s.
 final class PythonRuntime: @unchecked Sendable {
+    /// The only interpreter.
     static let shared = PythonRuntime()
 
     private let lock = NSCondition()
@@ -43,6 +47,7 @@ final class PythonRuntime: @unchecked Sendable {
         Python.import("papertalk_platform.\(name)")
     }
 
+    /// Add a job to the Python thread's queue.
     private func enqueue(_ job: @escaping () -> Void) {
         lock.lock()
         jobs.append(job)
@@ -50,6 +55,7 @@ final class PythonRuntime: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// The Python thread: set the interpreter up, then run jobs in order, forever.
     private func loop() {
         Self.configure()
         while true {
@@ -101,6 +107,7 @@ final class PythonRuntime: @unchecked Sendable {
         return found.sorted { $0.localizedStandardCompare($1) == .orderedAscending }.last
     }
 
+    /// Point PythonKit at libpython and put the app's own Python packages on `sys.path`.
     private static func configure() {
         if let lib = libraryPath { PythonLibrary.useLibrary(at: lib) }
         let sys = Python.import("sys")

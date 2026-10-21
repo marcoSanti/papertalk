@@ -1,6 +1,9 @@
+// Tests of saved settings: what is written to user defaults and the Keychain, and the prompts.
+
 import XCTest
 @testable import Papertalk
 
+/// Where the LLM key comes from, and which key variables are offered.
 final class SettingsTests: PapertalkTestCase {
     private func settings(apiKey: String, keyEnv: String) -> LLMSettings {
         LLMSettings(baseUrl: "http://x", apiKey: apiKey, model: "m", keyEnv: keyEnv)
@@ -21,6 +24,7 @@ final class SettingsTests: PapertalkTestCase {
     }
 }
 
+/// Filling {tokens}, and decoding prompts saved by older builds.
 final class PromptSettingsTests: PapertalkTestCase {
     func testDefaultsCarryExpectedTokens() {
         let d = PromptSettings.defaults
@@ -52,6 +56,7 @@ final class PromptSettingsTests: PapertalkTestCase {
     }
 }
 
+/// Every prompt is on the Query Prompts page, once.
 final class PromptCatalogTests: PapertalkTestCase {
     func testEveryPromptIsListedOnce() {
         let fields = Mirror(reflecting: PromptSettings.defaults).children.filter { $0.value is String }.count
@@ -86,6 +91,7 @@ final class PromptCatalogTests: PapertalkTestCase {
     }
 }
 
+/// Saving and loading custom-depth presets.
 final class CustomDepthPresetsTests: PapertalkTestCase {
     func testRoundTrip() {
         let p = CustomDepthPresets(entries: [.init(name: "Deep", text: "go deep")])

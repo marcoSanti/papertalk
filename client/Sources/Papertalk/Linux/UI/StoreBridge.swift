@@ -1,3 +1,5 @@
+// Connects the shared AppStore (Combine-style, via OpenCombine) to SwiftCrossUI views on Linux.
+
 #if os(Linux)
 import Foundation
 import ImageFormats
@@ -22,6 +24,7 @@ final class StoreBridge: SwiftCrossUI.ObservableObject {
     private var covers: [String: (revision: Int, image: ImageFormats.Image<RGBA>?)] = [:]
     private var loadingCovers: Set<String> = []
 
+    /// Starts forwarding the store's and the player's changes.
     init(_ store: AppStore) {
         self.store = store
         // objectWillChange fires before the change lands: re-render on the next turn.

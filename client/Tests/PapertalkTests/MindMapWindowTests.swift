@@ -1,3 +1,5 @@
+// Tests of the mind map's window on macOS.
+
 #if os(macOS)
 import AppKit
 import XCTest

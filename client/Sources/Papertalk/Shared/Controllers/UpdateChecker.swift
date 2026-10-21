@@ -1,3 +1,6 @@
+// The network half of "Check for Updates": fetching the release list and comparing commits
+// on GitHub. What the answers mean is decided in `UpdateCheck`.
+
 import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -6,6 +9,7 @@ import FoundationNetworking
 /// Reads Papertalk's releases from the public GitHub API (no token, so
 /// GitHub's unauthenticated rate limit applies). Decisions are in `UpdateCheck`.
 struct UpdateChecker {
+    /// Why GitHub couldn't answer; `message` words it for the alert.
     enum Failure: Error, Equatable {
         case http(Int?)
         case unreadable
@@ -18,6 +22,7 @@ struct UpdateChecker {
         }
     }
 
+    /// Every published release, newest first.
     func releases() async throws(Failure) -> [GitHubRelease] {
         let data = try await get(UpdateCheck.releasesURL)
         guard let list = try? JSONDecoder().decode([GitHubRelease].self, from: data) else { throw .unreadable }
@@ -33,6 +38,7 @@ struct UpdateChecker {
         return UpdateCheck.headIsAhead(compareStatus: status)
     }
 
+    /// GET from the GitHub API; any failure becomes `Failure.http`.
     private func get(_ url: URL) async throws(Failure) -> Data {
         var req = URLRequest(url: url)
         req.timeoutInterval = 20

@@ -48,7 +48,7 @@ ideas. It's a native macOS app written in SwiftUI.
   papers leaves your Mac. Every prompt it's sent can be edited. Keep the library on your Mac or
   share it between Macs with a small storage server.
 - **In your language.** The app speaks English, Italian, Spanish, German and French: it follows
-  your Mac's language, or pick one in **Settings → Language**. Episodes are written in English
+  your Mac's language, or pick one in **Settings → General**. Episodes are written in English
   unless you turn on **Write the episode in this language** when importing (experimental: the
   Kokoro voices are English, so they read other languages with an English accent).
 
@@ -106,7 +106,7 @@ The **Manage** list in a paper's details has the rest:
 - **Create mind map** draws one for papers imported before mind maps existed, and **Redraw mind
   map** draws it again.
 - **Delete audio** frees the disk space and keeps the script and PDF. The paper still plays, with
-  voices made live. When you listen to an episode to the end, Papertalk offers to delete its audio;
+  voices made live; the app says so, since that audio isn't saved and each listen voices it again. When you listen to an episode to the end, Papertalk offers to delete its audio;
   **Keep, and don't ask again** turns that off, and **Settings → Clear Data** turns it back on.
 - **Stop conversion** stops an import; the script and any sections already voiced are kept.
 

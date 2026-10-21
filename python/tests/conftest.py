@@ -1,3 +1,4 @@
+"""Shared pytest set-up: the package on sys.path, and a tiny PDF builder."""
 import os
 import sys
 

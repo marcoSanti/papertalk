@@ -1,3 +1,5 @@
+// Tests of `Shared/Presentation`: the wording and decisions every view shows.
+
 import XCTest
 @testable import Papertalk
 
@@ -101,6 +103,7 @@ final class LibraryPresentationTests: PapertalkTestCase {
     }
 }
 
+/// Confirmation dialogs, sort labels, the inspector's width and dropped files.
 final class WindowPresentationTests: PapertalkTestCase {
     func testConfirmationWording() {
         let p = Fixtures.paper(title: "Graphs")
@@ -133,6 +136,7 @@ final class WindowPresentationTests: PapertalkTestCase {
     }
 }
 
+/// The Authors screen's grouping, co-authors and summaries.
 final class AuthorsPresentationTests: PapertalkTestCase {
     private let byAuthor: [String: [Paper]] = [
         "Ada Lovelace": [Fixtures.paper(id: "1")],
@@ -188,6 +192,7 @@ final class AuthorsPresentationTests: PapertalkTestCase {
     }
 }
 
+/// Card and details wording, enabled actions and the live-audio warning.
 final class PaperPresentationTests: PapertalkTestCase {
     func testAuthorLines() {
         XCTAssertEqual(PaperPresentation.authorLine(["A", "B"]), "A, B")
@@ -298,6 +303,7 @@ final class PaperPresentationTests: PapertalkTestCase {
     }
 }
 
+/// The conversion checklist and listening progress.
 final class ConversionAndEpisodeTests: PapertalkTestCase {
     func testStages() {
         XCTAssertEqual(ConversionPresentation.currentStage("audio"), 4)
@@ -351,6 +357,7 @@ final class ConversionAndEpisodeTests: PapertalkTestCase {
     }
 }
 
+/// The player's status lines, labels, controls and the bottom bar's content.
 final class PlayerPresentationTests: PapertalkTestCase {
     func testPlaybackStatus() {
         XCTAssertEqual(PlaybackStatus(isRendering: true, isBuffering: true, error: "x"), .preparingFirstSection)
@@ -447,6 +454,7 @@ final class PlayerPresentationTests: PapertalkTestCase {
     }
 }
 
+/// Transcript text for the sheet and the clipboard.
 final class TranscriptPresentationTests: PapertalkTestCase {
     func testSpeakersTextAndLog() {
         let t = Transcript(paperTitle: "T",
@@ -465,6 +473,7 @@ final class TranscriptPresentationTests: PapertalkTestCase {
     }
 }
 
+/// The import, metadata, settings and presets forms.
 final class FormTests: PapertalkTestCase {
     func testImportForm() {
         var f = ImportForm()
@@ -590,6 +599,15 @@ final class FormTests: PapertalkTestCase {
         XCTAssertEqual(ServerSettingsForm(ServerConfig(apiBase: "http://x", token: "t")).mode, .remote)
     }
 
+    func testLiveAudioWarningOnlyForAScriptWithoutSavedAudio() {
+        let live = PaperPresentation.liveAudioWarning(Fixtures.paper(hasScript: true, hasAudio: false))
+        XCTAssertEqual(live, "No saved audio: the voices are made live as you listen and aren't kept. Regenerate audio voices it once and saves it.")
+        XCTAssertNil(PaperPresentation.liveAudioWarning(Fixtures.paper(hasScript: true, hasAudio: true)))
+        XCTAssertNil(PaperPresentation.liveAudioWarning(Fixtures.paper(hasScript: false, hasAudio: false)))
+        XCTAssertNil(PaperPresentation.liveAudioWarning(Fixtures.paper(state: "running", hasScript: true, hasAudio: false)),
+                     "a paper being voiced is about to have saved audio")
+    }
+
     func testDeleteAudioWording() {
         let p = Fixtures.paper(title: "Waves", hasAudio: true)
         XCTAssertTrue(PaperPresentation.canDeleteAudio(p))
@@ -660,6 +678,7 @@ final class FormTests: PapertalkTestCase {
     }
 }
 
+/// Cast defaults, renames, gender switches and validation.
 final class CastFormTests: PapertalkTestCase {
     private func form(authors: [String] = ["Ada Lovelace", "William Smith"],
                       genders: [String: String] = ["Ada Lovelace": "female", "William Smith": "male"],
@@ -735,6 +754,7 @@ final class CastFormTests: PapertalkTestCase {
     }
 }
 
+/// The speaking-pace control and the voice-sample button.
 final class PaceAndSampleTests: PapertalkTestCase {
     func testSpeakingPace() {
         XCTAssertEqual(SpeakingPacePresentation.label(1.25), "1.25×")

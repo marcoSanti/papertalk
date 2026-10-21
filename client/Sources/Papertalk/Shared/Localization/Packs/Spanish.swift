@@ -154,6 +154,7 @@ extension LanguagePacks {
         "Turn a paper into a podcast, converted on {0}.": "Convierte un artículo en un podcast, en {0}.",
         "No LLM is configured, so this paper will be read out as-is instead of as a discussion.": "No hay ningún LLM configurado, así que el artículo se leerá tal cual en lugar de como una conversación.",
         "Could not read {0}": "No se pudo leer {0}",
+        "General": "General",
         "Language": "Idioma",
         "Interface language": "Idioma de la interfaz",
         "Menus, buttons and messages appear in this language. Episodes, transcripts and mind maps are written in English unless you ask for this language when you import a paper.": "Los menús, botones y mensajes aparecen en este idioma. Los episodios, transcripciones y mapas mentales se escriben en inglés, salvo que pidas este idioma al importar un artículo.",
@@ -572,5 +573,7 @@ extension LanguagePacks {
         "Add tags in the inspector to group papers here.": "Añade etiquetas en el inspector para agrupar aquí los artículos.",
         "Converted in-app": "Convertido en la app",
         "Settings (⌘,)": "Ajustes (⌘,)",
+        "No saved audio: the voices are made live as you listen and aren't kept. Regenerate audio voices it once and saves it.": "Sin audio guardado: las voces se crean en directo mientras escuchas y no se conservan. Regenerar audio las sintetiza una vez y las guarda.",
+        "Playing with live voices. This audio isn't saved; Regenerate audio saves it.": "Reproduciendo con voces en directo. Este audio no se guarda; Regenerar audio lo guarda.",
     ]
 }

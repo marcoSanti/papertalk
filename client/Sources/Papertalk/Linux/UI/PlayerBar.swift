@@ -1,3 +1,5 @@
+// The Linux player bar under the details pane: playback, scrubber and import progress.
+
 #if os(Linux)
 import Foundation
 import SwiftCrossUI

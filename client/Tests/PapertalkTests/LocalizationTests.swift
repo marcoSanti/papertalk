@@ -1,3 +1,5 @@
+// Tests of the language packs (complete, placeholders intact) and the episode language option.
+
 import Foundation
 import XCTest
 @testable import Papertalk
@@ -124,7 +126,7 @@ final class LocalizationTests: PapertalkTestCase {
     func testLanguageOptionsUseEachLanguagesOwnName() {
         Localization.language = .german
         XCTAssertEqual(LanguagePresentation.options.map(\.title), ["English", "Italiano", "Español", "Deutsch", "Français"])
-        XCTAssertEqual(LanguagePresentation.title, "Sprache")
+        XCTAssertEqual(LanguagePresentation.generalTitle, "Allgemein")
     }
 
     // MARK: episode language

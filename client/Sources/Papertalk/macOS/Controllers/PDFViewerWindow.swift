@@ -1,3 +1,5 @@
+// The PDF viewer window (macOS): pages rendered to images and stacked in a scroll view.
+
 #if os(macOS)
 import AppKit
 
@@ -11,6 +13,7 @@ final class PDFViewerWindow: NSObject {
 
     private var window: NSWindow?
 
+    /// Open a viewer window for `data`.
     @discardableResult
     static func present(data: Data, title: String) -> PDFViewerWindow {
         let viewer = PDFViewerWindow()
@@ -19,6 +22,7 @@ final class PDFViewerWindow: NSObject {
         return viewer
     }
 
+    /// Show the window and render the pages in the background.
     func show(data: Data, title: String) {
         let contentRect = NSRect(x: 0, y: 0, width: 900, height: 680)
         let win = NSWindow(
@@ -85,6 +89,7 @@ final class PDFViewerWindow: NSObject {
         }
     }
 
+    /// The pages stacked top to bottom, scaled to `width`.
     private static func makeContainer(images: [NSImage], width: CGFloat) -> NSView {
         let container = FlippedView(frame: NSRect(x: 0, y: 0, width: width, height: 12))
         container.autoresizingMask = [.width]
@@ -103,8 +108,10 @@ final class PDFViewerWindow: NSObject {
         return container
     }
 
+    /// ⌘W.
     @objc private func closeWindow() { window?.close() }
 
+    /// Release the window controller once closed.
     @objc private func didClose() {
         NotificationCenter.default.removeObserver(self)
         window = nil
@@ -140,6 +147,7 @@ final class PDFViewerWindow: NSObject {
 
 /// Container whose y origin is at the top, so pages stack downward naturally.
 private final class FlippedView: NSView {
+    /// Pages stack from the top, like a document.
     override var isFlipped: Bool { true }
 }
 #endif

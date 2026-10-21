@@ -3,7 +3,7 @@
 
 Deliberately tiny: it only stores and serves files over HTTP. No compute, no
 SMB, no pipeline. Papers are stored as a flat key->bytes map under a root
-dir; the app serves as the brain. This replaces the old SmbStore entirely.
+dir; the app does everything else (see client/.../Storage.swift, `HttpStorage`).
 
 Options:
     PAPER2POD_STORAGE_PORT  (default 9170)
@@ -11,7 +11,7 @@ Options:
     PAPER2POD_STORAGE_TOKEN (optional; must match client token)
 
 Routes (paths are URL-encoded; no leading slash in the wire form):
-    GET  /                    -> JSON list of stored keys (hashes)
+    GET  /                    -> JSON list of stored keys
     GET  /<key>               -> bytes for that key
     PUT  /<key>               -> store request body bytes under key
     DELETE /<key>             -> remove key
@@ -37,11 +37,13 @@ DIRTY = True
 
 
 def _key_path(key: str) -> Path:
+    """The file a key is stored in."""
     # Keys are URL-safe file paths (e.g. "papers/<id>/paper.json").
     return ROOT / key
 
 
 def _refresh_index() -> None:
+    """Rebuild the key index from the files under ROOT."""
     global DIRTY
     INDEX.clear()
     if not ROOT.is_dir():
@@ -54,6 +56,7 @@ def _refresh_index() -> None:
 
 
 def index() -> dict[str, Path]:
+    """Every stored key and its file, rebuilt from disk when marked dirty."""
     if DIRTY:
         with INDEX_LOCK:
             if DIRTY:
@@ -62,6 +65,7 @@ def index() -> dict[str, Path]:
 
 
 def store(key: str, data: bytes) -> str:
+    """Write `data` under `key` atomically; returns its SHA-1."""
     with INDEX_LOCK:
         p = _key_path(key)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -74,6 +78,7 @@ def store(key: str, data: bytes) -> str:
 
 
 def fetch(key: str) -> bytes:
+    """The bytes under `key`; KeyError when there are none."""
     p = index().get(key)
     if p is None or not p.exists():
         raise KeyError(key)
@@ -81,6 +86,7 @@ def fetch(key: str) -> bytes:
 
 
 def delete(key: str) -> None:
+    """Remove `key` (no error when it's missing)."""
     with INDEX_LOCK:
         p = _key_path(key)
         p.unlink(missing_ok=True)
@@ -89,11 +95,14 @@ def delete(key: str) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
+    """GET, PUT, DELETE and HEAD of keys, behind the optional bearer token."""
     def log_message(self, *args):  # keep it quiet
+        """No per-request logging."""
         pass
 
     # --- helpers -------------------------------------------------------
     def _bad(self, msg, code=400):
+        """A JSON error reply."""
         payload = json.dumps({"error": msg}).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -102,6 +111,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def _ok_bytes(self, data: bytes, ctype="application/octet-stream"):
+        """A 200 reply with `data`."""
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Digest", hashlib.sha1(data).hexdigest())
@@ -110,12 +120,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _authorized(self) -> bool:
+        """No token configured, or the request carries it."""
         if not TOKEN:
             return True
         auth = self.headers.get("Authorization", "")
         return auth == f"Bearer {TOKEN}"
 
     def _key(self) -> str | None:
+        """The key named by the request path; None for the root."""
         path = urllib.parse.unquote(self.path.split("?", 1)[0]).lstrip("/")
         if path == "/" or path == "":
             return None
@@ -124,6 +136,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # --- verbs -----------------------------------------------------------
     def do_GET(self):
+        """The key list at the root, else the key's bytes."""
         if not self._authorized():
             return self._bad("unauthorized", 401)
         key = self._key()
@@ -136,6 +149,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._bad("not found", 404)
 
     def do_PUT(self):
+        """Store the request body under the key."""
         if not self._authorized():
             return self._bad("unauthorized", 401)
         key = self._key()
@@ -147,6 +161,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._ok_bytes(json.dumps({"key": key, "sha1": digest}).encode(), "application/json")
 
     def do_DELETE(self):
+        """Remove the key."""
         if not self._authorized():
             return self._bad("unauthorized", 401)
         key = self._key()
@@ -157,6 +172,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # HEAD == GET without body (cheap existence/size check)
     def do_HEAD(self):
+        """Whether the key exists, with its size."""
         if not self._authorized():
             return self._bad("unauthorized", 401)
         key = self._key()
@@ -169,6 +185,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    """Serve on PAPER2POD_STORAGE_HOST:PAPER2POD_STORAGE_PORT, or run the self-test with --selftest."""
     if "--selftest" in sys.argv:
         _selftest()
         return
@@ -184,6 +201,7 @@ def main() -> None:
 
 
 def _selftest() -> None:
+    """Start the server on a free port with a temp root and exercise every route with curl."""
     import tempfile
     import subprocess
     import time
@@ -191,6 +209,7 @@ def _selftest() -> None:
     root = Path(tempfile.mkdtemp(prefix="p2p-self-"))
     port = 0
     def pick_port() -> int:
+        """A free local port."""
         import socket
         s = socket.socket()
         s.bind(("127.0.0.1", 0))
@@ -224,6 +243,7 @@ def _selftest() -> None:
 
 
 def _wait(base: str) -> None:
+    """Wait until the server at `base` answers."""
     import urllib.request
     import time
     for _ in range(50):
@@ -236,6 +256,7 @@ def _wait(base: str) -> None:
 
 
 def _curl(base: str, method: str, path: str, data: bytes | None = None, expect: int = 200):
+    """One request through curl; fails the self-test unless the status is `expect`."""
     import urllib.request
     req = urllib.request.Request(base + path, method=method,
                                  data=data, headers={"Content-Type": "application/json"})

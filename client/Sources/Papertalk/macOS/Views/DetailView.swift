@@ -461,18 +461,8 @@ struct DetailView: View {
         }
     }
 
-    /// Open the mind map window, reading the saved map now.
-    private func openMindMap() {
-        Task {
-            // Always read the current file: Redraw may have replaced it.
-            if let map = await store.mindMap(for: paper.id) {
-                MindMapWindow.present(map: map, title: paper.displayTitle, paperId: paper.id,
-                                      onSave: { [store, id = paper.id] in store.saveMindMap(id, $0) })
-            } else {
-                store.show(MindMapPresentation.missingMessage)
-            }
-        }
-    }
+    /// Open the mind map window.
+    private func openMindMap() { MindMapWindow.open(paperId: paper.id, store: store) }
 }
 
 // MARK: - Backdrop

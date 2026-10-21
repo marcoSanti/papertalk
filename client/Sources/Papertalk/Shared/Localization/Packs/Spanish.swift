@@ -616,5 +616,9 @@ extension LanguagePacks {
         "Delete connection": "Eliminar conexión",
         "Delete this concept, everything under it and its connections": "Eliminar este concepto, todo lo que está debajo y sus conexiones",
         "The three main concepts can't be deleted; change their text instead.": "Los tres conceptos principales no se pueden eliminar; cambia su texto en su lugar.",
+        "Connections to other papers": "Conexiones con otros artículos",
+        "After a mind map is drawn, when its concepts share words with concepts of other papers' maps: to keep the pairs that really relate, and name how.": "Tras dibujar un mapa mental, cuando sus conceptos comparten palabras con conceptos de los mapas de otros artículos: para quedarse con los pares realmente relacionados y decir cómo.",
+        "In another paper": "En otro artículo",
+        "Open its mind map": "Abrir su mapa mental",
     ]
 }

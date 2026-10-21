@@ -829,6 +829,23 @@ struct LocalPipeline {
         return map
     }
 
+    /// Ask the LLM which shortlisted pairs (`MindMapConnections.candidates`) between this paper's
+    /// map and other papers' maps really relate, and how. No pairs, no call.
+    func mindMapConnections(title: String, map: MindMap, candidates: [MindMapConnections.Candidate],
+                            others: [String: MindMap], titles: [String: String]) async throws -> [MindMap.ExternalLink] {
+        guard !candidates.isEmpty else { return [] }
+        let system = inOutputLanguage(prompts.mindMapConnections + """
+        \n\nReturn ONLY a JSON object, no markdown or prose:
+        {"links": [{"pair": number, "label": string}]}
+        """)
+        let user = "THIS PAPER: \(title)\n\nPAIRS:\n" + MindMapConnections.pairList(candidates, map: map, others: others, titles: titles)
+        log("Mind map: checking \(candidates.count) possible connections to other papers…")
+        let links = MindMapConnections.parse(try await chat(system: system, user: user, maxTokens: 2000),
+                                             candidates: candidates, others: others, titles: titles)
+        log("Mind map: \(links.count) connections to other papers")
+        return links
+    }
+
     /// Ask the LLM to cast the episode: who speaks, each person's gender and a
     /// suggested name. Used *after* metadata so the scientist's real author name
     /// can inform it. Falls back to a sensible two-person cast when the model is

@@ -234,7 +234,7 @@ struct MindMapView: View {
                         || (selectedNode != nil && (e.from == selectedNode || e.to == selectedNode))
                     let color = edgeColor(e)
                     ctx.stroke(path, with: .color(color.opacity(highlighted ? 0.95 : 0.45)),
-                               style: StrokeStyle(lineWidth: highlighted ? 2.5 : 1.5, lineCap: .round,
+                               style: StrokeStyle(lineWidth: highlighted ? 3 : 2, lineCap: .round,
                                                   dash: e.label == nil ? [] : [5, 4]))
                 }
             }
@@ -278,7 +278,7 @@ struct MindMapView: View {
                 if let external {
                     VStack(spacing: 1) {
                         Text(external.label).lineLimit(1)
-                        Text(external.paperTitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        Text(external.paperTitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     }
                 // The main concepts' icon sits inline, so long names keep both lines.
                 } else if tier == .main, let node {
@@ -287,7 +287,7 @@ struct MindMapView: View {
                     Text(node?.label ?? title)
                 }
             }
-            .font(tier == .detail || tier == .external ? .callout.weight(.medium) : .callout.weight(.bold))
+            .font(.system(size: 14, weight: tier == .detail || tier == .external ? .medium : .bold))
             .lineLimit(tier == .paper ? 3 : 2)
             .multilineTextAlignment(.center)
             .foregroundStyle(tier == .detail || tier == .external ? Color.primary : Color.white)
@@ -335,7 +335,7 @@ struct MindMapView: View {
             Group {
                 if let label = e.label, !label.isEmpty {
                     Text(label)
-                        .font(.caption2.weight(.semibold))
+                        .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(isSelected ? Color.white : Color.secondary)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
@@ -345,7 +345,7 @@ struct MindMapView: View {
                 } else {
                     Circle()
                         .fill(color)
-                        .frame(width: isSelected ? 13 : 9, height: isSelected ? 13 : 9)
+                        .frame(width: isSelected ? 14 : 10, height: isSelected ? 14 : 10)
                         .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
                         .padding(6)   // a larger target than the dot
                 }

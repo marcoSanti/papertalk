@@ -233,6 +233,35 @@ final class MindMapLayoutTests: PapertalkTestCase {
         }
     }
 
+    func testLinksRunClearOfOtherNodesAndLabels() throws {
+        // Siblings with others between them on one ring: a gentle bow used to cut through
+        // evidence1 and evidence2, and two links into evidence0 stacked their labels.
+        let links = #"[{"from":"evidence3","to":"evidence0","label":"overhead source"},"#
+            + #"{"from":"method3","to":"method0","label":"set up by"},{"from":"method1","to":"evidence0","label":"tested by"}]"#
+        let layout = MindMapLayout(try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(parts: 4, links: links))))
+        let linked = layout.edges.filter { $0.label != nil }
+        for link in linked {
+            let a = try XCTUnwrap(layout.positions[link.from]), b = try XCTUnwrap(layout.positions[link.to])
+            let k = try XCTUnwrap(layout.control(link))
+            for t in stride(from: 0.0, through: 1.0, by: 0.02) {
+                let x = (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * k.x + t * t * b.x
+                let y = (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * k.y + t * t * b.y
+                for (id, c) in layout.positions where id != link.from && id != link.to {
+                    let inside = abs(x - c.x) < MindMapLayout.nodeWidth / 2 && abs(y - c.y) < MindMapLayout.nodeHeight / 2
+                    XCTAssertFalse(inside, "\(link.id) runs through \(id)")
+                }
+            }
+        }
+        let handles = try linked.map { try XCTUnwrap(layout.handle($0)) }
+        for i in handles.indices {
+            for j in handles.indices where j > i {
+                let apart = abs(handles[i].x - handles[j].x) >= MindMapLayout.linkLabelWidth
+                    || abs(handles[i].y - handles[j].y) >= MindMapLayout.linkLabelHeight
+                XCTAssertTrue(apart, "\(linked[i].id) and \(linked[j].id) labels overlap")
+            }
+        }
+    }
+
     func testLinkLabelsStayInsideTheCanvas() throws {
         // Two concepts on the outer ring of neighbouring branches: their link bows outward.
         let links = #"[{"from":"problem1","to":"method0","label":"fixes"},{"from":"evidence0","to":"evidence1","label":"x"}]"#

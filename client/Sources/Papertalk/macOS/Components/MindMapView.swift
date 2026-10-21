@@ -268,7 +268,9 @@ struct MindMapView: View {
                 if let p = layout.positions[id] {
                     nodeView(id, layout: layout)
                         .scaleEffect(scale)
-                        .gesture(moveGesture(node: id, scale: scale))
+                        // High priority: a Button holds the mouse until it's released, so a plain
+                        // gesture only saw the drag at the end and the box jumped there.
+                        .highPriorityGesture(moveGesture(node: id, scale: scale))
                         .position(x: p.x * scale, y: p.y * scale)
                 }
             }
@@ -277,7 +279,7 @@ struct MindMapView: View {
             ForEach(layout.selectableEdges) { e in
                 if let p = layout.handle(e), let detail = MindMapPresentation.edgeDetail(map, e) {
                     edgeHandle(e, detail: detail)
-                        .gesture(moveGesture(edge: e, scale: scale))
+                        .highPriorityGesture(moveGesture(edge: e, scale: scale))
                         .position(x: p.x * scale, y: p.y * scale)
                 }
             }

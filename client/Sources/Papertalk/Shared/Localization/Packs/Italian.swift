@@ -572,5 +572,7 @@ extension LanguagePacks {
         "Add tags in the inspector to group papers here.": "Aggiungi tag nell’inspector per raggruppare qui gli articoli.",
         "Converted in-app": "Convertito nell’app",
         "Settings (⌘,)": "Impostazioni (⌘,)",
+        "No saved audio: the voices are made live as you listen and aren't kept. Regenerate audio voices it once and saves it.": "Nessun audio salvato: le voci vengono create in tempo reale mentre ascolti e non vengono conservate. Rigenera audio le sintetizza una volta e le salva.",
+        "Playing with live voices. This audio isn't saved; Regenerate audio saves it.": "Riproduzione con voci in tempo reale. Questo audio non viene salvato; Rigenera audio lo salva.",
     ]
 }

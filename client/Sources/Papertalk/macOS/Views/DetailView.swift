@@ -630,6 +630,12 @@ private struct EpisodeCard: View {
                     .foregroundStyle(.red)
                     .lineLimit(2)
             }
+            if let warning = PaperPresentation.liveAudioWarning(paper) {
+                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .glassCard()
     }

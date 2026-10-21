@@ -106,7 +106,7 @@ The **Manage** list in a paper's details has the rest:
 - **Create mind map** draws one for papers imported before mind maps existed, and **Redraw mind
   map** draws it again.
 - **Delete audio** frees the disk space and keeps the script and PDF. The paper still plays, with
-  voices made live. When you listen to an episode to the end, Papertalk offers to delete its audio;
+  voices made live; the app says so, since that audio isn't saved and each listen voices it again. When you listen to an episode to the end, Papertalk offers to delete its audio;
   **Keep, and don't ask again** turns that off, and **Settings → Clear Data** turns it back on.
 - **Stop conversion** stops an import; the script and any sections already voiced are kept.
 

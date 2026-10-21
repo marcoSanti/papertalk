@@ -74,6 +74,9 @@ struct PaperDetail: View {
                     ProgressView("", value: progress.fraction)
                     Button(play.title) { store.togglePlayback(paper.id) }
                         .disabled(!PaperPresentation.isPlayable(paper))
+                    if let warning = PaperPresentation.liveAudioWarning(paper) {
+                        Text(warning).font(.caption).foregroundColor(.orange)
+                    }
                 }
             }
 

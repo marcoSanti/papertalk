@@ -1259,6 +1259,7 @@ final class AppStore: ObservableObject {
         } else {
             let vm = castVoices(for: id, speakers: t.segments.flatMap { $0.turns.map(\.speaker) })
             player.prepare(transcript: t, voiceMap: vm)
+            show(PaperPresentation.liveAudioToast)
         }
     }
 

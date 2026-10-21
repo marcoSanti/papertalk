@@ -590,6 +590,15 @@ final class FormTests: PapertalkTestCase {
         XCTAssertEqual(ServerSettingsForm(ServerConfig(apiBase: "http://x", token: "t")).mode, .remote)
     }
 
+    func testLiveAudioWarningOnlyForAScriptWithoutSavedAudio() {
+        let live = PaperPresentation.liveAudioWarning(Fixtures.paper(hasScript: true, hasAudio: false))
+        XCTAssertEqual(live, "No saved audio: the voices are made live as you listen and aren't kept. Regenerate audio voices it once and saves it.")
+        XCTAssertNil(PaperPresentation.liveAudioWarning(Fixtures.paper(hasScript: true, hasAudio: true)))
+        XCTAssertNil(PaperPresentation.liveAudioWarning(Fixtures.paper(hasScript: false, hasAudio: false)))
+        XCTAssertNil(PaperPresentation.liveAudioWarning(Fixtures.paper(state: "running", hasScript: true, hasAudio: false)),
+                     "a paper being voiced is about to have saved audio")
+    }
+
     func testDeleteAudioWording() {
         let p = Fixtures.paper(title: "Waves", hasAudio: true)
         XCTAssertTrue(PaperPresentation.canDeleteAudio(p))

@@ -101,6 +101,16 @@ enum PaperPresentation {
 
     static func canRerun(_ p: Paper) -> Bool { !p.isActive }
 
+    /// A script without saved audio plays with voices made live (`PlayerController.prepare(transcript:)`):
+    /// nothing is stored, so every listen synthesizes it again. Nil when there's audio, or no episode yet.
+    static func liveAudioWarning(_ p: Paper) -> String? {
+        guard p.hasScript, !p.hasAudio, !p.isActive else { return nil }
+        return L("No saved audio: the voices are made live as you listen and aren't kept. Regenerate audio voices it once and saves it.")
+    }
+
+    /// Shown when live playback starts, wherever Play was pressed.
+    static var liveAudioToast: String { L("Playing with live voices. This audio isn't saved; Regenerate audio saves it.") }
+
     static func hasMindMap(_ p: Paper) -> Bool { p.hasMindMap == true }
 
     /// A mind map needs the PDF and the LLM, and waits for the paper's import

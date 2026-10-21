@@ -15,14 +15,15 @@ final class MindMapWindow: NSObject, NSWindowDelegate {
     private let window: NSWindow
 
     /// Open the paper's mind map window, or bring it forward showing `map`.
-    static func present(map: MindMap, title: String, paperId: String) {
+    /// `onSave` keeps the window's edits; without it the map is read-only.
+    static func present(map: MindMap, title: String, paperId: String, onSave: ((MindMap) -> Void)? = nil) {
         if let existing = open[paperId] {
-            existing.show(map: map, title: title)
+            existing.show(map: map, title: title, onSave: onSave)
             return
         }
         let w = MindMapWindow(paperId: paperId)
         open[paperId] = w
-        w.show(map: map, title: title)
+        w.show(map: map, title: title, onSave: onSave)
         w.window.center()
     }
 
@@ -40,9 +41,9 @@ final class MindMapWindow: NSObject, NSWindowDelegate {
     }
 
     /// Put `map` in the window and bring it forward.
-    private func show(map: MindMap, title: String) {
+    private func show(map: MindMap, title: String, onSave: ((MindMap) -> Void)?) {
         window.title = "\(MindMapPresentation.heading) — \(title)"
-        window.contentView = NSHostingView(rootView: MindMapView(map: map, title: title))
+        window.contentView = NSHostingView(rootView: MindMapView(map: map, title: title, onSave: onSave))
         window.makeKeyAndOrderFront(nil)
     }
 

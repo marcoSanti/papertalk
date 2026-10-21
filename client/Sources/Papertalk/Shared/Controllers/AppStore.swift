@@ -636,6 +636,16 @@ final class AppStore: ObservableObject {
         await storage.exists(MindMap.self, K.mindMap(id))
     }
 
+    /// Save a mind map edited in its window. Queued behind earlier saves, so quick edits land in order.
+    func saveMindMap(_ id: String, _ map: MindMap) {
+        guard papers[id] != nil else { return }
+        let previous = saveQueue
+        saveQueue = Task {
+            await previous?.value
+            await storage.save(map, K.mindMap(id))
+        }
+    }
+
     // MARK: Library
     func refresh() {
         Task {

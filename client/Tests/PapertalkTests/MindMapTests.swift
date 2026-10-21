@@ -398,3 +398,80 @@ final class MindMapPipelineTests: PapertalkTestCase {
         }
     }
 }
+
+/// Editing a map in its window: every edit keeps it a valid map.
+final class MindMapEditTests: PapertalkTestCase {
+    private func map() throws -> MindMap { try XCTUnwrap(MindMap.parse(MindMapFixtures.reply())) }
+
+    func testAddingAConceptPutsItInTheParentsBranchWithAFreeId() throws {
+        var m = try map()
+        let id = try XCTUnwrap(m.addNode(under: "method0", label: "  A new idea  "))
+        XCTAssertEqual(m.node(id)?.parent, "method0")
+        XCTAssertEqual(m.node(id)?.branch, .method)
+        XCTAssertEqual(m.node(id)?.label, "A new idea")
+        let second = try XCTUnwrap(m.addNode(under: "method0", label: "Another"))
+        XCTAssertNotEqual(id, second)
+        XCTAssertNil(m.addNode(under: "missing", label: "X"))
+    }
+
+    func testEditingKeepsTheOldLabelWhenTheNewOneIsEmpty() throws {
+        var m = try map()
+        m.editNode("problem0", label: "  ", core: " Core. ", description: "What. ")
+        XCTAssertEqual(m.node("problem0")?.label, "problem part 0")
+        XCTAssertEqual(m.node("problem0")?.core, "Core.")
+        XCTAssertEqual(m.node("problem0")?.description, "What.")
+        m.editNode("problem0", label: "Renamed", core: "", description: "")
+        XCTAssertEqual(m.node("problem0")?.label, "Renamed")
+    }
+
+    func testDeletingAConceptTakesItsSubtreeAndLinksButNeverARoot() throws {
+        var m = try map()
+        let child = try XCTUnwrap(m.addNode(under: "problem0", label: "Child"))
+        XCTAssertTrue(m.addLink(from: child, to: "method1", label: "uses"))
+        XCTAssertFalse(m.canDelete("problem"))
+        m.deleteNode("problem")
+        XCTAssertNotNil(m.node("problem"))
+        m.deleteNode("problem0")
+        XCTAssertNil(m.node("problem0"))
+        XCTAssertNil(m.node(child))
+        XCTAssertTrue(m.links.isEmpty)
+        XCTAssertNotNil(m.root(.problem))
+    }
+
+    func testMovingAConceptChangesItsBranchAndNeverMakesACycle() throws {
+        var m = try map()
+        let child = try XCTUnwrap(m.addNode(under: "problem0", label: "Child"))
+        XCTAssertFalse(m.parentOptions(for: "problem0").contains { $0.id == child })
+        XCTAssertFalse(m.parentOptions(for: "problem0").contains { $0.id == "problem" })
+        XCTAssertTrue(m.parentOptions(for: "problem").isEmpty)
+        m.move("problem0", under: child)
+        XCTAssertEqual(m.node("problem0")?.parent, "problem")
+
+        XCTAssertTrue(m.addLink(from: "problem0", to: "evidence1", label: "shown by"))
+        m.move("problem0", under: "evidence1")
+        XCTAssertEqual(m.node("problem0")?.parent, "evidence1")
+        XCTAssertEqual(m.node("problem0")?.branch, .evidence)
+        XCTAssertEqual(m.node(child)?.branch, .evidence)
+        XCTAssertTrue(m.links.isEmpty, "the link became the tree edge")
+        XCTAssertNotNil(MindMap.parse(String(decoding: try JSONEncoder().encode(m), as: UTF8.self)))
+    }
+
+    func testLinksJoinOnlyConceptsNotAlreadyJoined() throws {
+        var m = try map()
+        XCTAssertFalse(m.addLink(from: "method0", to: "method0", label: ""))
+        XCTAssertFalse(m.addLink(from: "method0", to: "method", label: ""), "tree edge")
+        XCTAssertFalse(m.addLink(from: "missing", to: "method", label: ""))
+        XCTAssertTrue(m.addLink(from: "method0", to: "evidence0", label: "tested by"))
+        XCTAssertFalse(m.addLink(from: "evidence0", to: "method0", label: ""), "already linked")
+        XCTAssertFalse(m.linkTargets(from: "method0").contains { $0.id == "evidence0" })
+
+        m.editLink(from: "method0", to: "evidence0", label: "checked by")
+        XCTAssertEqual(m.links.first?.label, "checked by")
+        m.deleteLink(from: "method0", to: "evidence0")
+        XCTAssertTrue(m.links.isEmpty)
+    }
+
+    func testDeleteHelpSaysWhyRootsStay() {
+        XCTAssertNotEqual(MindMapPresentation.deleteHelp(true), MindMapPresentation.deleteHelp(false))
+    }
+}

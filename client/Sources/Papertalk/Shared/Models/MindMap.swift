@@ -141,3 +141,96 @@ struct MindMap: Codable, Equatable {
         return MindMap(nodes: nodes, links: links, summary: summary.isEmpty ? nil : summary)
     }
 }
+
+// MARK: - Editing
+
+/// The edits the mind map window makes. Each keeps the map valid: three branch roots, a tree
+/// under each, and links only between existing concepts that aren't already joined.
+extension MindMap {
+    /// Whether `id` and everything under it can go: every concept but the three branch roots.
+    func canDelete(_ id: String) -> Bool { node(id).map { $0.parent != nil } ?? false }
+
+    /// `id` and every concept under it.
+    func subtree(_ id: String) -> Set<String> {
+        var out: Set<String> = [id], queue = [id]
+        while let next = queue.popLast() {
+            for c in children(of: next) where out.insert(c.id).inserted { queue.append(c.id) }
+        }
+        return out
+    }
+
+    /// Whether `a` and `b` are already joined, by the tree or by a link.
+    func joined(_ a: String, _ b: String) -> Bool {
+        nodes.contains { ($0.id == a && $0.parent == b) || ($0.id == b && $0.parent == a) }
+            || links.contains { Set([$0.from, $0.to]) == Set([a, b]) }
+    }
+
+    /// Add a concept under `parent`, in its branch. Returns the new id, nil if `parent` doesn't exist.
+    @discardableResult
+    mutating func addNode(under parent: String, label: String) -> String? {
+        guard let p = node(parent) else { return nil }
+        var n = nodes.count + 1
+        while node("n\(n)") != nil { n += 1 }
+        let id = "n\(n)"
+        nodes.append(Node(id: id, label: Self.shortLabel(label), branch: p.branch, parent: parent, description: "", core: ""))
+        return id
+    }
+
+    /// Change a concept's text. An empty label keeps the old one.
+    mutating func editNode(_ id: String, label: String, core: String, description: String) {
+        guard let i = nodes.firstIndex(where: { $0.id == id }) else { return }
+        let short = Self.shortLabel(label)
+        if !short.isEmpty { nodes[i].label = short }
+        nodes[i].core = core.trimmingCharacters(in: .whitespacesAndNewlines)
+        nodes[i].description = description.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Delete a concept with everything under it, and their links. Branch roots stay.
+    mutating func deleteNode(_ id: String) {
+        guard canDelete(id) else { return }
+        let gone = subtree(id)
+        nodes.removeAll { gone.contains($0.id) }
+        links.removeAll { gone.contains($0.from) || gone.contains($0.to) }
+    }
+
+    /// Where `id` can be moved: any concept outside its own subtree, except its current parent.
+    func parentOptions(for id: String) -> [Node] {
+        guard canDelete(id) else { return [] }
+        let own = subtree(id)
+        return nodes.filter { !own.contains($0.id) && $0.id != node(id)?.parent }
+    }
+
+    /// Move `id` (with its subtree) under `parent`; it takes the new branch. A link that becomes
+    /// the tree edge is dropped.
+    mutating func move(_ id: String, under parent: String) {
+        guard let p = node(parent), parentOptions(for: id).contains(where: { $0.id == parent }) else { return }
+        let moved = subtree(id)
+        for i in nodes.indices where moved.contains(nodes[i].id) { nodes[i].branch = p.branch }
+        if let i = nodes.firstIndex(where: { $0.id == id }) { nodes[i].parent = parent }
+        links.removeAll { Set([$0.from, $0.to]) == Set([id, parent]) }
+    }
+
+    /// Concepts `id` can be linked to: any other concept it isn't already joined to.
+    func linkTargets(from id: String) -> [Node] {
+        nodes.filter { $0.id != id && !joined(id, $0.id) }
+    }
+
+    /// Link two concepts. Returns false when they're the same, missing, or already joined.
+    @discardableResult
+    mutating func addLink(from: String, to: String, label: String) -> Bool {
+        guard node(from) != nil, linkTargets(from: from).contains(where: { $0.id == to }) else { return false }
+        links.append(Link(from: from, to: to, label: Self.shortLabel(label)))
+        return true
+    }
+
+    /// Change a link's label.
+    mutating func editLink(from: String, to: String, label: String) {
+        guard let i = links.firstIndex(where: { $0.from == from && $0.to == to }) else { return }
+        links[i].label = Self.shortLabel(label)
+    }
+
+    /// Remove a link.
+    mutating func deleteLink(from: String, to: String) {
+        links.removeAll { $0.from == from && $0.to == to }
+    }
+}

@@ -635,6 +635,19 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertTrue(store.drawingMindMaps.isEmpty)
     }
 
+    func testEditedMindMapsAreSavedInOrder() async throws {
+        let store = await makeStore([Fixtures.paper(id: "m")])
+        var map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply()))
+        map.editNode("method0", label: "First", core: "", description: "")
+        store.saveMindMap("m", map)
+        map.editNode("method0", label: "Second", core: "", description: "")
+        store.saveMindMap("m", map)
+        store.saveMindMap("gone", map)
+        await waitUntil { await self.storage.exists(MindMap.self, K.mindMap("m"))?.node("method0")?.label == "Second" }
+        let missing = await storage.exists(MindMap.self, K.mindMap("gone"))
+        XCTAssertNil(missing, "no folder made for a paper that isn't in the library")
+    }
+
     func testResolvingWithNothingPendingIsHarmless() async {
         let store = await makeStore()
         store.resolveDuplicate(true)

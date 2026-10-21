@@ -12,7 +12,7 @@ import AppKit
 ///   glass quick-action bar (play, PDF, transcript, favourite, edit)
 ///   conversion status (only while running / failed)
 ///   episode card (listening progress, resume)
-///   authors · details · tags · manage · activity
+///   authors · details · tags · audio · PDF management · library · activity
 struct DetailView: View {
     @EnvironmentObject private var store: AppStore
     let paper: Paper
@@ -50,7 +50,7 @@ struct DetailView: View {
                 if !paper.authors.isEmpty { authorsCard }
                 detailsCard
                 tagsCard
-                manageCard
+                manageCards
                 LogPane(lines: store.logLines(for: paper.id), isOpen: $showLog)
             }
             .padding(.horizontal, 16)
@@ -299,52 +299,86 @@ struct DetailView: View {
 
     // MARK: - Manage
 
-    /// Regenerate audio, rerun, mind map, refresh metadata, show in Finder, delete audio, delete.
-    private var manageCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SectionLabel(title: L("Manage"), systemImage: "slider.horizontal.3")
-                .padding(.bottom, 2)
-            VStack(spacing: 0) {
-                ManageRow(title: L("Regenerate audio"), subtitle: L("Re-voice the existing script"),
-                          icon: "waveform.badge.magnifyingglass", tint: .appAccent) {
-                    store.regenerateAudio(paper.id)
-                }
-                .disabled(!PaperPresentation.canRegenerateAudio(paper, anyConversionRunning: store.activeRun != nil))
-                ManageRow(title: L("Rerun episode"), subtitle: L("Write a new script from the PDF"),
-                          icon: "arrow.counterclockwise", tint: .indigo) {
-                    store.requestRerun(paper)
-                }
-                .disabled(!PaperPresentation.canRerun(paper))
-                let drawing = store.drawingMindMaps.contains(paper.id)
-                let mindMap = PaperPresentation.mindMapRow(paper, drawing: drawing)
-                ManageRow(title: mindMap.title, subtitle: mindMap.subtitle,
-                          icon: "point.3.connected.trianglepath.dotted", tint: .purple) {
-                    store.createMindMap(paper.id)
-                }
-                .disabled(!store.canCreateMindMap(paper))
-                ManageRow(title: L("Refresh metadata"), subtitle: L("Re-extract title, authors and DOI"),
-                          icon: "arrow.clockwise", tint: .teal) {
-                    store.refreshMeta(paper.id)
-                }
-                let listened = PaperPresentation.listenedToggle(paper)
-                ManageRow(title: listened.title, subtitle: nil, icon: listened.icon, tint: .green) {
-                    store.toggleRead(paper.id)
-                }
-                if store.isStandalone {
-                    ManageRow(title: L("Show in Finder"), subtitle: nil, icon: "folder", tint: .blue) {
-                        store.revealInFinder(paper.id)
-                    }
-                }
-                if PaperPresentation.canDeleteAudio(paper) {
-                    ManageRow(title: L("Delete audio"), subtitle: L("Free the space; keep the script"),
-                              icon: "waveform.slash", tint: .orange) {
-                        store.pendingConfirmation = .deleteAudio(paper)
-                    }
-                }
-                ManageRow(title: L("Delete paper"), subtitle: nil, icon: "trash", tint: .red, destructive: true) {
-                    store.pendingConfirmation = .delete(paper)
+    /// The actions on a paper, grouped by what they work on: the saved audio, new work from the
+    /// PDF, and the paper as a library item (listened, Finder, delete).
+    private var manageCards: some View {
+        VStack(spacing: 14) {
+            audioCard
+            pdfCard
+            libraryActions
+        }
+    }
+
+    /// Regenerate, export and delete the episode's audio.
+    private var audioCard: some View {
+        manageGroup(L("Audio"), systemImage: "waveform") {
+            ManageRow(title: L("Regenerate audio"), subtitle: L("Re-voice the existing script"),
+                      icon: "waveform.badge.magnifyingglass", tint: .appAccent) {
+                store.regenerateAudio(paper.id)
+            }
+            .disabled(!PaperPresentation.canRegenerateAudio(paper, anyConversionRunning: store.activeRun != nil))
+            ManageRow(title: L("Export audio…"), subtitle: L("Save the episode as one M4A file with the paper's details"),
+                      icon: "square.and.arrow.up", tint: .blue) {
+                exportAudio()
+            }
+            .disabled(!EpisodeExport.canExport(paper))
+            if PaperPresentation.canDeleteAudio(paper) {
+                ManageRow(title: L("Delete audio"), subtitle: L("Free the space; keep the script"),
+                          icon: "waveform.slash", tint: .orange) {
+                    store.pendingConfirmation = .deleteAudio(paper)
                 }
             }
+        }
+    }
+
+    /// Everything that reads the PDF again with the LLM: a new script, the mind map, the metadata.
+    private var pdfCard: some View {
+        manageGroup(L("PDF management"), systemImage: "doc.text.magnifyingglass") {
+            ManageRow(title: L("Rerun episode"), subtitle: L("Write a new script from the PDF"),
+                      icon: "arrow.counterclockwise", tint: .indigo) {
+                store.requestRerun(paper)
+            }
+            .disabled(!PaperPresentation.canRerun(paper))
+            let drawing = store.drawingMindMaps.contains(paper.id)
+            let mindMap = PaperPresentation.mindMapRow(paper, drawing: drawing)
+            ManageRow(title: mindMap.title, subtitle: mindMap.subtitle,
+                      icon: "point.3.connected.trianglepath.dotted", tint: .purple) {
+                store.createMindMap(paper.id)
+            }
+            .disabled(!store.canCreateMindMap(paper))
+            ManageRow(title: L("Refresh metadata"), subtitle: L("Re-extract title, authors and DOI"),
+                      icon: "arrow.clockwise", tint: .teal) {
+                store.refreshMeta(paper.id)
+            }
+        }
+    }
+
+    /// The paper as a library item: listened, Finder, and Delete paper last, below a divider.
+    private var libraryActions: some View {
+        manageGroup(L("Library"), systemImage: "books.vertical") {
+            let listened = PaperPresentation.listenedToggle(paper)
+            ManageRow(title: listened.title, subtitle: nil, icon: listened.icon, tint: .green) {
+                store.toggleRead(paper.id)
+            }
+            if store.isStandalone {
+                ManageRow(title: L("Show in Finder"), subtitle: nil, icon: "folder", tint: .blue) {
+                    store.revealInFinder(paper.id)
+                }
+            }
+            Divider().padding(.vertical, 4)
+            ManageRow(title: L("Delete paper"), subtitle: nil, icon: "trash", tint: .red, destructive: true) {
+                store.pendingConfirmation = .delete(paper)
+            }
+        }
+    }
+
+    /// One titled glass card of `ManageRow`s.
+    private func manageGroup<Rows: View>(_ title: String, systemImage: String,
+                                         @ViewBuilder rows: () -> Rows) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SectionLabel(title: title, systemImage: systemImage)
+                .padding(.bottom, 2)
+            VStack(spacing: 0) { rows() }
         }
         .glassCard(padding: 12)
     }
@@ -359,6 +393,15 @@ struct DetailView: View {
                 PDFViewerWindow.present(data: data, title: paper.displayTitle)
             }
         }
+    }
+
+    /// Ask where to save the episode, then export it there.
+    private func exportAudio() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.mpeg4Audio]
+        panel.nameFieldStringValue = EpisodeExport.fileName(paper)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { await store.exportAudio(paper.id, to: url) }
     }
 
     /// Open the transcript sheet with the script as it is on disk now.
@@ -740,7 +783,7 @@ private struct CitationView: View {
     }
 }
 
-/// A row of the Manage card: icon, title, optional subtitle; red when destructive.
+/// A row of a Manage card (Audio, PDF management, Library): icon, title, optional subtitle; red when destructive.
 private struct ManageRow: View {
     let title: String
     let subtitle: String?

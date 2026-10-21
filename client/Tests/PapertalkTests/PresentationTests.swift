@@ -856,3 +856,35 @@ final class NowPlayingPresentationTests: PapertalkTestCase {
         XCTAssertTrue(NowPlayingPresentation.shouldToggle(.toggle, isPlaying: false))
     }
 }
+
+/// The exported episode's file name and tags.
+final class EpisodeExportTests: PapertalkTestCase {
+    func testEpisodeExportTagsAndFileName() {
+        var p = Fixtures.paper(title: "Light: a/b study", tags: ["deep_learning", "optics"],
+                               authors: ["Ada Lovelace", "Alan Turing"], doi: "10.1/x")
+        p.affiliations = ["MIT", "ETH"]
+        p.publishedIso = "2021-05-03"
+        let tags = EpisodeExport(paper: p)
+        XCTAssertEqual(tags.title, "Light: a/b study")
+        XCTAssertEqual(tags.artist, "Ada Lovelace, Alan Turing")
+        XCTAssertEqual(tags.year, "2021")
+        XCTAssertEqual(tags.comment, """
+            Affiliations: MIT; ETH
+            DOI: https://doi.org/10.1/x
+            Published: 2021-05-03
+            Tags: deep learning, optics
+            """)
+        XCTAssertEqual(EpisodeExport.fileName(p), "Light- a-b study.m4a")
+
+        let bare = EpisodeExport(paper: Fixtures.paper(title: "Bare"))
+        XCTAssertEqual(bare.artist, "")
+        XCTAssertNil(bare.year)
+        XCTAssertEqual(bare.comment, "")
+    }
+
+    func testEpisodeExportNeedsSavedAudioAndAnIdlePaper() {
+        XCTAssertTrue(EpisodeExport.canExport(Fixtures.paper(hasAudio: true)))
+        XCTAssertFalse(EpisodeExport.canExport(Fixtures.paper(hasAudio: false)))
+        XCTAssertFalse(EpisodeExport.canExport(Fixtures.paper(state: "running", hasAudio: true)))
+    }
+}

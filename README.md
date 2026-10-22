@@ -52,6 +52,12 @@ ideas. It's a native macOS app written in SwiftUI.
   Library** in its context menu. The import sheet asks which library a paper goes into (the one
   open, to start with); the "already in your library" check still looks at every library.
   Right-click a library to edit or delete it (its papers stay, in no library).
+  **Show Paper Connections** (right-click a library, or the button beside its name in the toolbar)
+  draws its papers as one graph: a line joins two papers whose mind maps connect, thicker for more
+  connections, each cluster of linked papers in its own colour. Drag a paper to move it, or the
+  background to pan. Click a paper or a line to see which concepts connect and open a mind map. In a
+  library that connects to other libraries, the papers elsewhere it connects to show in grey
+  around it.
 - **Made for listening.** Episodes remember where you stopped, show in Control Center's Now
   Playing with their cover, and answer the media keys. Read along in the transcript.
 - **Works in the background.** Imports run while you listen to something else, with progress at

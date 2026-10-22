@@ -174,6 +174,27 @@ final class MindMapLayoutTests: PapertalkTestCase {
         XCTAssertEqual(MindMapLayout.clampScale(9), MindMapLayout.maxScale)
     }
 
+    func testABigWindowCentresTheMapOnACanvasAsBigAsTheWindow() throws {
+        let reply = MindMapFixtures.reply(parts: 3, links: #"[{"from": "problem0", "to": "method0", "label": "solved by"}]"#)
+        let layout = MindMapLayout(try XCTUnwrap(MindMap.parse(reply)))
+        let w = layout.width + 400, h = layout.height + 100
+        let filled = layout.filling(width: w, height: h)
+        XCTAssertEqual([filled.width, filled.height], [w, h])
+        XCTAssertEqual(filled.shift, .init(x: 200, y: 50))
+        let c = layout.positions[MindMapLayout.centerId]!
+        XCTAssertEqual(filled.positions[MindMapLayout.centerId], .init(x: c.x + 200, y: c.y + 50))
+        // A concept can be dragged to the window's edge, past where the map's own canvas ended.
+        let far = filled.dragged(from: c, dx: 1e6, dy: 0, scale: 1)
+        XCTAssertEqual(far.x, w - MindMapLayout.nodeWidth / 2)
+        // Links bow the same way wherever the map sits.
+        let link = try XCTUnwrap(layout.edges.first { $0.label != nil })
+        let k = try XCTUnwrap(layout.control(link)), fk = try XCTUnwrap(filled.control(link))
+        XCTAssertEqual(fk.x - k.x, 200, accuracy: 1e-9)
+        XCTAssertEqual(fk.y - k.y, 50, accuracy: 1e-9)
+        // A window smaller than the map changes nothing.
+        XCTAssertEqual(layout.filling(width: 10, height: 10), layout)
+    }
+
     func testPanningFollowsThePointerAndStopsAtTheEdges() {
         typealias P = MindMapLayout.Point
         let content = (width: 2000.0, height: 1500.0), viewport = (width: 800.0, height: 600.0)

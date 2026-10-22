@@ -679,6 +679,20 @@ final class AppStore: ObservableObject {
         return map
     }
 
+    /// The library's papers and how their saved mind maps connect them (and, when the library
+    /// connects across, the papers elsewhere they connect to).
+    func libraryMap(_ libraryId: String) async -> LibraryMap {
+        let members = papers.values.filter { $0.library == libraryId }
+        var maps: [String: MindMap] = [:]
+        for p in members where p.hasMindMap == true {
+            if let m = await mindMap(for: p.id) { maps[p.id] = m }
+        }
+        // Papers elsewhere join the map only if this library connects across.
+        let across = libraries.first { $0.id == libraryId }?.connectsAcross == true
+        return LibraryMap(papers: members, maps: maps,
+                          outside: across ? papers.values.filter { $0.library != libraryId } : [])
+    }
+
     /// Bumped whenever a paper's saved mind map changes, so an open map window can reload it.
     @Published private(set) var mindMapRevision: [String: Int] = [:]
 

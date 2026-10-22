@@ -48,6 +48,8 @@ struct SidebarView: View {
                         .badge(store.sidebarCount(.library(library.id)))
                         .tag(SidebarItem.library(library.id))
                         .contextMenu {
+                            Button(LibraryMapPresentation.open) { LibraryMapWindow.open(libraryId: library.id, store: store) }
+                            Divider()
                             Button(L("Edit Library…")) { store.editingLibrary = LibraryForm(library) }
                             Button(L("Delete Library…"), role: .destructive) { store.requestDeleteLibrary(library.id) }
                         }

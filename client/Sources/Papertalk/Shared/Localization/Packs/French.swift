@@ -642,5 +642,6 @@ extension LanguagePacks {
         "Connect mind maps to other libraries": "Relier les cartes mentales aux autres bibliothèques",
         "Off, a paper's mind map is only connected to the other papers in this library. The change applies to mind maps drawn from now on.": "Désactivé, la carte mentale d'un article n'est reliée qu'aux autres articles de cette bibliothèque. Le changement s'applique aux cartes dessinées à partir de maintenant.",
         "e.g. Neuroscience": "p. ex. Neurosciences",
+        "Mind maps connect to other libraries": "Les cartes mentales sont reliées aux autres bibliothèques",
     ]
 }

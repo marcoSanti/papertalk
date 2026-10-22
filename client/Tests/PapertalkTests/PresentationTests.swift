@@ -646,6 +646,11 @@ final class FormTests: PapertalkTestCase {
         XCTAssertEqual(edit.library, lib)
         XCTAssertEqual(edit.title, "Edit Library")
         XCTAssertEqual(edit.saveLabel, "Save")
+        XCTAssertEqual(Set(LibraryForm.icons).count, LibraryForm.icons.count)
+        XCTAssertEqual(LibraryPresentation.crossLinkMark(lib)?.icon, "link")
+        var inside = lib
+        inside.connectsAcross = false
+        XCTAssertNil(LibraryPresentation.crossLinkMark(inside))
     }
 
     func testMindMapsLinkWithinALibraryUnlessItConnectsAcross() {

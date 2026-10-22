@@ -32,7 +32,19 @@ struct SidebarView: View {
                         .selectionDisabled()
                 }
                 ForEach(store.libraries) { library in
-                    Label(library.name, systemImage: library.icon)
+                    Label {
+                        HStack(spacing: 4) {
+                            Text(library.name)
+                            if let mark = LibraryPresentation.crossLinkMark(library) {
+                                Image(systemName: mark.icon)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .help(mark.help)
+                            }
+                        }
+                    } icon: {
+                        Image(systemName: library.icon)
+                    }
                         .badge(store.sidebarCount(.library(library.id)))
                         .tag(SidebarItem.library(library.id))
                         .contextMenu {
@@ -110,6 +122,9 @@ struct SidebarView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        // Opaque, so tags scrolled underneath don't show through.
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
     }
 }
 

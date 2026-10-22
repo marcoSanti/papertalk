@@ -14,8 +14,14 @@ struct LibraryForm: Identifiable, Equatable {
 
     /// The icons the sheet offers (SF Symbols).
     static let icons = [
-        "folder", "books.vertical", "book.closed", "graduationcap", "brain", "atom", "flask",
-        "leaf", "globe", "cpu", "function", "chart.bar", "heart", "star", "bolt", "lightbulb",
+        "folder", "tray.full", "archivebox", "books.vertical", "book.closed", "bookmark", "doc.text", "newspaper",
+        "graduationcap", "brain", "brain.head.profile", "atom", "flask", "testtube.2", "microbe", "pills",
+        "cross.case", "stethoscope", "heart", "lungs", "allergens", "leaf", "tree", "pawprint",
+        "ladybug", "fish", "globe", "globe.europe.africa", "mountain.2", "drop", "flame", "snowflake",
+        "sun.max", "moon.stars", "sparkles", "bolt", "lightbulb", "cpu", "memorychip", "server.rack",
+        "desktopcomputer", "network", "antenna.radiowaves.left.and.right", "chevron.left.forwardslash.chevron.right", "terminal", "gearshape.2", "wrench.and.screwdriver", "hammer",
+        "function", "sum", "x.squareroot", "chart.bar", "chart.line.uptrend.xyaxis", "chart.pie", "dollarsign.circle", "building.columns",
+        "scalemass", "car", "airplane", "music.note", "paintpalette", "camera", "person.2", "star",
     ]
 
     /// A blank form for a new library.

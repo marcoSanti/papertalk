@@ -34,6 +34,11 @@ enum LibraryPresentation {
         }
     }
 
+    /// The chain beside a library whose mind maps connect to other libraries; nil otherwise.
+    static func crossLinkMark(_ library: Library) -> (icon: String, help: String)? {
+        library.connectsAcross ? ("link", L("Mind maps connect to other libraries")) : nil
+    }
+
     /// `one` for 1, else `other` with {0} replaced by the count ("{0} papers").
     static func count(_ n: Int, _ one: String, _ other: String) -> String {
         n == 1 ? one : other.replacingOccurrences(of: "{0}", with: "\(n)")

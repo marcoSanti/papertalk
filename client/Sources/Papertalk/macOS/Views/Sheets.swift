@@ -101,13 +101,13 @@ struct UploadSheet: View {
                     .frame(width: 40, height: 40)
                     .background(Color.appAccent.gradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(ImportForm.heading).font(.title3.weight(.semibold))
-                    Text(ImportForm.subheading)
+                    Text(form.heading).font(.title3.weight(.semibold))
+                    Text(form.subheading)
                         .font(.callout).foregroundStyle(.secondary)
                 }
             }
 
-            dropZone
+            if form.rerunning == nil { dropZone }
 
             VStack(alignment: .leading, spacing: 8) {
                 SectionLabel(title: L("Depth"), systemImage: "dial.medium")
@@ -181,7 +181,7 @@ struct UploadSheet: View {
                 .padding(.horizontal, 4)
             }
 
-            if !store.libraries.isEmpty {
+            if form.rerunning == nil, !store.libraries.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionLabel(title: L("Add to library"), systemImage: "books.vertical")
                     FlowLayout(spacing: 8, lineSpacing: 8) {
@@ -218,7 +218,11 @@ struct UploadSheet: View {
                     .buttonStyle(.tinted(.gray))
                     .keyboardShortcut(.cancelAction)
                 Button(L("Start episode")) {
-                    if let s = form.submission {
+                    if let p = form.rerunning {
+                        store.rerun(p.id, depth: form.depth, depthNote: form.depthNote,
+                                    targetMinutes: form.targetMinutes, scriptLanguage: form.scriptLanguage)
+                        dismiss()
+                    } else if let s = form.submission {
                         store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
                                      targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage, library: s.library)
                         dismiss()
@@ -236,6 +240,7 @@ struct UploadSheet: View {
         .tint(Color.appAccent)
         .onAppear {
             form.library = store.shownLibrary
+            if let p = store.rerunning { form.rerun(p) }
             if let url = store.pendingUploadURL {
                 store.pendingUploadURL = nil
                 load(url)

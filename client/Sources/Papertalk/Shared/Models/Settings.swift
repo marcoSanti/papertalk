@@ -394,6 +394,7 @@ struct PromptSettings: Codable, Equatable {
         - Say numbers as they are spoken: "about ninety-two point four percent", "ten to the minus three".
         - Expand abbreviations the first time they appear.
         - Mostly 1–5 sentences per turn; vary rhythm with occasional short reactions ("Right.", "Wait, so...").
+        - Vary how turns begin. Don't open turns, and never a segment, with a filler like "So", "Okay" or "Well".
         - Stay faithful to the source. Never invent results, numbers or claims.
         """,
         segmentRequest: """
@@ -418,10 +419,10 @@ struct PromptSettings: Codable, Equatable {
         """,
         lengthLimit: "HARD LIMIT: at most {maxWords} words for this segment. The episode has a fixed length, so cover the goal briefly and stop; leave out side points rather than run over.",
         condense: "This dialogue segment is too long for the episode. Rewrite it in about {targetWords} words: keep the same speakers, the key facts and numbers, and how it ends; drop repetition, small talk and side points.",
-        positionOnly: "This is the ONLY segment of the episode. {host} opens by introducing the paper, its authors and the topic, then you have a complete conversation from start to finish, landing a satisfying ending.",
-        positionFirst: "This is the FIRST segment. {host} starts the episode by introducing the paper, its authors and the topic. Leave room for the later segments; do not jump to conclusions.",
-        positionMiddle: "This is a MIDDLE segment. {host} briefly signals this part's goal, then keep going. Do not reintroduce the paper or wrap up the episode.",
-        positionLast: "This is the LAST segment. Build on what was covered and move the conversation to a satisfying conclusion and wrap-up.",
+        positionOnly: "This is the ONLY segment of the episode. {host} opens by introducing the paper, its authors and the topic, in a first line that makes sense with nothing before it (no \"So\", \"And\" or \"Okay\" to start), then you have a complete conversation from start to finish, landing a satisfying ending.",
+        positionFirst: "This is the FIRST segment. {host} starts the episode by introducing the paper, its authors and the topic, in a first line that makes sense with nothing before it (no \"So\", \"And\" or \"Okay\" to start). Leave room for the later segments; do not jump to conclusions.",
+        positionMiddle: "This is a MIDDLE segment. {host} briefly signals this part's goal in a fresh opening line (not \"So…\"), then keep going. Do not reintroduce the paper or wrap up the episode.",
+        positionLast: "This is the LAST segment. Open with a fresh line (not \"So…\"), build on what was covered and move the conversation to a satisfying conclusion and wrap-up.",
         monologuePersona: """
         You are {expert}, the paper's first author, explaining the method aloud to a listener who wants to re-derive it. Build a SINGLE continuous monologue that reproduces the paper's method FAITHFULLY and at FULL length — do not summarise, condense, or drop any step, definition, parameter, equation, assumption, dataset, baseline, or number. The source is raw OCR/PDF text full of extraction artifacts (broken hyphenated words, mangled symbols and equations): repair those so it reads as clean, natural spoken prose, and verbalise every equation in words. Keep the paper's own framing and every number exactly as stated. Never add content the source does not state.
         """,

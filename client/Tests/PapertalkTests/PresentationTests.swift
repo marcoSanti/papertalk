@@ -46,8 +46,8 @@ final class LibraryPresentationTests: PapertalkTestCase {
     }
 
     func testImportSheetCopyNamesThisMachine() {
-        XCTAssertEqual(ImportForm.heading, "New episode")
-        XCTAssertTrue(ImportForm.subheading.hasSuffix("converted on \(Device.this)."))
+        XCTAssertEqual(ImportForm().heading, "New episode")
+        XCTAssertTrue(ImportForm().subheading.hasSuffix("converted on \(Device.this)."))
     }
 
     func testSidebarTitles() {
@@ -475,6 +475,23 @@ final class TranscriptPresentationTests: PapertalkTestCase {
 
 /// The import, metadata, settings and presets forms.
 final class FormTests: PapertalkTestCase {
+    func testImportFormRerunStartsFromThePapersChoicesWithoutAFile() {
+        var p = Fixtures.paper(title: "T")
+        p.depth = Depth.summary.rawValue
+        p.targetMinutes = 20
+        var f = ImportForm()
+        f.rerun(p)
+        XCTAssertEqual(f.heading, "Rerun episode")
+        XCTAssertEqual(f.subheading, "T")
+        XCTAssertEqual(f.depth, .summary)
+        XCTAssertEqual(f.targetMinutes, 20)
+        XCTAssertTrue(f.canStart)                       // the stored PDF is used
+        XCTAssertNil(f.submission)                      // not a new import
+        f.depth = .custom
+        XCTAssertFalse(f.canStart)                      // custom still needs a description
+        XCTAssertNil(f.targetMinutes)
+    }
+
     func testImportForm() {
         var f = ImportForm()
         XCTAssertFalse(f.canStart)

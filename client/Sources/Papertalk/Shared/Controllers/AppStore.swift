@@ -83,7 +83,16 @@ final class AppStore: ObservableObject {
     @Published var pendingUploadURL: URL?
     /// Open the import sheet, optionally with a dropped PDF already in it.
     func beginImport(_ url: URL? = nil) {
+        rerunning = nil
         pendingUploadURL = url
+        showUpload = true
+    }
+    /// A paper the import sheet is open to convert again (nil: a new import).
+    @Published var rerunning: Paper?
+    /// Open the import sheet for `p`, to choose its depth (and length, language) again.
+    func beginRerun(_ p: Paper) {
+        rerunning = p
+        pendingUploadURL = nil
         showUpload = true
     }
     /// Destructive action awaiting confirmation. Lives on the store so the
@@ -160,9 +169,10 @@ final class AppStore: ObservableObject {
         markOnboarded()
     }
 
-    /// Rerun from a menu or button: confirm first when it would replace an episode.
+    /// Rerun from a menu or button: confirm first when it would replace an episode, then ask
+    /// for the depth in the import sheet.
     func requestRerun(_ p: Paper) {
-        if PaperPresentation.rerunNeedsConfirmation(p) { pendingConfirmation = .rerun(p) } else { rerun(p.id) }
+        if PaperPresentation.rerunNeedsConfirmation(p) { pendingConfirmation = .rerun(p) } else { beginRerun(p) }
     }
 
     /// Rename from the inline title field. Returns the text the field should
@@ -180,7 +190,7 @@ final class AppStore: ObservableObject {
         pendingConfirmation = nil
         switch pending {
         case .delete(let p): delete(p.id)
-        case .rerun(let p): rerun(p.id)
+        case .rerun(let p): beginRerun(p)
         case .deleteAudio(let p), .finishedListening(let p): deleteAudio(p.id)
         case .redrawAllMindMaps: redrawAllMindMaps()
         case .deleteLibrary(let library): deleteLibrary(library.id)
@@ -892,15 +902,24 @@ final class AppStore: ObservableObject {
     /// Convert a paper again. `fresh` discards the stored script and audio so
     /// a new episode is written; otherwise the run resumes from whatever
     /// already landed on disk (used by "Try again" after a failure).
-    func rerun(_ id: String, fresh: Bool = true) {
+    /// A `depth` (from the rerun sheet) replaces the paper's depth, length and language.
+    func rerun(_ id: String, fresh: Bool = true, depth chosen: Depth? = nil, depthNote: String = "",
+               targetMinutes: Int? = nil, scriptLanguage: AppLanguage = .english) {
         guard let p = papers[id], !p.isActive else { return }
-        let depth = Depth(rawValue: p.depth ?? "") ?? .inDepth
+        let depth = chosen ?? Depth(rawValue: p.depth ?? "") ?? .inDepth
         startRun(id) {
             if fresh {
                 await self.discardEpisode(id)
-                self.optimistic(id, { $0.hasScript = false; $0.hasAudio = false; $0.duration = 0 })
+                self.optimistic(id, {
+                    $0.hasScript = false; $0.hasAudio = false; $0.duration = 0
+                    if chosen != nil {
+                        $0.depth = depth.rawValue
+                        $0.targetMinutes = targetMinutes
+                        $0.scriptLanguage = scriptLanguage == .english ? nil : scriptLanguage.rawValue
+                    }
+                })
             }
-            await self.runPipeline(self.papers[id], depth: depth)
+            await self.runPipeline(self.papers[id], depth: depth, depthNote: depthNote)
         }
     }
 

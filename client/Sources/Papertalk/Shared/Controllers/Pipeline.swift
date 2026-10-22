@@ -277,6 +277,7 @@ struct LocalPipeline {
                     turns = try await fitDialogue(turns, to: targets[k], host: host, expert: expert)
                 }
             }
+            if !turns.isEmpty { turns[0].text = Self.cleanOpening(turns[0].text) }
             log("    ✓ wrote \(turns.count) turns (~\(turns.reduce(0) { $0 + $1.text.count }) chars); \(history.count + turns.count) turns so far")
             history.append(contentsOf: turns)
             segments.append(Transcript.Segment(title: seg.title, turns: turns))
@@ -481,6 +482,20 @@ struct LocalPipeline {
         let cut = Self.trimTurns(best, toWords: target)
         log("    still long (\(Self.wordCount(best)) words) — cut to \(Self.wordCount(cut))")
         return cut
+    }
+
+    /// A segment's first line without the filler models open with despite the prompt
+    /// ("So we've seen…" → "We've seen…"), so no segment, least of all the episode, starts mid-thought.
+    static func cleanOpening(_ text: String) -> String {
+        var out = text
+        // Twice for "Okay, so…"; "So far" and the like are part of the sentence, not filler.
+        for _ in 0..<2 {
+            guard let r = out.range(of: #"^(So(?!\s+(far|much|many|that|to)\b)|And|But|Okay|OK|Well)\b[,.…]*\s+"#, options: [.regularExpression, .caseInsensitive]),
+                  r.upperBound < out.endIndex else { break }
+            out = String(out[r.upperBound...])
+            out = out.prefix(1).uppercased() + out.dropFirst()
+        }
+        return out
     }
 
     /// Spoken words in `turns`, the unit every length rule uses.

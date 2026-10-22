@@ -621,6 +621,21 @@ final class AppStoreTests: PapertalkTestCase {
         store.requestRerun(p)
         XCTAssertEqual(store.pendingConfirmation?.id, AppStore.PendingConfirmation.rerun(p).id)
         XCTAssertEqual(store.papers["p"]?.state, "done")  // nothing started yet
+        store.confirmPending(.rerun(p))
+        XCTAssertEqual(store.rerunning?.id, "p")          // the sheet asks for the depth next
+        XCTAssertTrue(store.showUpload)
+        XCTAssertEqual(store.papers["p"]?.state, "done")
+        store.beginImport()
+        XCTAssertNil(store.rerunning)                     // a plain import isn't a rerun
+    }
+
+    func testRerunWithoutAnEpisodeAsksOnlyForTheDepth() async {
+        let p = Fixtures.paper(id: "p", hasScript: false, hasAudio: false)
+        let store = await makeStore([p])
+        store.requestRerun(p)
+        XCTAssertNil(store.pendingConfirmation)
+        XCTAssertEqual(store.rerunning?.id, "p")
+        XCTAssertTrue(store.showUpload)
     }
 
     func testConfirmingADeleteCarriesItOut() async {

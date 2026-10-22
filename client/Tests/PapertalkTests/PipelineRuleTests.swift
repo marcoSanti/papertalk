@@ -146,6 +146,18 @@ final class PipelineRuleTests: PapertalkTestCase {
         XCTAssertFalse(prompts.all.contains { $0.contains("too long for the episode") || $0.contains("HARD LIMIT") })
     }
 
+    func testSegmentOpeningsDropLeadingFiller() {
+        let clean = LocalPipeline.cleanOpening
+        XCTAssertEqual(clean("So we've covered the method. Now the results."), "We've covered the method. Now the results.")
+        XCTAssertEqual(clean("Okay, so how does it scale?"), "How does it scale?")
+        XCTAssertEqual(clean("And… what about memory?"), "What about memory?")
+        XCTAssertEqual(clean("So far, the results hold."), "So far, the results hold.")   // part of the sentence
+        XCTAssertEqual(clean("Sorry to interrupt."), "Sorry to interrupt.")
+        XCTAssertEqual(clean("Well-known results first."), "Well-known results first.")
+        XCTAssertEqual(clean("So."), "So.")                                             // nothing left to keep
+        XCTAssertEqual(clean("Welcome to the show."), "Welcome to the show.")
+    }
+
     func testTrimTurnsKeepsWholeSentencesAndTheEnding() {
         typealias T = Transcript.Turn
         let turns = [T(speaker: "Jo", text: "One two three. Four five six."),

@@ -155,6 +155,8 @@ final class LibraryMapTests: PapertalkTestCase {
         XCTAssertEqual(LibraryMapPresentation.linkCount(1), "1 connection")
         XCTAssertEqual(LibraryMapPresentation.linkCount(3), "3 connections")
         XCTAssertEqual(LibraryMapPresentation.title("Neuro"), "Paper connections — Neuro")
+        XCTAssertTrue(LibraryMapPresentation.canOpen(library: "lib"))
+        XCTAssertFalse(LibraryMapPresentation.canOpen(library: nil))
     }
 
     @MainActor

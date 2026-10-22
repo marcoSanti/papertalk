@@ -412,6 +412,7 @@ extension LanguagePacks {
         "Show activity log": "Mostra registro attività",
         "Zoom out": "Riduci",
         "Fit the whole map": "Adatta tutta la mappa",
+        "Put every concept and connection back in place": "Rimetti ogni concetto e collegamento al suo posto",
         "Zoom in": "Ingrandisci",
         "NEW": "NUOVO",
         "Not listened yet": "Non ancora ascoltato",

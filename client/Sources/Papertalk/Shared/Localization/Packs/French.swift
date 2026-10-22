@@ -412,6 +412,7 @@ extension LanguagePacks {
         "Show activity log": "Afficher le journal d’activité",
         "Zoom out": "Zoom arrière",
         "Fit the whole map": "Ajuster toute la carte",
+        "Put every concept and connection back in place": "Remettre chaque concept et connexion à sa place",
         "Zoom in": "Zoom avant",
         "NEW": "NOUVEAU",
         "Not listened yet": "Pas encore écouté",

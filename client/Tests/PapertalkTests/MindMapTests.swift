@@ -188,6 +188,38 @@ final class MindMapLayoutTests: PapertalkTestCase {
                                             content: (500, 400), viewport: viewport), P(x: 0, y: 0))
     }
 
+    func testDraggedConceptsAndHandlesMoveTheirEdgesAndStayOnTheCanvas() throws {
+        typealias P = MindMapLayout.Point
+        let links = #"[{"from":"problem0","to":"method1","label":"solved by"}]"#
+        let map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(links: links)))
+        let base = MindMapLayout(map)
+        XCTAssertEqual(base.arranged(.init()), base)
+
+        // A concept follows the pointer, divided by the zoom, and stops at the canvas edge.
+        let start = try XCTUnwrap(base.positions["method0"])
+        XCTAssertEqual(base.dragged(from: start, dx: 20, dy: -10, scale: 0.5), P(x: start.x + 40, y: start.y - 20))
+        let far = base.dragged(from: start, dx: -1e5, dy: 1e5, scale: 1)
+        XCTAssertEqual(far, P(x: MindMapLayout.nodeWidth / 2, y: base.height - MindMapLayout.nodeHeight / 2))
+
+        // Moving it moves its edges' ends; concepts no longer on the map are ignored.
+        let moved = base.arranged(.init(nodes: ["method0": far, "gone": far]))
+        XCTAssertEqual(moved.positions["method0"], far)
+        XCTAssertNil(moved.positions["gone"])
+        let tree = try XCTUnwrap(moved.selectableEdges.first { $0.id == "method→method0" })
+        let m = try XCTUnwrap(moved.positions["method"])
+        XCTAssertEqual(moved.handle(tree), P(x: (m.x + far.x) / 2, y: (m.y + far.y) / 2))
+
+        // A dragged handle bends even a tree edge, and the handle lands where it was dropped.
+        let target = P(x: 300, y: 200)
+        let offset = try XCTUnwrap(moved.handleOffset(tree, at: target))
+        let bent = moved.arranged(.init(nodes: ["method0": far], handles: [tree.id: offset]))
+        XCTAssertNotNil(bent.control(tree))
+        let h = try XCTUnwrap(bent.handle(tree))
+        XCTAssertEqual(h.x, target.x, accuracy: 1e-9)
+        XCTAssertEqual(h.y, target.y, accuracy: 1e-9)
+        XCTAssertFalse(MindMapLayout.Arrangement(handles: [tree.id: offset]).isEmpty)
+    }
+
     func testEdgesCanBeSelectedByAHandleHalfwayAlong() throws {
         let links = #"[{"from":"problem0","to":"method1","label":"solved by"}]"#
         let map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(links: links)))
@@ -230,6 +262,35 @@ final class MindMapLayoutTests: PapertalkTestCase {
         let layout = MindMapLayout(try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(parts: 3, links: links))))
         for link in layout.selectableEdges where link.label != nil {
             XCTAssertFalse(layout.labelOverlapsNode(try XCTUnwrap(layout.handle(link))), link.id)
+        }
+    }
+
+    func testLinksRunClearOfOtherNodesAndLabels() throws {
+        // Siblings with others between them on one ring: a gentle bow used to cut through
+        // evidence1 and evidence2, and two links into evidence0 stacked their labels.
+        let links = #"[{"from":"evidence3","to":"evidence0","label":"overhead source"},"#
+            + #"{"from":"method3","to":"method0","label":"set up by"},{"from":"method1","to":"evidence0","label":"tested by"}]"#
+        let layout = MindMapLayout(try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(parts: 4, links: links))))
+        let linked = layout.edges.filter { $0.label != nil }
+        for link in linked {
+            let a = try XCTUnwrap(layout.positions[link.from]), b = try XCTUnwrap(layout.positions[link.to])
+            let k = try XCTUnwrap(layout.control(link))
+            for t in stride(from: 0.0, through: 1.0, by: 0.02) {
+                let x = (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * k.x + t * t * b.x
+                let y = (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * k.y + t * t * b.y
+                for (id, c) in layout.positions where id != link.from && id != link.to {
+                    let inside = abs(x - c.x) < MindMapLayout.nodeWidth / 2 && abs(y - c.y) < MindMapLayout.nodeHeight / 2
+                    XCTAssertFalse(inside, "\(link.id) runs through \(id)")
+                }
+            }
+        }
+        let handles = try linked.map { try XCTUnwrap(layout.handle($0)) }
+        for i in handles.indices {
+            for j in handles.indices where j > i {
+                let apart = abs(handles[i].x - handles[j].x) >= MindMapLayout.linkLabelWidth
+                    || abs(handles[i].y - handles[j].y) >= MindMapLayout.linkLabelHeight
+                XCTAssertTrue(apart, "\(linked[i].id) and \(linked[j].id) labels overlap")
+            }
         }
     }
 

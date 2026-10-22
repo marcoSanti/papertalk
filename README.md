@@ -32,7 +32,9 @@ ideas. It's a native macOS app written in SwiftUI.
 - **A mind map of every paper.** The key concepts as a graph around three branches: the problem,
   the approach and the demonstration, each broken into its parts, with links between them. It
   opens on a plain-language summary of the paper; click a concept for its core idea and
-  description, or a connection to see the two concepts it joins. **Edit** (by the zoom controls)
+  description, or a connection to see the two concepts it joins. Drag a concept to move it, or a
+  connection's dot or label to bend it; the arrow by the zoom controls puts everything back (the
+  arrangement lasts while the window is open). **Edit** (by the zoom controls)
   lets you rename, describe, add, move and delete concepts, and add, name and delete connections;
   changes are saved as you make them. The three main concepts can be changed but not deleted.
   When a map is drawn, Papertalk also looks for concepts it shares with your other papers' maps

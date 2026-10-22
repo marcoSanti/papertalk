@@ -23,15 +23,50 @@ struct MindMapLayout: Equatable {
     var selectableEdges: [Edge] { edges.filter { $0.from != Self.centerId } }
 
     /// How far each link bows, as a share of its length: positive away from
-    /// the centre, negative towards it. Chosen so its label clears every node.
+    /// the centre, negative towards it. Chosen so its curve and label clear every node.
     private var bend: [String: Double] = [:]
-    private static let bends = [0.3, 0.45, 0.6, 0.15, -0.3, -0.45]
+    private static let bends = [0.3, 0.45, 0.6, 0.15, -0.3, -0.45, 0.8, 1.0, -0.6]
 
-    /// A link's curve control point: links bow sideways (away from the centre
-    /// unless that puts the label on a node). nil for straight tree edges.
+    /// What the user has dragged in the window: concepts to new places, and edges' handles off
+    /// their midpoint. Kept apart from the computed layout so a redraw after an edit reapplies it.
+    struct Arrangement: Equatable {
+        var nodes: [String: Point] = [:]
+        /// Edge id → its handle's offset from the midpoint between its two ends.
+        var handles: [String: Point] = [:]
+        var isEmpty: Bool { nodes.isEmpty && handles.isEmpty }
+    }
+    private var handleOffsets: [String: Point] = [:]
+
+    /// This layout with the user's arrangement applied; concepts no longer on the map are ignored.
+    func arranged(_ a: Arrangement) -> MindMapLayout {
+        var l = self
+        for (id, p) in a.nodes where l.positions[id] != nil { l.positions[id] = p }
+        l.handleOffsets = a.handles
+        return l
+    }
+
+    /// Where something dragged from `start` by (`dx`, `dy`) screen points at `scale` lands,
+    /// kept on the canvas with room for a `w` × `h` box around it.
+    func dragged(from start: Point, dx: Double, dy: Double, scale: Double,
+                 w: Double = nodeWidth, h: Double = nodeHeight) -> Point {
+        Point(x: min(width - w / 2, max(w / 2, start.x + dx / scale)),
+              y: min(height - h / 2, max(h / 2, start.y + dy / scale)))
+    }
+
+    /// The handle offset that puts `e`'s handle at `p`.
+    func handleOffset(_ e: Edge, at p: Point) -> Point? {
+        guard let a = positions[e.from], let b = positions[e.to] else { return nil }
+        return Point(x: p.x - (a.x + b.x) / 2, y: p.y - (a.y + b.y) / 2)
+    }
+
+    /// An edge's curve control point: where the user dragged its handle, else links bow
+    /// sideways (away from the centre unless that puts the label on a node). nil for straight edges.
     func control(_ e: Edge) -> Point? {
-        guard e.label != nil, let a = positions[e.from], let b = positions[e.to] else { return nil }
+        guard let a = positions[e.from], let b = positions[e.to] else { return nil }
         let mid = Point(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+        // The handle is halfway along the curve, so the control point sits twice as far out.
+        if let o = handleOffsets[e.id] { return Point(x: mid.x + 2 * o.x, y: mid.y + 2 * o.y) }
+        guard e.label != nil else { return nil }
         let dx = b.x - a.x, dy = b.y - a.y, length = max(hypot(dx, dy), 1)
         var nx = -dy / length, ny = dx / length
         if let c = positions[Self.centerId], nx * (c.x - mid.x) + ny * (c.y - mid.y) > 0 { nx = -nx; ny = -ny }
@@ -45,6 +80,22 @@ struct MindMapLayout: Equatable {
             abs($0.x - p.x) < (Self.nodeWidth + Self.linkLabelWidth) / 2
                 && abs($0.y - p.y) < (Self.nodeHeight + Self.linkLabelHeight) / 2
         }
+    }
+
+    /// How many nodes a link's curve (at its current bend) runs through, plus how many nodes
+    /// and earlier `labels` its label covers: 0 is a clean link.
+    private func collisions(_ e: Edge, labels: [Point]) -> Int {
+        guard let a = positions[e.from], let b = positions[e.to], let k = control(e), let h = handle(e) else { return 0 }
+        let curve = stride(from: 0.0, through: 1.0, by: 0.025).map { t in
+            Point(x: (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * k.x + t * t * b.x,
+                  y: (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * k.y + t * t * b.y)
+        }
+        let crossed = positions.filter { id, c in
+            id != e.from && id != e.to
+                && curve.contains { abs($0.x - c.x) < Self.nodeWidth / 2 + 4 && abs($0.y - c.y) < Self.nodeHeight / 2 + 4 }
+        }.count
+        let covered = labels.filter { abs($0.x - h.x) < Self.linkLabelWidth && abs($0.y - h.y) < Self.linkLabelHeight + 4 }.count
+        return crossed + covered + (labelOverlapsNode(h) ? 1 : 0)
     }
 
     /// Where an edge's handle sits: halfway along the line or curve.
@@ -61,10 +112,10 @@ struct MindMapLayout: Equatable {
     /// Whether `id` is another paper's concept.
     static func isExternal(_ id: String) -> Bool { id.hasPrefix("§ext:") }
     /// Node box the layout leaves room for.
-    static let nodeWidth = 150.0, nodeHeight = 56.0
+    static let nodeWidth = 172.0, nodeHeight = 64.0
     /// Room left for a link's label tag.
-    static let linkLabelWidth = 110.0, linkLabelHeight = 24.0
-    private static let firstRing = 200.0, ringGap = 175.0, margin = 24.0
+    static let linkLabelWidth = 130.0, linkLabelHeight = 26.0
+    private static let firstRing = 180.0, ringGap = 190.0, margin = 24.0
 
     /// Concept id (and `centerId`) → centre of its node, in points from the top-left.
     private(set) var positions: [String: Point] = [:]
@@ -153,15 +204,17 @@ struct MindMapLayout: Equatable {
             place(root.id, from: c - 56, to: c + 56, depth: 1)
         }
 
-        // Each ring is far enough out that the closest two of its nodes are a label apart.
+        // Each ring is far enough out that neighbouring boxes clear each other, side by side
+        // (at the top and bottom) or stacked (at the sides), whichever comes first.
         let maxDepth = depth.values.max() ?? 0
         var radius: [Int: Double] = [:]
         for d in 1...max(1, maxDepth) {
             let angles = depth.filter { $0.value == d }.compactMap { angle[$0.key] }.sorted()
-            var gap = 360.0
-            for (a, b) in zip(angles, angles.dropFirst()) { gap = min(gap, b - a) }
-            if angles.count > 1 { gap = min(gap, angles[0] + 360 - angles[angles.count - 1]) }
-            let needed = (Self.nodeWidth + 30) / (max(gap, 0.5) * .pi / 180)
+            var needed = 0.0
+            for (a, b) in zip(angles, angles.dropFirst() + angles.prefix(angles.count > 2 ? 1 : 0)) {
+                let dx = abs(cos(a * .pi / 180) - cos(b * .pi / 180)), dy = abs(sin(a * .pi / 180) - sin(b * .pi / 180))
+                needed = max(needed, min((Self.nodeWidth + 24) / max(dx, 1e-3), (Self.nodeHeight + 16) / max(dy, 1e-3)))
+            }
             let previous = d == 1 ? 0 : (radius[d - 1] ?? 0) + Self.ringGap
             radius[d] = max(d == 1 ? Self.firstRing : previous, needed)
         }
@@ -199,12 +252,19 @@ struct MindMapLayout: Equatable {
 
         // The canvas holds every node, and every link's curve and label: a link
         // bows outward, and its furthest point is its handle.
+        // Each link takes the first bend that runs clear of the nodes and the labels already
+        // placed, or failing that the one that hits the fewest.
         positions = raw
+        var labels: [Point] = []
         for e in edges where e.label != nil {
-            bend[e.id] = Self.bends.first { f in
+            var best = (f: Self.bends[0], hits: Int.max)
+            for f in Self.bends where best.hits > 0 {
                 bend[e.id] = f
-                return handle(e).map { !labelOverlapsNode($0) } ?? true
-            } ?? Self.bends[0]
+                let hits = collisions(e, labels: labels)
+                if hits < best.hits { best = (f, hits) }
+            }
+            bend[e.id] = best.f
+            if let h = handle(e) { labels.append(h) }
         }
         let handles = edges.filter { $0.label != nil }.compactMap { handle($0) }
         let xs = raw.values.map { [$0.x - Self.nodeWidth / 2, $0.x + Self.nodeWidth / 2] }.flatMap { $0 }

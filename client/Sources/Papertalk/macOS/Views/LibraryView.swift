@@ -78,8 +78,6 @@ struct LibraryView: View {
         .background(AmbientBackground())
         .navigationTitle(title)
         .navigationSubtitle(LibraryPresentation.paperCount(papers.count))
-        // In a library the title is drawn by hand below, so its connections button can sit right of it.
-        .toolbar(removing: store.shownLibrary == nil ? nil : .title)
         .toolbar {
             if store.view == .author {
                 ToolbarItem(placement: .navigation) {
@@ -93,23 +91,15 @@ struct LibraryView: View {
                     .help(L("Back to all authors"))
                 }
             }
-            if let id = store.shownLibrary {
-                // Plain text like the system title: no glass pill, and as wide as the name.
-                ToolbarItem(placement: .navigation) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(title).font(.headline).lineLimit(1)
-                        Text(LibraryPresentation.paperCount(papers.count)).font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    .fixedSize()
-                    .padding(.horizontal, 4)
+            // Always present (only disabled outside a library) and beside the system title, never a
+            // hand-drawn one: items appearing, or removing the title, move the toolbar's buttons and
+            // drop the search field's background.
+            ToolbarItem(placement: .navigation) {
+                Button { store.shownLibrary.map { LibraryMapWindow.open(libraryId: $0, store: store) } } label: {
+                    Label(LibraryMapPresentation.open, systemImage: "point.3.connected.trianglepath.dotted")
                 }
-                .sharedBackgroundVisibility(.hidden)
-                ToolbarItem(placement: .navigation) {
-                    Button { LibraryMapWindow.open(libraryId: id, store: store) } label: {
-                        Label(LibraryMapPresentation.open, systemImage: "point.3.connected.trianglepath.dotted")
-                    }
-                    .help(LibraryMapPresentation.openHelp)
-                }
+                .disabled(!LibraryMapPresentation.canOpen(library: store.shownLibrary))
+                .help(LibraryMapPresentation.openHelp)
             }
         }
     }

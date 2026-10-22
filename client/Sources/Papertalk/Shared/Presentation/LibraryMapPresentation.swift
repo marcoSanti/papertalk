@@ -153,6 +153,8 @@ enum LibraryMapPresentation {
     /// The sidebar menu item and toolbar button that open it.
     static var open: String { L("Show Paper Connections") }
     static var openHelp: String { L("See how this library's papers connect through their mind maps") }
+    /// The toolbar button works only inside a library, not in All Papers or a tag.
+    static func canOpen(library: String?) -> Bool { library != nil }
     /// The panel with nothing selected.
     static func overview(_ map: LibraryMap) -> String {
         LibraryPresentation.paperCount(map.members.count) + " · "

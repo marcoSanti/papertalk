@@ -20,6 +20,16 @@ struct ImportForm {
     var writeInAppLanguage = false
     /// The `Library` the paper is filed in (nil: none); starts as the one on screen.
     var library: String?
+    /// Rerun only: the paper converted again from its stored PDF, so no file is chosen.
+    private(set) var rerunning: Paper?
+
+    /// Rerun `p`: the sheet asks again, starting from the choices it was made with.
+    mutating func rerun(_ p: Paper) {
+        rerunning = p
+        depth = Depth(rawValue: p.depth ?? "") ?? .inDepth
+        summaryMinutes = Double(p.targetMinutes ?? SummaryLength.defaultMinutes)
+        writeInAppLanguage = p.episodeLanguage != .english && p.episodeLanguage == appLanguage
+    }
 
     /// Only a summary has a length to choose; the other depths run as long as the paper needs.
     var showsLengthSlider: Bool { depth == .summary }
@@ -57,7 +67,7 @@ struct ImportForm {
     var scriptLanguage: AppLanguage { showsLanguageToggle && writeInAppLanguage ? appLanguage : .english }
 
     /// A file, and for Custom a description of what's wanted.
-    var canStart: Bool { hasFile && (depth != .custom || hasDepthNote) }
+    var canStart: Bool { (hasFile || rerunning != nil) && (depth != .custom || hasDepthNote) }
 
     /// Why Start is disabled ("" when it isn't).
     var startHelp: String {
@@ -84,12 +94,14 @@ struct ImportForm {
         fileData = data
     }
 
+    /// A summary's length in minutes; nil for the other depths.
+    var targetMinutes: Int? { showsLengthSlider ? SummaryLength.clamped(summaryMinutes) : nil }
+
     /// What `AppStore.upload` needs, once the form is complete.
     var submission: (data: Data, filename: String, depth: Depth, depthNote: String, targetMinutes: Int?,
                      scriptLanguage: AppLanguage, library: String?)? {
         guard canStart, let fileData, let fileName else { return nil }
-        return (fileData, fileName, depth, depthNote, showsLengthSlider ? SummaryLength.clamped(summaryMinutes) : nil,
-                scriptLanguage, library)
+        return (fileData, fileName, depth, depthNote, targetMinutes, scriptLanguage, library)
     }
 
     /// The file button and the label beside it.
@@ -98,9 +110,9 @@ struct ImportForm {
     var fileLabel: String { fileName ?? L("No file chosen") }
 
     /// The sheet's title.
-    static var heading: String { L("New episode") }
-    /// Under the title.
-    static var subheading: String { L("Turn a paper into a podcast, converted on {0}.", Device.this) }
+    var heading: String { rerunning == nil ? L("New episode") : L("Rerun episode") }
+    /// Under the title: what a new episode is, or which paper is rerun.
+    var subheading: String { rerunning?.displayTitle ?? L("Turn a paper into a podcast, converted on {0}.", Device.this) }
     /// Shown when `showsNoLLMWarning` is true.
     static var noLLMWarning: String { L("No LLM is configured, so this paper will be read out as-is instead of as a discussion.") }
 

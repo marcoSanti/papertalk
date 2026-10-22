@@ -16,8 +16,8 @@ struct ImportSheet: View {
             get: { PickerOption.depths.first { $0.value == form.depth } },
             set: { if let option = $0 { form.depth = option.value } })
         VStack(alignment: .leading, spacing: 12) {
-            Text(ImportForm.heading).font(.title2)
-            Text(ImportForm.subheading).foregroundColor(.gray)
+            Text(form.heading).font(.title2)
+            Text(form.subheading).foregroundColor(.gray)
             HStack(spacing: 8) {
                 Button(form.chooseButtonTitle) {
                     Task {
@@ -52,7 +52,11 @@ struct ImportSheet: View {
                 Spacer()
                 Button(L("Cancel")) { store.showUpload = false }
                 Button(L("Start episode")) {
-                    if let s = form.submission {
+                    if let p = form.rerunning {
+                        store.rerun(p.id, depth: form.depth, depthNote: form.depthNote,
+                                    targetMinutes: form.targetMinutes, scriptLanguage: form.scriptLanguage)
+                        store.showUpload = false
+                    } else if let s = form.submission {
                         store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
                                      targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage,
                                      library: s.library ?? store.shownLibrary)   // no picker here yet
@@ -65,6 +69,7 @@ struct ImportSheet: View {
         .padding(24)
         .frame(width: 520)
         .onAppear {
+            if let p = store.rerunning { form.rerun(p) }
             // A PDF given on the command line (or "Open with") arrives pre-chosen.
             if let url = store.pendingUploadURL {
                 store.pendingUploadURL = nil

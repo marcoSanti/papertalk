@@ -133,7 +133,8 @@ A paper's window groups the rest by what they work on: **Audio** (regenerate, ex
 **PDF management** (rerun, mind map, metadata) and **Library** (mark as listened, Show in Finder,
 Export paper, Delete paper). Right-clicking a paper in the library offers all of them too:
 
-- **Regenerate audio** re-voices the existing script; **Rerun episode** writes a new one.
+- **Regenerate audio** re-voices the existing script; **Rerun episode** writes a new one, asking
+  for the depth (and, for a summary, its length) again first.
 - **Create mind map** draws one for papers imported before mind maps existed, and **Redraw mind
   map** draws it again. **File → Redraw All Mind Maps…** redraws every paper's map, one after
   another, after asking (edits made to the current maps are lost).
@@ -230,6 +231,17 @@ client/linux-dev/dev.sh appimage
 That writes `client/dist/Papertalk-<version>-<arch>.AppImage`. It needs a desktop with GTK 4
 (Ubuntu 22.04+, Fedora 36+ and alike) and brings everything else, Python included. Voices are
 made on the CPU with the same Kokoro voices as on the Mac.
+
+## Known issues
+
+> [!WARNING]
+> **Papertalk can be closed by macOS while making voices on the Mac.** Now and then, one Kokoro
+> call in the speech library (FluidAudio 0.17.7) keeps taking memory, tens of gigabytes in a
+> minute and a half, until macOS stops the app for running out of memory. It happens while
+> playing a paper that has no audio yet, and can happen during an import too. Nothing is lost:
+> the script is saved, and voicing picks up where it stopped. It's an upstream bug (similar
+> reports: FluidAudio #817, #844), not a leak in Papertalk; it is checked again with each
+> FluidAudio update. Until it's fixed, [voices on a server](#voices-on-a-server) avoid it.
 
 ## Contributing
 

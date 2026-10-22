@@ -235,6 +235,17 @@ Still to do, in order:
   `backend.parallelRequests` turns at once (always 1 for local Kokoro; the user's setting on a
   server) and writes each turn as it finishes, so resuming still works. Remote voices are the
   cast's Kokoro ids, sent as they are. Tests pass a fake backend to `AppStore(storage:speech:)`.
+- **Known upstream bug, re-check on every FluidAudio update** (seen on 0.17.7, Oct 2026): after
+  ~100 calls, one `KokoroEngine` call can run away inside Core ML's CPU path
+  (`E5RT::Ops::BnnsCpuInferenceOperation` → `BNNSGraphContextExecute`) and grow to ~50 GB in
+  ~90 s, until macOS kills the app (launchd reason `(1, 13, 9)`: jetsam, low swap). It isn't
+  our buffers: footprint stays at ~380 MB for 96 turns, and the text alone voices fine.
+  Repro: voice the 172 turns of a long summary (VerifyIO's did it at turn 97 every run) through
+  `KokoroEngine.shared` piece by piece in a throwaway test, logging `phys_footprint` per turn to
+  a file (stdout is lost when the process is killed), and `sample` the process once it
+  passes a few GB. Upstream: FluidAudio #817, #844. If it still happens, the fix on our side is
+  running Kokoro in a helper process so a runaway kills only the helper. When it's gone, remove
+  this note and the README's "Known issues" entry.
 - **Use `KokoroEngine.shared` for all local synthesis.** Never create another `KokoroAneManager`: two
   model copies on the Neural Engine, or overlapping calls into one (actors are re-entrant across
   `await`), fail with "unable to compute the asynchronous prediction".

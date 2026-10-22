@@ -59,6 +59,7 @@ struct ContentView: View {
                 CastSheet(paperTitle: p.paperTitle, proposals: p.proposals, authors: p.authors, authorGenders: p.authorGenders)
             }
         }
+        .sheet(item: $store.transcriptSheet) { TranscriptSheetView(item: $0) }
         .confirmationDialog(store.pendingConfirmation.map { ConfirmationText($0).title } ?? "",
                             isPresented: confirmationShown,
                             titleVisibility: .visible, presenting: store.pendingConfirmation) { pending in

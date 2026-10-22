@@ -158,7 +158,23 @@ final class AppStoreTests: PapertalkTestCase {
         let store = await makeStore(library + [p])
         let counts = Dictionary(uniqueKeysWithValues: store.tagCounts)
         XCTAssertEqual(counts["ml"], 3)           // a paper's duplicate tag counts once
-        XCTAssertEqual(store.tagCounts.map(\.0), store.tagCounts.map(\.0).sorted())
+        // Most papers first, ties A–Z.
+        for (a, b) in zip(store.tagCounts, store.tagCounts.dropFirst()) {
+            XCTAssertTrue(a.1 > b.1 || (a.1 == b.1 && a.0 < b.0), "\(a) before \(b)")
+        }
+        XCTAssertEqual(store.tagCounts.first?.0, "ml")
+    }
+
+    func testShowTranscriptLoadsTheScriptIntoTheSheet() async {
+        let storage = LocalStorage(root: Fixtures.tempDir())
+        await storage.save(Fixtures.paper(id: "t", title: "Talk", hasScript: true), K.paper("t"))
+        await storage.save(Fixtures.transcript([("Host", "Hello")]), K.transcript("t"))
+        let store = AppStore(storage: storage)
+        await waitUntil { store.papers.count == 1 }
+        store.showTranscript("t")
+        await waitUntil { store.transcriptSheet != nil }
+        XCTAssertEqual(store.transcriptSheet?.title, "Talk")
+        XCTAssertNotNil(store.transcriptSheet?.transcript)
     }
 
     // MARK: authors

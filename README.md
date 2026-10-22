@@ -44,7 +44,7 @@ ideas. It's a native macOS app written in SwiftUI.
 - **Metadata and citations done for you.** Title, authors, affiliations, DOI and tags come from
   the paper itself, and a DOI fetches a BibTeX citation. Everything can be edited.
 - **A library you can find things in.** Covers in a grid or a list, favourites and tags in the
-  sidebar, and **Authors**: everyone in your library like a contact book, with their papers and
+  sidebar (the most-used tags first), and **Authors**: everyone in your library like a contact book, with their papers and
   co-authors. Search titles, authors and DOIs, or start with `#` to search tags.
 - **Made for listening.** Episodes remember where you stopped, show in Control Center's Now
   Playing with their cover, and answer the media keys. Read along in the transcript.
@@ -119,11 +119,12 @@ own, with its authors, details, tag editing, activity log and every action below
 
 A paper's window groups the rest by what they work on: **Audio** (regenerate, export, delete),
 **PDF management** (rerun, mind map, metadata) and **Library** (mark as listened, Show in Finder,
-Export paper, Delete paper):
+Export paper, Delete paper). Right-clicking a paper in the library offers all of them too:
 
 - **Regenerate audio** re-voices the existing script; **Rerun episode** writes a new one.
 - **Create mind map** draws one for papers imported before mind maps existed, and **Redraw mind
-  map** draws it again.
+  map** draws it again. **File → Redraw All Mind Maps…** redraws every paper's map, one after
+  another, after asking (edits made to the current maps are lost).
 - **Export audio…** saves the voiced episode as one M4A (AAC) file, named after the paper. Its
   tags carry the title, the authors (as artist), the publication year, the first page as cover
   art, and the affiliations, DOI and tags in the comment.

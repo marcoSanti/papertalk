@@ -38,6 +38,11 @@ struct ConfirmationText: Equatable {
             message = L("Delete its audio to free up space?") + " " + Self.keptAfterAudio
             cancelLabel = L("Keep audio")
             secondaryLabel = L("Keep, and don’t ask again")
+        case .redrawAllMindMaps(let count):
+            title = L("Redraw all mind maps?")
+            confirmLabel = L("Redraw mind maps")
+            message = L("{0} get a new mind map from their PDF, one after another, with one LLM request each. Changes you made to the current maps are lost.",
+                        LibraryPresentation.paperCount(count))
         }
     }
 

@@ -48,6 +48,25 @@ enum PaperPanels {
         Task { await store.exportPaper(paper.id, to: url, includePDF: include) }
     }
 
+    /// Ask where to save the episode, then export it there.
+    static func exportAudio(_ paper: Paper, from store: AppStore) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.mpeg4Audio]
+        panel.nameFieldStringValue = EpisodeExport.fileName(paper)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { await store.exportAudio(paper.id, to: url) }
+    }
+
+    /// Open the stored PDF in its own window.
+    static func openPDF(_ paper: Paper, from store: AppStore) {
+        guard paper.hasPdf else { return }
+        Task {
+            if let data = await store.pdfData(for: paper.id) {
+                PDFViewerWindow.present(data: data, title: paper.displayTitle)
+            }
+        }
+    }
+
     /// Pick a folder for the library and move it there.
     static func chooseLibraryFolder(for store: AppStore) {
         let panel = NSOpenPanel()

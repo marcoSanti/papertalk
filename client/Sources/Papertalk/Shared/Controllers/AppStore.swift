@@ -63,6 +63,19 @@ final class AppStore: ObservableObject {
     @Published var activeRunIndex = 0
     /// Paper currently open in the metadata edit sheet.
     @Published var editingPaper: Paper?
+    /// The transcript sheet opened from a context menu.
+    @Published var transcriptSheet: TranscriptSheet?
+    /// A transcript sheet's content, loaded before it opens so it never shows the empty branch first.
+    struct TranscriptSheet: Identifiable {
+        let id = UUID()
+        let title: String
+        let transcript: Transcript?
+    }
+    /// Open the transcript sheet with the script as it is on disk now (a rerun may have replaced it).
+    func showTranscript(_ id: String) {
+        guard let p = papers[id] else { return }
+        Task { transcriptSheet = TranscriptSheet(title: p.displayTitle, transcript: await transcript(for: id)) }
+    }
     /// Whether the import sheet is open, and a file to pre-load into it
     /// (set when a PDF is dropped on the library).
     @Published var showUpload = false
@@ -169,6 +182,7 @@ final class AppStore: ObservableObject {
         case .delete(let p): delete(p.id)
         case .rerun(let p): rerun(p.id)
         case .deleteAudio(let p), .finishedListening(let p): deleteAudio(p.id)
+        case .redrawAllMindMaps: redrawAllMindMaps()
         }
     }
 
@@ -183,12 +197,15 @@ final class AppStore: ObservableObject {
         case delete(Paper), rerun(Paper), deleteAudio(Paper)
         /// An episode was listened to the end: keep its audio or free the space?
         case finishedListening(Paper)
+        /// Redraw the mind maps of this many papers (`mindMapsToRedraw`), replacing them.
+        case redrawAllMindMaps(Int)
         var id: String {
             switch self {
             case .delete(let p): return "delete-\(p.id)"
             case .rerun(let p): return "rerun-\(p.id)"
             case .deleteAudio(let p): return "deleteAudio-\(p.id)"
             case .finishedListening(let p): return "finished-\(p.id)"
+            case .redrawAllMindMaps: return "redrawAllMindMaps"
             }
         }
     }
@@ -599,13 +616,14 @@ final class AppStore: ObservableObject {
         activeRunIndex = (activeRunIndex + delta + runs.count) % runs.count
     }
 
-    /// Every tag with how many papers have it, A–Z.
+    /// Every tag with how many papers have it, most papers first, ties A–Z.
     var tagCounts: [(String, Int)] {
         var counts: [String: Int] = [:]
         for p in papers.values {
             for t in Set(p.tags) { counts[t, default: 0] += 1 }
         }
-        return counts.sorted { $0.key.localizedCompare($1.key) == .orderedAscending }
+        return counts.sorted { $0.value != $1.value ? $0.value > $1.value
+            : $0.key.localizedCompare($1.key) == .orderedAscending }
     }
 
     /// Every author with how many papers they're on, A–Z.
@@ -1220,30 +1238,61 @@ final class AppStore: ObservableObject {
         guard let p = papers[id], canCreateMindMap(p) else { return }
         beginMindMapJob(id)
         Task {
-            defer { endMindMapJob(id) }
-            guard let pdfData = try? await storage.read(K.pdf(id)) else { show(L("No PDF to read")); return }
-            let text = await Task.detached { LocalPipeline.extractText(pdfData) }.value
-            guard !text.isEmpty else { show(L("Could not read PDF text")); return }
-            updateMindMapJob(id, progress: 0.08, message: L("Asking the LLM for the paper's key concepts…"))
-            // Cancelled when the drawing ends (below), so holding the store is fine.
-            let ticker = Task { @MainActor in
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    guard let job = self.mindMapJobs[id] else { return }
-                    self.updateMindMapJob(id, progress: ImportProgressPresentation.creep(job.progress))
-                }
-            }
-            defer { ticker.cancel() }
-            var pipeline = LocalPipeline(baseUrl: llm.baseUrl, apiKey: llm.resolvedKey(),
-                                         model: llm.model.isEmpty ? "llama3.1:70b" : llm.model)
-            pipeline.prompts = prompts
-            pipeline.outputLanguage = p.episodeLanguage
-            pipeline.log = { line in Task { @MainActor in self.appendLog(line, paper: id) } }
-            if await drawMindMap(id, text: text, title: p.displayTitle, pipeline: pipeline) {
-                updateMindMapJob(id, progress: 1, message: L("Done"))
-                show(L("Mind map ready"))
+            if await drawMindMapFromPDF(p) { show(L("Mind map ready")) }
+        }
+    }
+
+    /// The papers Redraw All Mind Maps would draw, oldest first.
+    var mindMapsToRedraw: [Paper] {
+        papers.values.filter(canCreateMindMap).sorted { ($0.createdIso ?? "") < ($1.createdIso ?? "") }
+    }
+
+    /// Menu bar: confirm, then redraw every mind map (each replaces the current one, edits included).
+    func requestRedrawAllMindMaps() {
+        let count = mindMapsToRedraw.count
+        if count > 0 { pendingConfirmation = .redrawAllMindMaps(count) }
+    }
+
+    /// Draw every eligible paper's mind map, one after another: each drawing reads and writes the
+    /// other maps' connections, so concurrent ones would overwrite each other's.
+    func redrawAllMindMaps() {
+        let queue = mindMapsToRedraw
+        guard !queue.isEmpty else { return }
+        for p in queue { beginMindMapJob(p.id) }
+        Task {
+            var drawn = 0
+            for p in queue where await drawMindMapFromPDF(p) { drawn += 1 }
+            show(L("Mind maps redrawn: {0} of {1}", drawn, queue.count))
+        }
+    }
+
+    /// Read the PDF and draw its map, ending the job `beginMindMapJob` started. Returns whether
+    /// it was saved; failures are shown, never thrown.
+    private func drawMindMapFromPDF(_ p: Paper) async -> Bool {
+        let id = p.id
+        defer { endMindMapJob(id) }
+        guard papers[id] != nil else { return false }   // deleted while queued
+        guard let pdfData = try? await storage.read(K.pdf(id)) else { show(L("No PDF to read")); return false }
+        let text = await Task.detached { LocalPipeline.extractText(pdfData) }.value
+        guard !text.isEmpty else { show(L("Could not read PDF text")); return false }
+        updateMindMapJob(id, progress: 0.08, message: L("Asking the LLM for the paper's key concepts…"))
+        // Cancelled when the drawing ends (below), so holding the store is fine.
+        let ticker = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard let job = self.mindMapJobs[id] else { return }
+                self.updateMindMapJob(id, progress: ImportProgressPresentation.creep(job.progress))
             }
         }
+        defer { ticker.cancel() }
+        var pipeline = LocalPipeline(baseUrl: llm.baseUrl, apiKey: llm.resolvedKey(),
+                                     model: llm.model.isEmpty ? "llama3.1:70b" : llm.model)
+        pipeline.prompts = prompts
+        pipeline.outputLanguage = p.episodeLanguage
+        pipeline.log = { line in Task { @MainActor in self.appendLog(line, paper: id) } }
+        guard await drawMindMap(id, text: text, title: p.displayTitle, pipeline: pipeline) else { return false }
+        updateMindMapJob(id, progress: 1, message: L("Done"))
+        return true
     }
 
     /// Ask for the mind map and save it. Returns whether it was saved; a

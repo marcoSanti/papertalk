@@ -201,6 +201,47 @@ final class MindMapConnectionsStoreTests: PapertalkTestCase {
         XCTAssertEqual(shown?.externalLinks.map(\.paperId), ["new"])
     }
 
+    func testRedrawAllConfirmsThenDrawsEveryMapOneAtATime() async throws {
+        let root = Fixtures.tempDir()
+        let storage = LocalStorage(root: root)
+        for (id, created) in [("a", "2020-01-01T00:00:00Z"), ("b", "2024-01-01T00:00:00Z")] {
+            await storage.save(Fixtures.paper(id: id, title: "Paper \(id)", createdIso: created), K.paper(id))
+            try await storage.write(K.pdf(id), Fixtures.pdf(lines: ["Sparse attention heads"]))
+        }
+        var noPDF = Fixtures.paper(id: "nopdf", title: "No PDF")
+        noPDF.hasPdf = false
+        await storage.save(noPDF, K.paper("nopdf"))
+        let store = AppStore(storage: storage, speech: FakeSpeechBackend())
+        await waitUntil { store.papers.count == 3 }
+        store.llm.baseUrl = "http://mock.local/v1"
+
+        let earlyB = LockedCount()
+        MockLLM.install { request in
+            let text = MockLLM.allText(in: request)
+            if text.contains("PAIRS:") { return (200, MockLLM.chatReply(#"{"links":[]}"#)) }
+            // The older paper goes first; the next is only asked for once its map is saved.
+            if text.contains("Paper b"), !FileManager.default.fileExists(atPath: root.appendingPathComponent("papers/a.papertalk/mindmap.json").path) {
+                earlyB.add()
+            }
+            let nodes = ConnectionFixtures.new.nodes.map { n in
+                #"{"id":"\#(n.id)","label":"\#(n.label)","branch":"\#(n.branch.rawValue)","parent":\#(n.parent.map { "\"\($0)\"" } ?? "null"),"description":"","core":"\#(n.core)"}"#
+            }
+            return (200, MockLLM.chatReply(#"{"summary":"S","nodes":[\#(nodes.joined(separator: ","))],"links":[]}"#))
+        }
+        store.requestRedrawAllMindMaps()
+        let pending = try XCTUnwrap(store.pendingConfirmation)
+        XCTAssertEqual(pending.id, "redrawAllMindMaps")
+        guard case .redrawAllMindMaps(2) = pending else { return XCTFail("the paper without a PDF is left out") }
+        store.confirmPending(pending)
+        XCTAssertEqual(store.drawingMindMaps, ["a", "b"])
+        await waitUntil(timeout: 5) { store.drawingMindMaps.isEmpty }
+        for id in ["a", "b"] {
+            let map = await storage.exists(MindMap.self, K.mindMap(id))
+            XCTAssertNotNil(map, id)
+        }
+        XCTAssertEqual(earlyB.value, 0, "drawings run one after another")
+    }
+
     // MARK: both sides stay in step
 
     private typealias F = ConnectionFixtures

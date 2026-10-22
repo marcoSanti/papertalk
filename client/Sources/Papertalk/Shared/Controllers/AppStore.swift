@@ -183,6 +183,7 @@ final class AppStore: ObservableObject {
         case .rerun(let p): rerun(p.id)
         case .deleteAudio(let p), .finishedListening(let p): deleteAudio(p.id)
         case .redrawAllMindMaps: redrawAllMindMaps()
+        case .deleteLibrary(let library): deleteLibrary(library.id)
         }
     }
 
@@ -199,6 +200,8 @@ final class AppStore: ObservableObject {
         case finishedListening(Paper)
         /// Redraw the mind maps of this many papers (`mindMapsToRedraw`), replacing them.
         case redrawAllMindMaps(Int)
+        /// Delete a library; its papers stay, in no library.
+        case deleteLibrary(Library)
         var id: String {
             switch self {
             case .delete(let p): return "delete-\(p.id)"
@@ -206,6 +209,7 @@ final class AppStore: ObservableObject {
             case .deleteAudio(let p): return "deleteAudio-\(p.id)"
             case .finishedListening(let p): return "finished-\(p.id)"
             case .redrawAllMindMaps: return "redrawAllMindMaps"
+            case .deleteLibrary(let library): return "deleteLibrary-\(library.id)"
             }
         }
     }
@@ -276,6 +280,7 @@ final class AppStore: ObservableObject {
     @Published var view: ViewMode = .all
     @Published var activeTag: String?
     @Published var activeAuthor: String?
+    @Published var activeLibrary: String?
     /// Named custom-depth prompts, selectable from the upload sheet's dropdown.
     @Published var customPresets: CustomDepthPresets = .load()
     /// Library presentation: thumbnail grid or compact list.
@@ -344,8 +349,8 @@ final class AppStore: ObservableObject {
     private var toastTask: Task<Void, Never>?
     private var playbackCancelables: Set<AnyCancellable> = []
 
-    /// What the library shows: everything, favourites, the Authors screen, one tag or one author.
-    enum ViewMode { case all, fav, authors, tag, author }
+    /// What the library shows: everything, favourites, the Authors screen, one tag, one author or one library.
+    enum ViewMode { case all, fav, authors, tag, author, library }
 
     /// `storage` pins the backend (tests pass a temp-folder `LocalStorage`);
     /// the app passes nothing and follows the configured server. `speech`
@@ -446,6 +451,7 @@ final class AppStore: ObservableObject {
         case .fav: return p.favorite
         case .tag: return activeTag.map { p.tags.contains($0) } ?? true
         case .author: return activeAuthor.map { p.authors.map(AuthorName.clean).contains($0) } ?? true
+        case .library: return p.library == activeLibrary
         }
     }
 
@@ -511,6 +517,7 @@ final class AppStore: ObservableObject {
         case .fav: return .favorites
         case .authors, .author: return .authors
         case .tag: return activeTag.map { .tag($0) } ?? .all
+        case .library: return activeLibrary.map { .library($0) } ?? .all
         }
     }
 
@@ -518,21 +525,22 @@ final class AppStore: ObservableObject {
     /// selected paper when it's still in scope.
     func selectSidebar(_ item: SidebarItem) {
         guard item != sidebarSelection else { return }
-        activeTag = nil; activeAuthor = nil
+        activeTag = nil; activeAuthor = nil; activeLibrary = nil
         switch item {
         case .all: view = .all
         case .favorites: view = .fav
         case .authors: view = .authors
         case .tag(let t): view = .tag; activeTag = t
+        case .library(let id): view = .library; activeLibrary = id
         }
         if let id = selectedId, !filteredPapers().contains(where: { $0.id == id }) {
             selectedId = nil
         }
     }
 
-    /// The sidebar's rows in order: the library sections, then each tag.
+    /// The sidebar's rows in order: the library sections, each library, then each tag.
     var sidebarItems: [SidebarItem] {
-        [.all, .favorites, .authors] + tagCounts.map { .tag($0.0) }
+        [.all, .favorites, .authors] + libraries.map { .library($0.id) } + tagCounts.map { .tag($0.0) }
     }
 
     /// The count shown beside a sidebar row.
@@ -542,6 +550,7 @@ final class AppStore: ObservableObject {
         case .favorites: return favoritesCount
         case .authors: return authorCounts.count
         case .tag(let tag): return tagCounts.first { $0.0 == tag }?.1 ?? 0
+        case .library(let id): return papers.values.filter { $0.library == id }.count
         }
     }
 
@@ -653,7 +662,7 @@ final class AppStore: ObservableObject {
     func showAuthor(_ name: String) {
         view = .author
         activeAuthor = AuthorName.clean(name)
-        activeTag = nil
+        activeTag = nil; activeLibrary = nil
         if let id = selectedId, !filteredPapers().contains(where: { $0.id == id }) { selectedId = nil }
     }
 
@@ -706,6 +715,7 @@ final class AppStore: ObservableObject {
     func refresh() {
         Task {
             let ids = (try? await storage.list()) ?? []
+            libraries = await storage.exists([Library].self, K.libraries) ?? []
             let seen = Set(ids)
             // One change for the whole scan: a redraw per paper made opening a big library crawl.
             var loaded: [String: Paper] = [:]
@@ -785,6 +795,58 @@ final class AppStore: ObservableObject {
         guard next.count != p.tags.count else { return }
         optimistic(id, { $0.tags = next })
     }
+    // MARK: Libraries
+
+    /// The user's libraries, in the order made (`libraries.json`).
+    @Published private(set) var libraries: [Library] = []
+    /// The New/Edit Library sheet, when open.
+    @Published var editingLibrary: LibraryForm?
+
+    /// The library the sidebar shows, where new imports are filed; nil elsewhere.
+    var shownLibrary: String? { view == .library ? activeLibrary : nil }
+    /// The library title for the current scope.
+    var activeLibraryName: String? { libraries.first { $0.id == activeLibrary }?.name }
+
+    /// Queue a save of `libraries.json` (behind paper saves, like `persist`).
+    private func persistLibraries() {
+        let previous = saveQueue
+        saveQueue = Task {
+            await previous?.value
+            await storage.save(libraries, K.libraries)
+        }
+    }
+
+    /// Save the library sheet: add the library, or update it in place.
+    func saveLibrary(_ form: LibraryForm) {
+        guard form.canSave else { return }
+        if let i = libraries.firstIndex(where: { $0.id == form.id }) {
+            libraries[i] = form.library
+        } else {
+            libraries.append(form.library)
+        }
+        persistLibraries()
+    }
+
+    /// Ask before deleting a library.
+    func requestDeleteLibrary(_ id: String) {
+        if let library = libraries.first(where: { $0.id == id }) { pendingConfirmation = .deleteLibrary(library) }
+    }
+
+    /// Delete a library. Its papers stay in All Papers, in no library.
+    func deleteLibrary(_ id: String) {
+        guard libraries.contains(where: { $0.id == id }) else { return }
+        if activeLibrary == id { selectSidebar(.all) }
+        libraries.removeAll { $0.id == id }
+        persistLibraries()
+        for p in papers.values where p.library == id { optimistic(p.id, { $0.library = nil }) }
+    }
+
+    /// File a paper in a library (nil: in none).
+    func moveToLibrary(_ id: String, _ library: String?) {
+        guard let p = papers[id], p.library != library else { return }
+        optimistic(id, { $0.library = library })
+    }
+
     /// Remember where the listener is (seconds) and the episode's length.
     func saveProgress(_ id: String, _ progress: Double, _ duration: Double) {
         guard var p = papers[id] else { return }
@@ -908,8 +970,9 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// First existing paper (other than `p`) that shares its title or DOI.
-    private func findDuplicate(of p: Paper?) -> Paper? {
+    /// First existing paper (other than `p`) that shares its title or DOI, in any library: a paper
+    /// already filed elsewhere still counts.
+    func findDuplicate(of p: Paper?) -> Paper? {
         guard let p else { return nil }
         func norm(_ s: String?) -> String { (s ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
         let title = norm(p.title), doi = norm(p.doi)
@@ -1010,7 +1073,9 @@ final class AppStore: ObservableObject {
             // The whole papers/ folder, so leftovers of interrupted runs go too.
             if playingPaperId != nil { player.stopAll(); playingPaperId = nil }
             try? await storage.deleteFolder(K.papersRoot)
+            try? await storage.delete(K.libraries)
             papers.removeAll()
+            libraries = []
             thumbCache.removeAll()
             selectedId = nil
             logEntries = []
@@ -1102,8 +1167,10 @@ final class AppStore: ObservableObject {
         guard transcript != nil || pdf != nil else {
             show(L("“{0}” has neither a script nor a PDF to import.", name)); return nil
         }
-        let paper = PaperBundle.imported(original, id: id, hasPdf: pdf != nil, hasScript: transcript != nil,
+        var paper = PaperBundle.imported(original, id: id, hasPdf: pdf != nil, hasScript: transcript != nil,
                                          hasAudio: turns != nil && transcript != nil, hasMindMap: mindMap != nil)
+        // The file's library belongs to another library set: it joins the one on screen instead.
+        paper.library = shownLibrary
         do {
             if let transcript { try await storage.write(K.transcript(id), transcript) }
             if let mindMap { try await storage.write(K.mindMap(id), mindMap) }
@@ -1318,7 +1385,8 @@ final class AppStore: ObservableObject {
     /// had for this paper). Best-effort: a failure is logged and the map stays as drawn.
     private func connectMindMap(_ id: String, map: MindMap, title: String, pipeline: LocalPipeline) async {
         var others: [String: MindMap] = [:]
-        for p in papers.values where p.id != id && p.hasMindMap == true {
+        guard let me = papers[id] else { return }
+        for p in papers.values where p.id != id && p.hasMindMap == true && Library.linkable(me, p, in: libraries) {
             if let m = await mindMap(for: p.id) { others[p.id] = m }
         }
         guard !others.isEmpty else { return }
@@ -1401,13 +1469,13 @@ final class AppStore: ObservableObject {
 
     /// Run the in-process pipeline on a PDF (or an existing stored paper).
     /// `targetMinutes` is a summary's length (nil: the default); `scriptLanguage`
-    /// the language the episode is written in (nil: English).
+    /// the language the episode is written in (nil: English); `library` the `Library` it's filed in.
     func upload(_ pdf: Data, filename: String, depth: Depth, depthNote: String, targetMinutes: Int? = nil,
-                scriptLanguage: AppLanguage? = nil) {
+                scriptLanguage: AppLanguage? = nil, library: String? = nil) {
         let id = UUID().uuidString
         startRun(id) {
             await self.runPipeline(nil, id: id, pdf: pdf, filename: filename, depth: depth, depthNote: depthNote,
-                                   targetMinutes: targetMinutes, scriptLanguage: scriptLanguage)
+                                   targetMinutes: targetMinutes, scriptLanguage: scriptLanguage, library: library)
         }
     }
 
@@ -1627,7 +1695,7 @@ final class AppStore: ObservableObject {
     /// Each step's result is saved as it lands, so a stopped or quit run resumes from there.
     private func runPipeline(_ existing: Paper?, id newId: String? = nil, pdf: Data? = nil, filename: String = "",
                              depth: Depth = .inDepth, depthNote: String = "", targetMinutes: Int? = nil,
-                             scriptLanguage: AppLanguage? = nil) async {
+                             scriptLanguage: AppLanguage? = nil, library: String? = nil) async {
         let id = existing?.id ?? newId ?? UUID().uuidString
         // First conversion is when notifications start to matter: ask then.
         notifier.requestPermissionIfNeeded()
@@ -1639,6 +1707,7 @@ final class AppStore: ObservableObject {
                                      depth: existing?.depth ?? depth.rawValue, bibtex: nil, targetMinutes: targetMinutes, progress: 0, duration: 0, progressTs: nil,
                                      stage: "extract", message: L("Queued"), statusError: nil)
         if existing == nil, let scriptLanguage, scriptLanguage != .english { rec.scriptLanguage = scriptLanguage.rawValue }
+        if existing == nil { rec.library = library }
         papers[id] = rec
         selectedId = id
         // Store the PDF right away: the record already says hasPdf, and the
@@ -1854,7 +1923,7 @@ final class AppStore: ObservableObject {
     func reveal(_ id: String) {
         guard papers[id] != nil else { return }
         if !filteredPapers().contains(where: { $0.id == id }) {
-            view = .all; activeTag = nil; activeAuthor = nil
+            view = .all; activeTag = nil; activeAuthor = nil; activeLibrary = nil
             statusFilter = "all"; search = ""
         }
         selectedId = id

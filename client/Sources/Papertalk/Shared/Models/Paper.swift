@@ -93,6 +93,8 @@ struct Paper: Identifiable, Codable, Equatable {
     /// The language the LLM writes the episode in (an `AppLanguage` raw value);
     /// nil is English, the default. Kept so reruns match.
     var scriptLanguage: String? = nil
+    /// The `Library` it's filed in (its id); nil when in none.
+    var library: String? = nil
     /// While converting, the progress bar's fraction (0…1); once done, the playback position in seconds.
     var progress: Double
     /// The episode's length in seconds, once it has been played or baked.
@@ -117,6 +119,7 @@ struct Paper: Identifiable, Codable, Equatable {
         case targetMinutes = "target_minutes"
         case hasMindMap = "has_mind_map"
         case scriptLanguage = "script_language"
+        case library
     }
 
     /// The episode's cast (names + chosen voices); empty when never set.

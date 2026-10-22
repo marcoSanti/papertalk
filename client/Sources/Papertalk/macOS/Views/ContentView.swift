@@ -47,6 +47,7 @@ struct ContentView: View {
         .sheet(item: $store.editingPaper) { paper in
             EditMetaSheet(paper: paper)
         }
+        .sheet(item: $store.editingLibrary) { LibrarySheet(form: $0) }
         .sheet(isPresented: $store.showSettings) {
             SettingsView()
         }

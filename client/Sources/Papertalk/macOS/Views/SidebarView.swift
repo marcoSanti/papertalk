@@ -1,9 +1,10 @@
-// The main window's sidebar: the library sections, the tags, and where the library lives.
+// The main window's sidebar: the library sections, the user's libraries, the tags, and where
+// the library lives.
 
 #if os(macOS)
 import SwiftUI
 
-/// All Papers, Favorites, Authors and one row per tag, with counts; a native `List(selection:)`
+/// All Papers, Favorites, Authors, one row per library and one per tag, with counts; a native `List(selection:)`
 /// (its highlight follows the system accent on purpose).
 struct SidebarView: View {
     @EnvironmentObject private var store: AppStore
@@ -21,6 +22,48 @@ struct SidebarView: View {
                     .badge(store.authorCounts.count)
                     .help(L("Browse papers by author — like a contact book"))
                     .tag(SidebarItem.authors)
+            }
+
+            Section {
+                if store.libraries.isEmpty {
+                    Text(L("Create a library with + to sort papers into folders."))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .selectionDisabled()
+                }
+                ForEach(store.libraries) { library in
+                    Label {
+                        HStack(spacing: 4) {
+                            Text(library.name)
+                            if let mark = LibraryPresentation.crossLinkMark(library) {
+                                Image(systemName: mark.icon)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .help(mark.help)
+                            }
+                        }
+                    } icon: {
+                        Image(systemName: library.icon)
+                    }
+                        .badge(store.sidebarCount(.library(library.id)))
+                        .tag(SidebarItem.library(library.id))
+                        .contextMenu {
+                            Button(L("Edit Library…")) { store.editingLibrary = LibraryForm(library) }
+                            Button(L("Delete Library…"), role: .destructive) { store.requestDeleteLibrary(library.id) }
+                        }
+                }
+            } header: {
+                HStack {
+                    Text(L("Libraries"))
+                    Spacer()
+                    Button {
+                        store.editingLibrary = LibraryForm()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("New Library…"))
+                }
             }
 
             Section(L("Tags")) {
@@ -79,6 +122,9 @@ struct SidebarView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        // Opaque, so tags scrolled underneath don't show through.
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
     }
 }
 

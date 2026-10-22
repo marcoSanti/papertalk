@@ -207,6 +207,17 @@ struct ContextMenuItems: View {
         } label: {
             Label(PaperPresentation.listenedToggle(paper).title, systemImage: "checkmark.circle")
         }
+        if !store.libraries.isEmpty {
+            Picker(selection: Binding(get: { paper.library }, set: { store.moveToLibrary(paper.id, $0) })) {
+                Text(L("No Library")).tag(String?.none)
+                ForEach(store.libraries) { library in
+                    Label(library.name, systemImage: library.icon).tag(Optional(library.id))
+                }
+            } label: {
+                Label(L("Move to Library"), systemImage: "folder")
+            }
+            .pickerStyle(.menu)
+        }
         Divider()
         Button {
             store.editingPaper = paper

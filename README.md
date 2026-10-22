@@ -38,6 +38,7 @@ ideas. It's a native macOS app written in SwiftUI.
   lets you rename, describe, add, move and delete concepts, and add, name and delete connections;
   changes are saved as you make them. The three main concepts can be changed but not deleted.
   When a map is drawn, Papertalk also looks for concepts it shares with your other papers' maps
+  (in the same library, unless the library is set to connect to other libraries)
   and shows them as grey, dashed nodes around the edge; click one to see the other paper, and
   **Open its mind map** to switch the window to that paper's map. A connection always shows on both papers' maps: deleting it (or its concept) on one
   removes it from the other, and an open map window updates when the other side changes.
@@ -46,6 +47,11 @@ ideas. It's a native macOS app written in SwiftUI.
 - **A library you can find things in.** Covers in a grid or a list, favourites and tags in the
   sidebar (the most-used tags first), and **Authors**: everyone in your library like a contact book, with their papers and
   co-authors. Search titles, authors and DOIs, or start with `#` to search tags.
+- **Libraries.** Folders for your papers, each with a name and an icon, listed in the sidebar
+  above the tags. Make one with **+** beside **Libraries**, and file a paper with **Move to
+  Library** in its context menu. The import sheet asks which library a paper goes into (the one
+  open, to start with); the "already in your library" check still looks at every library.
+  Right-click a library to edit or delete it (its papers stay, in no library).
 - **Made for listening.** Episodes remember where you stopped, show in Control Center's Now
   Playing with their cover, and answer the media keys. Read along in the transcript.
 - **Works in the background.** Imports run while you listen to something else, with progress at
@@ -198,7 +204,8 @@ app picks up `OPENWEBUI_BASE_URL` or `LLM_BASE_URL`, `PAPERTALK_MODEL`, and an A
 `PAPERTALK_API_TOKEN` set a default storage server.
 
 API keys (the LLM's and the speech server's) are kept in the macOS Keychain, never in the
-preferences file. Each paper is a folder with its PDF, script, mind map and audio. The voice
+preferences file. Each paper is a folder with its PDF, script, mind map and audio, and the
+libraries are listed in `libraries.json` beside them. The voice
 models live in `~/.cache/fluidaudio/`. **Settings → Clear Data** can erase the library and reset
 everything, or separately delete the voice models to get the disk space back.
 

@@ -181,6 +181,16 @@ struct UploadSheet: View {
                 .padding(.horizontal, 4)
             }
 
+            if !store.libraries.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(title: L("Add to library"), systemImage: "books.vertical")
+                    FlowLayout(spacing: 8, lineSpacing: 8) {
+                        libraryChoice(nil, name: L("No Library"), icon: "tray")
+                        ForEach(store.libraries) { libraryChoice($0.id, name: $0.name, icon: $0.icon) }
+                    }
+                }
+            }
+
             if form.showsNoLLMWarning(llmBaseURL: store.llm.baseUrl) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -210,7 +220,7 @@ struct UploadSheet: View {
                 Button(L("Start episode")) {
                     if let s = form.submission {
                         store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
-                                     targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage)
+                                     targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage, library: s.library)
                         dismiss()
                     }
                 }
@@ -225,6 +235,7 @@ struct UploadSheet: View {
         .frame(width: 480)
         .tint(Color.appAccent)
         .onAppear {
+            form.library = store.shownLibrary
             if let url = store.pendingUploadURL {
                 store.pendingUploadURL = nil
                 load(url)
@@ -312,6 +323,22 @@ struct UploadSheet: View {
     }
 
     /// A selectable depth card.
+    /// A library the paper can be filed in, as a capsule like the sidebar row.
+    private func libraryChoice(_ id: String?, name: String, icon: String) -> some View {
+        let selected = form.library == id
+        return Button {
+            form.library = id
+        } label: {
+            Label(name, systemImage: icon)
+                .font(.callout.weight(.medium))
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .background(Capsule().fill(selected ? AnyShapeStyle(Color.appAccent.gradient) : AnyShapeStyle(Color.primary.opacity(0.06))))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func depthChoice(_ d: Depth) -> some View {
         let selected = form.depth == d
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -412,6 +439,59 @@ struct EditMetaSheet: View {
             .padding(.bottom, 20)
         }
         .frame(width: 480, height: 560)
+        .tint(Color.appAccent)
+    }
+}
+
+/// New Library / Edit Library: a name, an icon, and whether its mind maps connect to other libraries.
+struct LibrarySheet: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var form: LibraryForm
+
+    init(form: LibraryForm) {
+        _form = State(initialValue: form)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(form.title).font(.title3.weight(.semibold))
+            TextField(L("Name"), text: $form.name, prompt: Text(L("e.g. Neuroscience")))
+                .textFieldStyle(.roundedBorder)
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 8), count: 8), spacing: 8) {
+                ForEach(LibraryForm.icons, id: \.self) { icon in
+                    Button {
+                        form.icon = icon
+                    } label: {
+                        Image(systemName: icon)
+                            .frame(width: 32, height: 32)
+                            .background(form.icon == icon ? Color.appAccent.opacity(0.25) : .clear,
+                                        in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(icon)
+                }
+            }
+            Toggle(LibraryForm.connectsAcrossTitle, isOn: $form.connectsAcross)
+            Text(LibraryForm.connectsAcrossHelp).font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button(L("Cancel")) { dismiss() }
+                    .buttonStyle(.glass)
+                    .keyboardShortcut(.cancelAction)
+                Button(form.saveLabel) {
+                    store.saveLibrary(form)
+                    dismiss()
+                }
+                .buttonStyle(.glassProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!form.canSave)
+            }
+            .controlSize(.large)
+        }
+        .padding(20)
+        .frame(width: 400)
         .tint(Color.appAccent)
     }
 }

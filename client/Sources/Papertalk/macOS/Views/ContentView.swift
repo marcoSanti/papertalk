@@ -24,23 +24,48 @@ struct ContentView: View {
                         LibraryView(onImport: { store.beginImport() })
                     }
                 }
+                // The toolbar has no background of its own (so none runs over the panel): this
+                // stands in for it over the library, so scrolled papers don't show under its buttons.
+                .overlay(alignment: .top) {
+                    GeometryReader { g in
+                        Rectangle().fill(.bar)
+                            .frame(height: g.safeAreaInsets.top)
+                            .ignoresSafeArea(edges: .top)
+                    }
+                    .allowsHitTesting(false)
+                }
                 // The player stays put while browsing authors too.
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     BottomBar(player: store.player)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                if showInspector {
+                // Always in the layout, its width animated: inserted and removed, it popped in and out.
+                HStack(spacing: 0) {
                     InspectorResizeHandle(width: $inspectorWidth)
                     inspectorContent
                         .frame(width: inspectorWidth)
+                        // No toolbar above it, so no dark band where one would be.
+                        .scrollEdgeEffectHidden(true, for: .top)
                 }
+                // Up to the window's top: the toolbar keeps clear of the panel (see `toolbarContent`).
+                .ignoresSafeArea(.container, edges: .top)
+                .frame(width: showInspector ? inspectorWidth + 1 : 0, alignment: .leading)
+                // Not `.clipped()`: that also cut off the backdrop running up under the toolbar.
+                .mask(Rectangle().ignoresSafeArea())
+                .opacity(showInspector ? 1 : 0)
+                .allowsHitTesting(showInspector)
             }
+            // On the whole row, so the library resizes with the panel. Explicit, because
+            // `withAnimation` around an `@AppStorage` toggle didn't animate.
+            .animation(.smooth(duration: 0.5), value: showInspector)
         }
         // Rebuilt in a new language, so views that don't watch the store redraw too.
         .id(store.language)
-        .searchable(text: $store.search, placement: .toolbar, prompt: L("Search titles, authors, DOI (#tag for tags)"))
         .toolbar { toolbarContent }
+        // The toolbar's own background ran across the panel as a dark band; the library draws
+        // its own instead.
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .sheet(isPresented: $store.showUpload) {
             UploadSheet()
         }
@@ -176,11 +201,43 @@ struct ContentView: View {
 
         ToolbarItem(placement: .primaryAction) {
             Button {
-                withAnimation(.snappy) { showInspector.toggle() }
+                showInspector.toggle()
             } label: {
                 Label(L("Inspector"), systemImage: "sidebar.trailing")
             }
             .help(showInspector ? L("Hide paper details") : L("Show paper details"))
+        }
+
+        ToolbarSpacer(.fixed, placement: .primaryAction)
+
+        // Not `.searchable`: that field always sits at the toolbar's far end, over the panel.
+        ToolbarItem(placement: .primaryAction) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField(L("Search titles, authors, DOI (#tag for tags)"), text: $store.search)
+                    .textFieldStyle(.plain)
+                if !store.search.isEmpty {
+                    Button { store.search = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("Clear search"))
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(width: InspectorLayout.searchWidth, height: 36)
+            .glassEffect(.regular.interactive(), in: Capsule())
+        }
+        // Its own capsule: in the shared one it pulled the panel button in with it.
+        .sharedBackgroundVisibility(.hidden)
+
+        // Keeps the toolbar clear of the panel, so above it there's only the panel. Added and
+        // removed (and re-made on resize) because the toolbar doesn't re-measure a changed width.
+        if showInspector {
+            ToolbarItem(placement: .primaryAction) {
+                Color.clear.frame(width: inspectorWidth, height: 1).id(inspectorWidth)
+            }
+            .sharedBackgroundVisibility(.hidden)
         }
     }
 }

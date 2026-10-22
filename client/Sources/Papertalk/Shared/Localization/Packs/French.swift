@@ -419,6 +419,7 @@ extension LanguagePacks {
         "Fit the whole map": "Ajuster toute la carte",
         "Put every concept and connection back in place": "Remettre chaque concept et connexion à sa place",
         "Zoom in": "Zoom avant",
+        "Clear search": "Effacer la recherche",
         "NEW": "NOUVEAU",
         "Not listened yet": "Pas encore écouté",
         "Open": "Ouvrir",

@@ -419,6 +419,7 @@ extension LanguagePacks {
         "Fit the whole map": "Ganze Mindmap einpassen",
         "Put every concept and connection back in place": "Alle Konzepte und Verbindungen zurücksetzen",
         "Zoom in": "Vergrößern",
+        "Clear search": "Suche löschen",
         "NEW": "NEU",
         "Not listened yet": "Noch nicht gehört",
         "Open": "Öffnen",

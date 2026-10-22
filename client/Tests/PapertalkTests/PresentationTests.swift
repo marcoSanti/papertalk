@@ -493,6 +493,9 @@ final class FormTests: PapertalkTestCase {
         XCTAssertTrue(f.canSavePreset)
         XCTAssertEqual(f.submission?.filename, "p.pdf")
         XCTAssertEqual(f.submission?.depth, .custom)
+        XCTAssertEqual(f.submission?.library, .some(nil))
+        f.library = "L"
+        XCTAssertEqual(f.submission?.library, "L")
     }
 
     func testImportFormSummaryLength() {

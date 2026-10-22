@@ -49,7 +49,8 @@ ideas. It's a native macOS app written in SwiftUI.
   co-authors. Search titles, authors and DOIs, or start with `#` to search tags.
 - **Libraries.** Folders for your papers, each with a name and an icon, listed in the sidebar
   above the tags. Make one with **+** beside **Libraries**, and file a paper with **Move to
-  Library** in its context menu; papers imported while a library is open go straight into it.
+  Library** in its context menu. The import sheet asks which library a paper goes into (the one
+  open, to start with); the "already in your library" check still looks at every library.
   Right-click a library to edit or delete it (its papers stay, in no library).
 - **Made for listening.** Episodes remember where you stopped, show in Control Center's Now
   Playing with their cover, and answer the media keys. Read along in the transcript.

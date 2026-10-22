@@ -543,6 +543,15 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertEqual(store.libraries.count, 1)
     }
 
+    func testDuplicatesAreFoundInEveryLibrary() async {
+        var filed = Fixtures.paper(id: "a", title: "Attention Is All You Need")
+        filed.library = "other"
+        let store = await makeStore([filed])
+        var incoming = Fixtures.paper(id: "b", title: "attention is all you need ")
+        incoming.library = "mine"
+        XCTAssertEqual(store.findDuplicate(of: incoming)?.id, "a")
+    }
+
     func testDeletingALibraryKeepsItsPapers() async throws {
         let store = await makeStore([Fixtures.paper(id: "a")])
         var form = LibraryForm()

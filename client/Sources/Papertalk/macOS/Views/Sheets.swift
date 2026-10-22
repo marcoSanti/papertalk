@@ -181,6 +181,18 @@ struct UploadSheet: View {
                 .padding(.horizontal, 4)
             }
 
+            if !store.libraries.isEmpty {
+                Picker(selection: $form.library) {
+                    Text(L("No Library")).tag(String?.none)
+                    ForEach(store.libraries) { library in
+                        Label(library.name, systemImage: library.icon).tag(Optional(library.id))
+                    }
+                } label: {
+                    SectionLabel(title: L("Library"), systemImage: "folder")
+                }
+                .pickerStyle(.menu)
+            }
+
             if form.showsNoLLMWarning(llmBaseURL: store.llm.baseUrl) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -210,7 +222,7 @@ struct UploadSheet: View {
                 Button(L("Start episode")) {
                     if let s = form.submission {
                         store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
-                                     targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage)
+                                     targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage, library: s.library)
                         dismiss()
                     }
                 }
@@ -225,6 +237,7 @@ struct UploadSheet: View {
         .frame(width: 480)
         .tint(Color.appAccent)
         .onAppear {
+            form.library = store.shownLibrary
             if let url = store.pendingUploadURL {
                 store.pendingUploadURL = nil
                 load(url)

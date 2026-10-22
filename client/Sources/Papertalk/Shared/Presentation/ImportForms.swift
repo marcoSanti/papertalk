@@ -18,6 +18,8 @@ struct ImportForm {
     var appLanguage = Localization.language
     /// Write the episode in `appLanguage` instead of English. Off unless chosen.
     var writeInAppLanguage = false
+    /// The `Library` the paper is filed in (nil: none); starts as the one on screen.
+    var library: String?
 
     /// Only a summary has a length to choose; the other depths run as long as the paper needs.
     var showsLengthSlider: Bool { depth == .summary }
@@ -84,10 +86,10 @@ struct ImportForm {
 
     /// What `AppStore.upload` needs, once the form is complete.
     var submission: (data: Data, filename: String, depth: Depth, depthNote: String, targetMinutes: Int?,
-                     scriptLanguage: AppLanguage)? {
+                     scriptLanguage: AppLanguage, library: String?)? {
         guard canStart, let fileData, let fileName else { return nil }
         return (fileData, fileName, depth, depthNote, showsLengthSlider ? SummaryLength.clamped(summaryMinutes) : nil,
-                scriptLanguage)
+                scriptLanguage, library)
     }
 
     /// The file button and the label beside it.

@@ -54,7 +54,8 @@ struct ImportSheet: View {
                 Button(L("Start episode")) {
                     if let s = form.submission {
                         store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
-                                     targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage)
+                                     targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage,
+                                     library: s.library ?? store.shownLibrary)   // no picker here yet
                         store.showUpload = false
                     }
                 }

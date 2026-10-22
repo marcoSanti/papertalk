@@ -970,8 +970,9 @@ final class AppStore: ObservableObject {
         }
     }
 
-    /// First existing paper (other than `p`) that shares its title or DOI.
-    private func findDuplicate(of p: Paper?) -> Paper? {
+    /// First existing paper (other than `p`) that shares its title or DOI, in any library: a paper
+    /// already filed elsewhere still counts.
+    func findDuplicate(of p: Paper?) -> Paper? {
         guard let p else { return nil }
         func norm(_ s: String?) -> String { (s ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
         let title = norm(p.title), doi = norm(p.doi)
@@ -1468,13 +1469,13 @@ final class AppStore: ObservableObject {
 
     /// Run the in-process pipeline on a PDF (or an existing stored paper).
     /// `targetMinutes` is a summary's length (nil: the default); `scriptLanguage`
-    /// the language the episode is written in (nil: English).
+    /// the language the episode is written in (nil: English); `library` the `Library` it's filed in.
     func upload(_ pdf: Data, filename: String, depth: Depth, depthNote: String, targetMinutes: Int? = nil,
-                scriptLanguage: AppLanguage? = nil) {
+                scriptLanguage: AppLanguage? = nil, library: String? = nil) {
         let id = UUID().uuidString
         startRun(id) {
             await self.runPipeline(nil, id: id, pdf: pdf, filename: filename, depth: depth, depthNote: depthNote,
-                                   targetMinutes: targetMinutes, scriptLanguage: scriptLanguage)
+                                   targetMinutes: targetMinutes, scriptLanguage: scriptLanguage, library: library)
         }
     }
 
@@ -1694,7 +1695,7 @@ final class AppStore: ObservableObject {
     /// Each step's result is saved as it lands, so a stopped or quit run resumes from there.
     private func runPipeline(_ existing: Paper?, id newId: String? = nil, pdf: Data? = nil, filename: String = "",
                              depth: Depth = .inDepth, depthNote: String = "", targetMinutes: Int? = nil,
-                             scriptLanguage: AppLanguage? = nil) async {
+                             scriptLanguage: AppLanguage? = nil, library: String? = nil) async {
         let id = existing?.id ?? newId ?? UUID().uuidString
         // First conversion is when notifications start to matter: ask then.
         notifier.requestPermissionIfNeeded()
@@ -1706,7 +1707,7 @@ final class AppStore: ObservableObject {
                                      depth: existing?.depth ?? depth.rawValue, bibtex: nil, targetMinutes: targetMinutes, progress: 0, duration: 0, progressTs: nil,
                                      stage: "extract", message: L("Queued"), statusError: nil)
         if existing == nil, let scriptLanguage, scriptLanguage != .english { rec.scriptLanguage = scriptLanguage.rawValue }
-        if existing == nil { rec.library = shownLibrary }
+        if existing == nil { rec.library = library }
         papers[id] = rec
         selectedId = id
         // Store the PDF right away: the record already says hasPdf, and the

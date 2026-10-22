@@ -1,6 +1,6 @@
 // The library map window's content: the library's papers on a ring, coloured by cluster, lines
 // between papers whose mind maps connect (grey ones to papers outside the library), dragging to
-// pan or move papers, and a side panel with the selected paper's or line's connections.
+// pan or move papers, zoom (buttons and pinch) as in the mind map, and a side panel with the selected paper's or line's connections.
 
 #if os(macOS)
 import SwiftUI
@@ -17,6 +17,17 @@ struct LibraryMapView: View {
     /// Papers the user has dragged, and where the one being dragged started.
     @State private var moved: [String: MindMapLayout.Point] = [:]
     @State private var moveStart: MindMapLayout.Point?
+    /// nil: fit the whole map in the window.
+    @State private var zoom: Double?
+    @GestureState private var pinch = Pinch()
+    /// A pinch in progress: how much, and where it started (in the viewport).
+    private struct Pinch: Equatable {
+        var scale = 1.0
+        var location: CGPoint?
+    }
+    /// Where to scroll once a zoom has resized the content, to keep its anchor in place.
+    @State private var pendingScroll: CGPoint?
+    private static let padding = 20.0
     // Click-and-drag panning drives the scroll view's position, as in the mind map.
     @State private var scroll = ScrollPosition()
     @State private var geometry = ScrollFrame()
@@ -40,43 +51,107 @@ struct LibraryMapView: View {
         return cluster.map { palette[$0 % palette.count] } ?? .gray
     }
 
+    /// Laid out for the window's size (not the zoom), so a bigger window spreads the papers out.
+    private var layout: LibraryMapLayout {
+        LibraryMapLayout(map, minWidth: geometry.viewport.width - 2 * Self.padding,
+                         minHeight: geometry.viewport.height - 2 * Self.padding).arranged(moved)
+    }
+
+    private var viewport: (width: Double, height: Double) { (geometry.viewport.width, geometry.viewport.height) }
+    private var viewportCenter: CGPoint { CGPoint(x: geometry.viewport.width / 2, y: geometry.viewport.height / 2) }
+
+    private func scale(_ layout: LibraryMapLayout) -> Double {
+        MindMapLayout.clampScale(zoom ?? layout.fitScale(width: viewport.width - 2 * Self.padding,
+                                                         height: viewport.height - 2 * Self.padding))
+    }
+
+    /// Zoom to `newScale` keeping the map point under `anchor` (a viewport point) where it is.
+    private func zoom(to newScale: Double, around anchor: CGPoint) {
+        let layout = layout
+        let s0 = scale(layout), s1 = MindMapLayout.clampScale(newScale)
+        guard s1 != s0 else { return }
+        let o = layout.zoomedOffset(offset: .init(x: geometry.offset.x, y: geometry.offset.y),
+                                    anchor: .init(x: anchor.x, y: anchor.y), from: s0, to: s1,
+                                    viewport: viewport, padding: Self.padding)
+        pendingScroll = CGPoint(x: o.x, y: o.y)
+        zoom = s1
+    }
+
+    /// The pinch's preview scales around the map point under the fingers.
+    private func pinchAnchor(_ layout: LibraryMapLayout, scale: Double) -> UnitPoint {
+        guard let l = pinch.location, layout.width > 0, layout.height > 0 else { return .center }
+        let g = layout.mapPoint(under: .init(x: l.x, y: l.y), offset: .init(x: geometry.offset.x, y: geometry.offset.y),
+                                scale: scale, viewport: viewport, padding: Self.padding)
+        return UnitPoint(x: g.x / layout.width, y: g.y / layout.height)
+    }
+
     var body: some View {
+        let layout = layout
+        let scale = scale(layout)
         HStack(spacing: 0) {
             GeometryReader { geo in
-                // Laid out for the window's size, so a bigger window spreads the papers out.
-                let layout = LibraryMapLayout(map, minWidth: geo.size.width - 40, minHeight: geo.size.height - 40).arranged(moved)
-                let scale = layout.fitScale(width: geo.size.width - 40, height: geo.size.height - 40)
                 ScrollView([.horizontal, .vertical]) {
                     graph(layout, scale: scale)
-                        .padding(20)
+                        // A pinch in progress only scales the drawn graph; it's laid out again once, at the end.
+                        .scaleEffect(MindMapLayout.clampScale(scale * pinch.scale) / scale,
+                                     anchor: pinchAnchor(layout, scale: scale))
+                        .padding(Self.padding)
                         .frame(minWidth: geo.size.width, minHeight: geo.size.height)
                 }
                 .scrollPosition($scroll)
                 .onScrollGeometryChange(for: ScrollFrame.self) {
                     ScrollFrame(offset: $0.contentOffset, content: $0.contentSize, viewport: $0.containerSize)
-                } action: { _, frame in geometry = frame }
+                } action: { old, frame in
+                    geometry = frame
+                    // The zoomed content has its new size now: scroll so the anchor stays put.
+                    if let target = pendingScroll, frame.content != old.content {
+                        pendingScroll = nil
+                        scroll.scrollTo(point: target)
+                    }
+                }
                 .pointerStyle(dragStart == nil ? .grabIdle : .grabActive)
             }
             .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
-            .overlay(alignment: .bottomTrailing) {
-                if !moved.isEmpty {
-                    Button { withAnimation(.snappy) { moved = [:] } } label: {
-                        Image(systemName: "arrow.counterclockwise").frame(width: 26, height: 24)
-                    }
-                    .buttonStyle(.borderless)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(.regularMaterial, in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1))
-                    .padding(12)
-                    .help(LibraryMapPresentation.resetArrangement)
-                }
-            }
+            .overlay(alignment: .bottomTrailing) { zoomControls(scale) }
+            .gesture(MagnifyGesture()
+                .updating($pinch) { value, state, _ in state = Pinch(scale: value.magnification, location: value.startLocation) }
+                .onEnded { zoom(to: scale * $0.magnification, around: $0.startLocation) })
             Divider()
             ScrollView { panel }
                 .frame(width: 290)
         }
         .frame(minWidth: 760, maxWidth: .infinity, minHeight: 480, maxHeight: .infinity)
+    }
+
+    /// Zoom out, the current zoom (click to fit), zoom in, and undo the dragging.
+    private func zoomControls(_ scale: Double) -> some View {
+        HStack(spacing: 2) {
+            Button { zoom(to: scale / 1.25, around: viewportCenter) } label: {
+                Image(systemName: "minus.magnifyingglass").frame(width: 26, height: 24)
+            }
+            .help(L("Zoom out"))
+            Button { zoom = nil } label: {
+                Text("\(Int((scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 44, minHeight: 24)
+            }
+            .help(L("Fit the whole map"))
+            Button { zoom(to: scale * 1.25, around: viewportCenter) } label: {
+                Image(systemName: "plus.magnifyingglass").frame(width: 26, height: 24)
+            }
+            .help(L("Zoom in"))
+            if !moved.isEmpty {
+                Button { withAnimation(.snappy) { moved = [:] } } label: {
+                    Image(systemName: "arrow.counterclockwise").frame(width: 26, height: 24)
+                }
+                .help(LibraryMapPresentation.resetArrangement)
+            }
+        }
+        .buttonStyle(.borderless)
+        .font(.callout)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1))
+        .padding(12)
     }
 
     // MARK: graph

@@ -101,7 +101,7 @@ struct LibraryMap: Equatable {
 /// Where each paper sits: the library's on one ring, spaced so the boxes don't touch (a single
 /// paper in the middle), and outside papers on a ring around it. Papers the user dragged go
 /// where they were dropped (`arranged`).
-struct LibraryMapLayout: Equatable {
+struct LibraryMapLayout: Equatable, ZoomableLayout {
     /// Paper id → centre of its box, in points from the top-left.
     private(set) var positions: [String: MindMapLayout.Point] = [:]
 
@@ -143,12 +143,6 @@ struct LibraryMapLayout: Equatable {
                 positions[node.id] = .init(x: width / 2 + sx * radius * cos(a), y: height / 2 + sy * radius * sin(a))
             }
         }
-    }
-
-    /// The zoom that shows the whole map in a `viewW` × `viewH` viewport, never above 100%.
-    func fitScale(width viewW: Double, height viewH: Double) -> Double {
-        guard width > 0, height > 0 else { return 1 }
-        return max(MindMapLayout.minScale, min(1, viewW / width, viewH / height))
     }
 }
 

@@ -55,7 +55,7 @@ ideas. It's a native macOS app written in SwiftUI.
   **Show Paper Connections** (right-click a library, or the button beside its name in the toolbar)
   draws its papers as one graph: a line joins two papers whose mind maps connect, thicker for more
   connections, each cluster of linked papers in its own colour. Drag a paper to move it, or the
-  background to pan. Click a paper or a line to see which concepts connect and open a mind map. In a
+  background to pan; zoom with the controls or by pinching, as in the mind map. Click a paper or a line to see which concepts connect and open a mind map. In a
   library that connects to other libraries, the papers elsewhere it connects to show in grey
   around it.
 - **Made for listening.** Episodes remember where you stopped, show in Control Center's Now

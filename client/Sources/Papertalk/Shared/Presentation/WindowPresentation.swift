@@ -91,6 +91,9 @@ enum InspectorLayout {
     static func width(startingAt start: Double, dragged dx: Double) -> Double {
         min(widthRange.upperBound, max(widthRange.lowerBound, start - dx))
     }
+
+    /// The toolbar search field's width.
+    static let searchWidth = 300.0
 }
 
 /// Picking the file out of a drag-and-drop onto the library or import sheet.

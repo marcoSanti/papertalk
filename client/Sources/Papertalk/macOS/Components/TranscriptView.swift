@@ -5,6 +5,20 @@ import SwiftUI
 import AppKit
 
 // MARK: - Transcript sheet
+/// The sheet for a loaded transcript, or a placeholder when the paper has none.
+struct TranscriptSheetView: View {
+    let item: AppStore.TranscriptSheet
+
+    var body: some View {
+        if let t = item.transcript, !t.segments.isEmpty {
+            TranscriptView(transcript: t, title: item.title)
+        } else {
+            ContentUnavailableView(L("No transcript yet"), systemImage: "text.quote", description: Text(L("The transcript for this paper isn’t available.")))
+                .frame(width: 700, height: 660)
+        }
+    }
+}
+
 /// Every segment with its turns, speakers marked by avatar; copies as plain text.
 struct TranscriptView: View {
     let transcript: Transcript

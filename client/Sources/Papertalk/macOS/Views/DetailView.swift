@@ -27,12 +27,8 @@ struct DetailView: View {
 
     /// The sheet is driven by the loaded transcript itself, so it can never
     /// render before the data arrives (an `isPresented` flag + separate state
-    /// could show the empty branch).
-    private struct TranscriptSheet: Identifiable {
-        let id = UUID()
-        let transcript: Transcript?
-    }
-    @State private var transcriptSheet: TranscriptSheet?
+    /// could show the empty branch). Local, so it opens on this view's window.
+    @State private var transcriptSheet: AppStore.TranscriptSheet?
     @State private var shownID: String?
     @State private var titleDraft = ""
     @FocusState private var titleFocused: Bool
@@ -66,14 +62,7 @@ struct DetailView: View {
                 .background(alignment: .top) { PaperBackdrop(paper: paper) }
             }
         }
-        .sheet(item: $transcriptSheet) { item in
-            if let t = item.transcript, !t.segments.isEmpty {
-                TranscriptView(transcript: t, title: paper.displayTitle)
-            } else {
-                ContentUnavailableView(L("No transcript yet"), systemImage: "text.quote", description: Text(L("The transcript for this paper isn’t available.")))
-                    .frame(width: 700, height: 660)
-            }
-        }
+        .sheet(item: $transcriptSheet) { TranscriptSheetView(item: $0) }
         .sheet(isPresented: $showCitation) {
             CitationView(bibtex: paper.bibtex ?? "")
         }
@@ -435,29 +424,16 @@ struct DetailView: View {
     // MARK: - Actions
 
     /// Open the stored PDF in its own window.
-    private func openPDF() {
-        guard paper.hasPdf else { return }
-        Task {
-            if let data = await store.pdfData(for: paper.id) {
-                PDFViewerWindow.present(data: data, title: paper.displayTitle)
-            }
-        }
-    }
+    private func openPDF() { PaperPanels.openPDF(paper, from: store) }
 
     /// Ask where to save the episode, then export it there.
-    private func exportAudio() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.mpeg4Audio]
-        panel.nameFieldStringValue = EpisodeExport.fileName(paper)
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task { await store.exportAudio(paper.id, to: url) }
-    }
+    private func exportAudio() { PaperPanels.exportAudio(paper, from: store) }
 
     /// Open the transcript sheet with the script as it is on disk now.
     private func openTranscript() {
         Task {
             // Always read the current file: a rerun may have replaced it.
-            transcriptSheet = TranscriptSheet(transcript: await store.transcript(for: paper.id))
+            transcriptSheet = AppStore.TranscriptSheet(title: paper.displayTitle, transcript: await store.transcript(for: paper.id))
         }
     }
 

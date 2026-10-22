@@ -41,6 +41,9 @@ struct PapertalkApp: App {
                     .keyboardShortcut("o", modifiers: .command)
                 Button(L("Import Paper…")) { PaperPanels.importPapers(into: store) }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
+                Divider()
+                Button(L("Redraw All Mind Maps…")) { store.requestRedrawAllMindMaps() }
+                    .disabled(store.mindMapsToRedraw.isEmpty)
             }
         }
     }

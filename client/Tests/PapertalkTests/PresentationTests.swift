@@ -631,6 +631,14 @@ final class FormTests: PapertalkTestCase {
         XCTAssertNotEqual(AppStore.PendingConfirmation.deleteAudio(p).id, AppStore.PendingConfirmation.finishedListening(p).id)
     }
 
+    func testRedrawAllMindMapsWording() {
+        let text = ConfirmationText(.redrawAllMindMaps(3))
+        XCTAssertEqual(text.title, "Redraw all mind maps?")
+        XCTAssertEqual(text.confirmLabel, "Redraw mind maps")
+        XCTAssertTrue(text.message.hasPrefix("3 papers get a new mind map"))
+        XCTAssertEqual(AppStore.PendingConfirmation.redrawAllMindMaps(3).id, "redrawAllMindMaps")
+    }
+
     func testStopAndDeleteWording() {
         let running = Fixtures.paper(state: "running")
         let done = Fixtures.paper(state: "done")

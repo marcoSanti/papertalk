@@ -170,6 +170,31 @@ struct ContextMenuItems: View {
         } label: {
             Label(L("Open"), systemImage: "arrow.up.forward.app")
         }
+        let play = PaperPresentation.playButton(paper, isPlaying: store.playingPaperId == paper.id && store.player.isPlaying)
+        Button {
+            store.togglePlayback(paper.id)
+        } label: {
+            Label(play.title, systemImage: play.icon)
+        }
+        .disabled(!PaperPresentation.isPlayable(paper))
+        Button {
+            PaperPanels.openPDF(paper, from: store)
+        } label: {
+            Label(L("PDF"), systemImage: "doc.text")
+        }
+        .disabled(!paper.hasPdf)
+        Button {
+            store.showTranscript(paper.id)
+        } label: {
+            Label(L("Transcript"), systemImage: "text.quote")
+        }
+        .disabled(!paper.hasScript)
+        Button {
+            MindMapWindow.open(paperId: paper.id, store: store)
+        } label: {
+            Label(L("Mind map"), systemImage: "point.3.connected.trianglepath.dotted")
+        }
+        .disabled(!PaperPresentation.hasMindMap(paper))
         Divider()
         let favorite = PaperPresentation.favoriteToggle(paper)
         Button {
@@ -202,10 +227,35 @@ struct ContextMenuItems: View {
             }
         }
         Button {
+            store.createMindMap(paper.id)
+        } label: {
+            Label(PaperPresentation.mindMapRow(paper, drawing: store.drawingMindMaps.contains(paper.id)).title,
+                  systemImage: "point.3.connected.trianglepath.dotted")
+        }
+        .disabled(!store.canCreateMindMap(paper))
+        Button {
             store.refreshMeta(paper.id)
         } label: {
             Label(L("Refresh metadata"), systemImage: "arrow.clockwise")
         }
+        Button {
+            store.regenerateAudio(paper.id)
+        } label: {
+            Label(L("Regenerate audio"), systemImage: "waveform.badge.magnifyingglass")
+        }
+        .disabled(!PaperPresentation.canRegenerateAudio(paper, anyConversionRunning: store.activeRun != nil))
+        Button {
+            PaperPanels.exportAudio(paper, from: store)
+        } label: {
+            Label(L("Export audio…"), systemImage: "square.and.arrow.up")
+        }
+        .disabled(!EpisodeExport.canExport(paper))
+        Button {
+            PaperPanels.exportPaper(paper, from: store)
+        } label: {
+            Label(L("Export paper…"), systemImage: "shippingbox")
+        }
+        .disabled(!PaperPresentation.canExportPaper(paper))
         if store.isStandalone {
             Button {
                 store.revealInFinder(paper.id)

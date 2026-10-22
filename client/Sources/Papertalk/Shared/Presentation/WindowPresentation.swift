@@ -43,6 +43,10 @@ struct ConfirmationText: Equatable {
             confirmLabel = L("Redraw mind maps")
             message = L("{0} get a new mind map from their PDF, one after another, with one LLM request each. Changes you made to the current maps are lost.",
                         LibraryPresentation.paperCount(count))
+        case .deleteLibrary(let library):
+            title = L("Delete the library “{0}”?", library.name)
+            confirmLabel = L("Delete library")
+            message = L("Its papers stay in All Papers, in no library.")
         }
     }
 

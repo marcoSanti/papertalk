@@ -201,6 +201,35 @@ final class MindMapConnectionsStoreTests: PapertalkTestCase {
         XCTAssertEqual(shown?.externalLinks.map(\.paperId), ["new"])
     }
 
+    func testMapsInAnotherLibraryAreNotConnected() async throws {
+        let storage = LocalStorage(root: Fixtures.tempDir())
+        await storage.save([Library(id: "L", name: "Other", icon: "folder", connectsAcross: false)], K.libraries)
+        var old = Fixtures.paper(id: "old", title: "Old paper")
+        old.hasMindMap = true
+        old.library = "L"
+        await storage.save(old, K.paper("old"))
+        await storage.save(ConnectionFixtures.related, K.mindMap("old"))
+        await storage.save(Fixtures.paper(id: "new", title: "New paper"), K.paper("new"))
+        try await storage.write(K.pdf("new"), Fixtures.pdf(lines: ["Sparse attention heads"]))
+        let store = AppStore(storage: storage, speech: FakeSpeechBackend())
+        await waitUntil { store.papers.count == 2 && store.libraries.count == 1 }
+        store.llm.baseUrl = "http://mock.local/v1"
+
+        let pairsAsked = LockedCount()
+        MockLLM.install { request in
+            let text = MockLLM.allText(in: request)
+            if text.contains("PAIRS:") { pairsAsked.add(); return (200, MockLLM.chatReply(#"{"links":[{"pair":1,"label":"same heads"}]}"#)) }
+            let nodes = ConnectionFixtures.new.nodes.map { n in
+                #"{"id":"\#(n.id)","label":"\#(n.label)","branch":"\#(n.branch.rawValue)","parent":\#(n.parent.map { "\"\($0)\"" } ?? "null"),"description":"","core":"\#(n.core)"}"#
+            }
+            return (200, MockLLM.chatReply(#"{"summary":"S","nodes":[\#(nodes.joined(separator: ","))],"links":[]}"#))
+        }
+        store.createMindMap("new")
+        await waitUntil(timeout: 5) { store.drawingMindMaps.isEmpty && store.papers["new"]?.hasMindMap == true }
+        // The pairs question comes before the drawing ends: with no paper in reach, it never does.
+        XCTAssertEqual(pairsAsked.value, 0)
+    }
+
     func testRedrawAllConfirmsThenDrawsEveryMapOneAtATime() async throws {
         let root = Fixtures.tempDir()
         let storage = LocalStorage(root: root)

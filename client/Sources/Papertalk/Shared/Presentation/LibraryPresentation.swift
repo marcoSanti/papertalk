@@ -5,30 +5,32 @@ import Foundation
 
 /// What the sidebar can point the library at.
 enum SidebarItem: Hashable {
-    case all, favorites, authors, tag(String)
+    case all, favorites, authors, tag(String), library(String)
 }
 
 /// Library wording and keyboard navigation. Pure functions: the library and
 /// sidebar views only lay out what these return.
 enum LibraryPresentation {
     /// The heading above the library for the current scope.
-    static func title(view: AppStore.ViewMode, tag: String?, author: String?) -> String {
+    static func title(view: AppStore.ViewMode, tag: String?, author: String?, library: String? = nil) -> String {
         switch view {
         case .all: return L("All Papers")
         case .fav: return L("Favorites")
         case .authors: return L("Authors")
         case .tag: return tag.map { "#\($0)" } ?? L("Tag")
         case .author: return author ?? L("Author")
+        case .library: return library ?? L("Library")
         }
     }
 
     /// A sidebar row's name (tags without the "#" the library title adds).
-    static func sidebarTitle(_ item: SidebarItem) -> String {
+    static func sidebarTitle(_ item: SidebarItem, libraries: [Library] = []) -> String {
         switch item {
         case .all: return L("All Papers")
         case .favorites: return L("Favorites")
         case .authors: return L("Authors")
         case .tag(let tag): return tag
+        case .library(let id): return libraries.first { $0.id == id }?.name ?? L("Library")
         }
     }
 

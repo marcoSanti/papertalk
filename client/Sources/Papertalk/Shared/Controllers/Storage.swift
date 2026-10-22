@@ -45,6 +45,8 @@ enum K {
     static func folder(_ id: String) -> String { "papers/\(id)/" }
     /// The folder holding every paper (Clear Data removes it).
     static let papersRoot = "papers/"
+    /// Every `Library` (the user's folders of papers).
+    static let libraries = "libraries.json"
     /// The library record (`Paper`).
     static func paper(_ id: String) -> String { "papers/\(id)/paper.json" }
     /// A script file older builds wrote; only deleted now.

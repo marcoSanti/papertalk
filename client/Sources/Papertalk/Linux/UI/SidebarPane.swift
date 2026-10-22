@@ -26,7 +26,7 @@ struct SidebarPane: View {
             Text(L("Library")).font(.caption).foregroundColor(.gray).padding(.horizontal, 12).padding(.top, 12)
             List(store.sidebarItems, id: \.self, selection: selection) { item in
                 HStack {
-                    Text(LibraryPresentation.sidebarTitle(item))
+                    Text(LibraryPresentation.sidebarTitle(item, libraries: store.libraries))
                     Spacer()
                     Text(LibraryPresentation.badge(store.sidebarCount(item)) ?? "").foregroundColor(.gray)
                 }

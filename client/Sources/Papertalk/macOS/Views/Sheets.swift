@@ -416,6 +416,59 @@ struct EditMetaSheet: View {
     }
 }
 
+/// New Library / Edit Library: a name, an icon, and whether its mind maps connect to other libraries.
+struct LibrarySheet: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var form: LibraryForm
+
+    init(form: LibraryForm) {
+        _form = State(initialValue: form)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(form.title).font(.title3.weight(.semibold))
+            TextField(L("Name"), text: $form.name, prompt: Text(L("e.g. Neuroscience")))
+                .textFieldStyle(.roundedBorder)
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 8), count: 8), spacing: 8) {
+                ForEach(LibraryForm.icons, id: \.self) { icon in
+                    Button {
+                        form.icon = icon
+                    } label: {
+                        Image(systemName: icon)
+                            .frame(width: 32, height: 32)
+                            .background(form.icon == icon ? Color.appAccent.opacity(0.25) : .clear,
+                                        in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(icon)
+                }
+            }
+            Toggle(LibraryForm.connectsAcrossTitle, isOn: $form.connectsAcross)
+            Text(LibraryForm.connectsAcrossHelp).font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button(L("Cancel")) { dismiss() }
+                    .buttonStyle(.glass)
+                    .keyboardShortcut(.cancelAction)
+                Button(form.saveLabel) {
+                    store.saveLibrary(form)
+                    dismiss()
+                }
+                .buttonStyle(.glassProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!form.canSave)
+            }
+            .controlSize(.large)
+        }
+        .padding(20)
+        .frame(width: 400)
+        .tint(Color.appAccent)
+    }
+}
+
 // MARK: - Server settings page (which server this app points at)
 /// The storage server's URL and token (empty URL: this Mac).
 struct ServerSettingsPage: View {

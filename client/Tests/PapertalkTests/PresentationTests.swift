@@ -631,6 +631,36 @@ final class FormTests: PapertalkTestCase {
         XCTAssertNotEqual(AppStore.PendingConfirmation.deleteAudio(p).id, AppStore.PendingConfirmation.finishedListening(p).id)
     }
 
+    func testLibraryWordingAndForm() {
+        let lib = Library(id: "L", name: "Bio", icon: "leaf", connectsAcross: true)
+        XCTAssertEqual(LibraryPresentation.sidebarTitle(.library("L"), libraries: [lib]), "Bio")
+        XCTAssertEqual(LibraryPresentation.sidebarTitle(.library("gone")), "Library")
+        XCTAssertEqual(LibraryPresentation.title(view: .library, tag: nil, author: nil, library: "Bio"), "Bio")
+        XCTAssertEqual(ConfirmationText(.deleteLibrary(lib)).title, "Delete the library “Bio”?")
+        let new = LibraryForm()
+        XCTAssertTrue(new.isNew)
+        XCTAssertFalse(new.canSave)
+        XCTAssertEqual(new.title, "New Library")
+        XCTAssertEqual(new.saveLabel, "Create Library")
+        let edit = LibraryForm(lib)
+        XCTAssertEqual(edit.library, lib)
+        XCTAssertEqual(edit.title, "Edit Library")
+        XCTAssertEqual(edit.saveLabel, "Save")
+    }
+
+    func testMindMapsLinkWithinALibraryUnlessItConnectsAcross() {
+        let a = Library(id: "A", name: "A", icon: "folder", connectsAcross: false)
+        let b = Library(id: "B", name: "B", icon: "folder", connectsAcross: true)
+        func paper(_ lib: String?) -> Paper { var p = Fixtures.paper(); p.library = lib; return p }
+        let libs = [a, b]
+        XCTAssertTrue(Library.linkable(paper(nil), paper(nil), in: libs))
+        XCTAssertTrue(Library.linkable(paper("A"), paper("A"), in: libs))
+        XCTAssertFalse(Library.linkable(paper("A"), paper(nil), in: libs))
+        XCTAssertTrue(Library.linkable(paper("A"), paper("B"), in: libs))    // B connects across
+        XCTAssertTrue(Library.linkable(paper(nil), paper("gone"), in: libs))  // a deleted library is none
+        XCTAssertFalse(Library.linkable(paper("A"), paper("gone"), in: libs))
+    }
+
     func testRedrawAllMindMapsWording() {
         let text = ConfirmationText(.redrawAllMindMaps(3))
         XCTAssertEqual(text.title, "Redraw all mind maps?")

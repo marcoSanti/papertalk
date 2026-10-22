@@ -13,7 +13,8 @@ struct LibraryPane: View {
         let papers = store.filteredPapers()
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(LibraryPresentation.title(view: store.view, tag: store.activeTag, author: store.activeAuthor))
+                Text(LibraryPresentation.title(view: store.view, tag: store.activeTag, author: store.activeAuthor,
+                                                library: store.activeLibraryName))
                     .font(.title2)
                 Spacer()
                 Button(L("Import PDF…")) { store.beginImport() }

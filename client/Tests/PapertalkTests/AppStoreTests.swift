@@ -511,6 +511,56 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertEqual(store.sidebarCount(.tag("missing")), 0)
     }
 
+    func testLibrariesAreCreatedFiledAndScopedAndSaved() async throws {
+        let store = await makeStore([Fixtures.paper(id: "a"), Fixtures.paper(id: "b")])
+        var form = LibraryForm()
+        form.name = "  Neuro   science "
+        form.icon = "brain"
+        store.saveLibrary(form)
+        let lib = try XCTUnwrap(store.libraries.first)
+        XCTAssertEqual(lib.name, "Neuro science")
+        XCTAssertEqual(store.sidebarItems, [.all, .favorites, .authors, .library(lib.id)])
+
+        store.moveToLibrary("a", lib.id)
+        store.selectSidebar(.library(lib.id))
+        XCTAssertEqual(store.filteredPapers().map(\.id), ["a"])
+        XCTAssertEqual(store.sidebarCount(.library(lib.id)), 1)
+        XCTAssertEqual(store.sidebarSelection, .library(lib.id))
+        XCTAssertEqual(store.shownLibrary, lib.id)
+        XCTAssertEqual(store.activeLibraryName, "Neuro science")
+        await waitUntil { await self.onDisk("a")?.library == lib.id }
+        await waitUntil { await self.storage.exists([Library].self, K.libraries) == [lib] }
+
+        // Reloaded from disk, a new store sees the same library.
+        let reopened = AppStore(storage: storage)
+        await waitUntil { reopened.libraries == [lib] && reopened.papers["a"]?.library == lib.id }
+
+        form = LibraryForm(lib)
+        form.name = "Neuro"
+        store.saveLibrary(form)
+        XCTAssertEqual(store.libraries.map(\.name), ["Neuro"])
+        store.saveLibrary(LibraryForm())            // no name: refused
+        XCTAssertEqual(store.libraries.count, 1)
+    }
+
+    func testDeletingALibraryKeepsItsPapers() async throws {
+        let store = await makeStore([Fixtures.paper(id: "a")])
+        var form = LibraryForm()
+        form.name = "Bio"
+        store.saveLibrary(form)
+        store.moveToLibrary("a", form.id)
+        store.selectSidebar(.library(form.id))
+        store.requestDeleteLibrary(form.id)
+        let pending = try XCTUnwrap(store.pendingConfirmation)
+        XCTAssertEqual(pending.id, "deleteLibrary-\(form.id)")
+        store.confirmPending(pending)
+        XCTAssertTrue(store.libraries.isEmpty)
+        XCTAssertEqual(store.sidebarSelection, .all)
+        XCTAssertNil(store.papers["a"]?.library)
+        await waitUntil { await self.storage.exists([Library].self, K.libraries) == [] }
+        await waitUntil { await self.onDisk("a")?.library == nil }
+    }
+
     func testSidebarKeepsOrDropsTheSelectedPaper() async {
         let store = await makeStore(library)
         store.selectedId = "1"                            // favourite, tagged ml

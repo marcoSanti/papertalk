@@ -76,9 +76,10 @@ struct LibraryView: View {
             }
         }
         .background(AmbientBackground())
-        .navigationTitle(LibraryPresentation.title(view: store.view, tag: store.activeTag, author: store.activeAuthor,
-                                                    library: store.activeLibraryName))
+        .navigationTitle(title)
         .navigationSubtitle(LibraryPresentation.paperCount(papers.count))
+        // In a library the title is drawn by hand below, so its connections button can sit right of it.
+        .toolbar(removing: store.shownLibrary == nil ? nil : .title)
         .toolbar {
             if store.view == .author {
                 ToolbarItem(placement: .navigation) {
@@ -92,7 +93,30 @@ struct LibraryView: View {
                     .help(L("Back to all authors"))
                 }
             }
+            if let id = store.shownLibrary {
+                // Plain text like the system title: no glass pill, and as wide as the name.
+                ToolbarItem(placement: .navigation) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(title).font(.headline).lineLimit(1)
+                        Text(LibraryPresentation.paperCount(papers.count)).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    .fixedSize()
+                    .padding(.horizontal, 4)
+                }
+                .sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .navigation) {
+                    Button { LibraryMapWindow.open(libraryId: id, store: store) } label: {
+                        Label(LibraryMapPresentation.open, systemImage: "point.3.connected.trianglepath.dotted")
+                    }
+                    .help(LibraryMapPresentation.openHelp)
+                }
+            }
         }
+    }
+
+    private var title: String {
+        LibraryPresentation.title(view: store.view, tag: store.activeTag, author: store.activeAuthor,
+                                  library: store.activeLibraryName)
     }
 
     // MARK: status filter bar (floating glass)

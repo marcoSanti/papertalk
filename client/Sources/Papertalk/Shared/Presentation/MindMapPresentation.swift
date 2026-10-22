@@ -53,6 +53,22 @@ struct MindMapLayout: Equatable {
               y: min(height - h / 2, max(h / 2, start.y + dy / scale)))
     }
 
+    /// How far `filling` moved the map to centre it on a bigger canvas (zero otherwise).
+    private(set) var shift = Point(x: 0, y: 0)
+
+    /// This layout on a canvas of at least `w` × `h` (the window, in layout points), the map
+    /// centred on it, so concepts can be dragged anywhere in the window.
+    func filling(width w: Double, height h: Double) -> MindMapLayout {
+        let dx = max(0, (w - width) / 2), dy = max(0, (h - height) / 2)
+        guard dx > 0 || dy > 0 else { return self }
+        var l = self
+        l.positions = positions.mapValues { Point(x: $0.x + dx, y: $0.y + dy) }
+        l.width = max(width, w)
+        l.height = max(height, h)
+        l.shift = Point(x: shift.x + dx, y: shift.y + dy)
+        return l
+    }
+
     /// The handle offset that puts `e`'s handle at `p`.
     func handleOffset(_ e: Edge, at p: Point) -> Point? {
         guard let a = positions[e.from], let b = positions[e.to] else { return nil }

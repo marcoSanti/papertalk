@@ -109,15 +109,18 @@ struct MindMapView: View {
         drawn.layout = drawn.base.arranged(arrangement)
     }
 
-    /// Drags a concept (`id`) or an edge's handle (`edge`) around the map.
-    private func moveGesture(node id: String? = nil, edge: MindMapLayout.Edge? = nil, scale: Double) -> some Gesture {
+    /// Drags a concept (`id`) or an edge's handle (`edge`) around `layout`, the map as drawn
+    /// (on the window-filling canvas); concepts are kept in the unfilled layout's points.
+    private func moveGesture(node id: String? = nil, edge: MindMapLayout.Edge? = nil, layout: MindMapLayout,
+                             scale: Double) -> some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .global)
             .onChanged { drag in
                 guard let start = moveStart ?? id.flatMap({ layout.positions[$0] }) ?? edge.flatMap(layout.handle) else { return }
                 moveStart = start
                 let (dx, dy) = (drag.translation.width, drag.translation.height)
                 if let id {
-                    arrange { $0.nodes[id] = layout.dragged(from: start, dx: dx, dy: dy, scale: scale) }
+                    let p = layout.dragged(from: start, dx: dx, dy: dy, scale: scale)
+                    arrange { $0.nodes[id] = .init(x: p.x - layout.shift.x, y: p.y - layout.shift.y) }
                 } else if let edge {
                     let p = layout.dragged(from: start, dx: dx, dy: dy, scale: scale,
                                            w: MindMapLayout.linkLabelWidth, h: MindMapLayout.linkLabelHeight)
@@ -164,7 +167,9 @@ struct MindMapView: View {
             HStack(spacing: 0) {
                 GeometryReader { geo in
                     ScrollView([.horizontal, .vertical]) {
-                        graph(layout, scale: scale)
+                        // The canvas fills the window, so nothing stops at the map's own edge.
+                        graph(layout.filling(width: (geo.size.width - 2 * Self.padding) / scale,
+                                             height: (geo.size.height - 2 * Self.padding) / scale), scale: scale)
                             // A pinch in progress only scales the drawn graph; it's laid out again once, at the end.
                             .scaleEffect(MindMapLayout.clampScale(scale * pinch.scale) / scale, anchor: pinchAnchor)
                             .padding(Self.padding)
@@ -270,7 +275,7 @@ struct MindMapView: View {
                         .scaleEffect(scale)
                         // High priority: a Button holds the mouse until it's released, so a plain
                         // gesture only saw the drag at the end and the box jumped there.
-                        .highPriorityGesture(moveGesture(node: id, scale: scale))
+                        .highPriorityGesture(moveGesture(node: id, layout: layout, scale: scale))
                         .position(x: p.x * scale, y: p.y * scale)
                 }
             }
@@ -279,7 +284,7 @@ struct MindMapView: View {
             ForEach(layout.selectableEdges) { e in
                 if let p = layout.handle(e), let detail = MindMapPresentation.edgeDetail(map, e) {
                     edgeHandle(e, detail: detail)
-                        .highPriorityGesture(moveGesture(edge: e, scale: scale))
+                        .highPriorityGesture(moveGesture(edge: e, layout: layout, scale: scale))
                         .position(x: p.x * scale, y: p.y * scale)
                 }
             }

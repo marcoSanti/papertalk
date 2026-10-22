@@ -643,5 +643,6 @@ extension LanguagePacks {
         "Off, a paper's mind map is only connected to the other papers in this library. The change applies to mind maps drawn from now on.": "Se disattivato, la mappa mentale di un articolo è collegata solo agli altri articoli di questa raccolta. La modifica vale per le mappe disegnate da ora in poi.",
         "e.g. Neuroscience": "es. Neuroscienze",
         "Mind maps connect to other libraries": "Le mappe mentali si collegano ad altre raccolte",
+        "Add to library": "Aggiungi alla raccolta",
     ]
 }

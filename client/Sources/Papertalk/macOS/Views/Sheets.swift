@@ -182,15 +182,13 @@ struct UploadSheet: View {
             }
 
             if !store.libraries.isEmpty {
-                Picker(selection: $form.library) {
-                    Text(L("No Library")).tag(String?.none)
-                    ForEach(store.libraries) { library in
-                        Label(library.name, systemImage: library.icon).tag(Optional(library.id))
+                VStack(alignment: .leading, spacing: 8) {
+                    SectionLabel(title: L("Add to library"), systemImage: "books.vertical")
+                    FlowLayout(spacing: 8, lineSpacing: 8) {
+                        libraryChoice(nil, name: L("No Library"), icon: "tray")
+                        ForEach(store.libraries) { libraryChoice($0.id, name: $0.name, icon: $0.icon) }
                     }
-                } label: {
-                    SectionLabel(title: L("Library"), systemImage: "folder")
                 }
-                .pickerStyle(.menu)
             }
 
             if form.showsNoLLMWarning(llmBaseURL: store.llm.baseUrl) {
@@ -325,6 +323,22 @@ struct UploadSheet: View {
     }
 
     /// A selectable depth card.
+    /// A library the paper can be filed in, as a capsule like the sidebar row.
+    private func libraryChoice(_ id: String?, name: String, icon: String) -> some View {
+        let selected = form.library == id
+        return Button {
+            form.library = id
+        } label: {
+            Label(name, systemImage: icon)
+                .font(.callout.weight(.medium))
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .background(Capsule().fill(selected ? AnyShapeStyle(Color.appAccent.gradient) : AnyShapeStyle(Color.primary.opacity(0.06))))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func depthChoice(_ d: Depth) -> some View {
         let selected = form.depth == d
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)

@@ -1,5 +1,5 @@
 // The library map: a library's papers as one graph, joined where their mind maps connect and
-// grouped into clusters, with its layout (papers on a ring, dragged to rearrange) and wording.
+// grouped into clusters, with its layout (force-directed, dragged to rearrange) and wording.
 
 import Foundation
 
@@ -36,7 +36,7 @@ struct LibraryMap: Equatable {
     }
 
     /// The library's papers cluster by cluster (each by title, unclustered ones last), then the
-    /// outside papers they connect to, so a cluster sits together on the ring.
+    /// outside papers they connect to, so a cluster starts together on the ring.
     let nodes: [Node]
     /// The library's own papers.
     var members: [Node] { nodes.filter { !$0.isOutside } }
@@ -98,9 +98,9 @@ struct LibraryMap: Equatable {
     func isOutside(_ edge: Edge) -> Bool { node(edge.a)?.isOutside == true || node(edge.b)?.isOutside == true }
 }
 
-/// Where each paper sits: the library's on one ring, spaced so the boxes don't touch (a single
-/// paper in the middle), and outside papers on a ring around it. Papers the user dragged go
-/// where they were dropped (`arranged`).
+/// Where each paper sits: seeded on rings (the library's, outside papers around it), then
+/// relaxed by `ForceLayout` so connected papers sit close and boxes don't touch (a single
+/// paper in the middle). Papers the user dragged go where they were dropped (`arranged`).
 struct LibraryMapLayout: Equatable, ZoomableLayout {
     /// Paper id → centre of its box, in points from the top-left.
     private(set) var positions: [String: MindMapLayout.Point] = [:]
@@ -125,24 +125,32 @@ struct LibraryMapLayout: Equatable, ZoomableLayout {
     private static let minRadius = 200.0, ringGap = 240.0, margin = 40.0
 
     /// The layout on a canvas of at least `minWidth` × `minHeight` (the window's graph area):
-    /// the rings stretch, wider or taller, to fill the room the papers don't need.
+    /// papers start on rings, then forces pull connected papers together and push the rest
+    /// apart; the result stretches, wider or taller, to fill the room the papers don't need.
     init(_ map: LibraryMap, minWidth: Double = 0, minHeight: Double = 0) {
         func radius(_ n: Int) -> Double { Double(n) * (Self.nodeWidth + 30) / (2 * .pi) }
         let inner = map.members, outer = map.nodes.filter(\.isOutside)
         let r = inner.count <= 1 ? 0 : max(Self.minRadius, radius(inner.count))
         let r2 = outer.isEmpty ? r : max(r + Self.ringGap, radius(outer.count))
-        width = max(minWidth, 2 * r2 + Self.nodeWidth + 2 * Self.margin)
-        height = max(minHeight, 2 * r2 + Self.nodeHeight + 2 * Self.margin)
-        // How far the outer ring can stretch each way; stretching only moves papers apart.
-        let sx = r2 > 0 ? (width - Self.nodeWidth - 2 * Self.margin) / (2 * r2) : 1
-        let sy = r2 > 0 ? (height - Self.nodeHeight - 2 * Self.margin) / (2 * r2) : 1
-        // Start at the top and go clockwise; the outer ring starts half a step on.
+        // Seed: start at the top and go clockwise; the outer ring starts half a step on.
+        var seed: [String: MindMapLayout.Point] = [:]
         for (ring, radius, shift) in [(inner, r, 0.0), (outer, r2, 0.5)] {
             for (i, node) in ring.enumerated() {
                 let a = -Double.pi / 2 + 2 * .pi * (Double(i) + shift) / Double(max(ring.count, 1))
-                positions[node.id] = .init(x: width / 2 + sx * radius * cos(a), y: height / 2 + sy * radius * sin(a))
+                seed[node.id] = .init(x: radius * cos(a), y: radius * sin(a))
             }
         }
+        let raw = ForceLayout.relax(seed, edges: map.edges.map { ($0.a, $0.b) },
+                                    box: (Self.nodeWidth, Self.nodeHeight), gap: (30, 30))
+        let xs = raw.values.map(\.x), ys = raw.values.map(\.y)
+        let spanX = (xs.max() ?? 0) - (xs.min() ?? 0), spanY = (ys.max() ?? 0) - (ys.min() ?? 0)
+        width = max(minWidth, spanX + Self.nodeWidth + 2 * Self.margin)
+        height = max(minHeight, spanY + Self.nodeHeight + 2 * Self.margin)
+        // How far the layout can stretch each way; stretching only moves papers apart.
+        let sx = spanX > 0 ? (width - Self.nodeWidth - 2 * Self.margin) / spanX : 1
+        let sy = spanY > 0 ? (height - Self.nodeHeight - 2 * Self.margin) / spanY : 1
+        let midX = ((xs.max() ?? 0) + (xs.min() ?? 0)) / 2, midY = ((ys.max() ?? 0) + (ys.min() ?? 0)) / 2
+        positions = raw.mapValues { .init(x: width / 2 + sx * ($0.x - midX), y: height / 2 + sy * ($0.y - midY)) }
     }
 }
 

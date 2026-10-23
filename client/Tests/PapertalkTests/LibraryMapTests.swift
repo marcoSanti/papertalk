@@ -51,7 +51,7 @@ final class LibraryMapTests: PapertalkTestCase {
         XCTAssertEqual(map.edges.map(\.id), ["a↔c", "a↔b"])
     }
 
-    func testPapersSitOnARingWithoutTouching() {
+    func testPapersSitOnTheCanvasWithoutTouching() {
         let map = LibraryMap(papers: (0..<12).map { Self.paper("p\($0)", "Paper \($0)") }, maps: [:])
         let layout = LibraryMapLayout(map)
         let points = map.nodes.compactMap { layout.positions[$0.id] }
@@ -69,7 +69,7 @@ final class LibraryMapTests: PapertalkTestCase {
         XCTAssertEqual(layout.fitScale(width: layout.width / 2, height: layout.height), 0.5, accuracy: 1e-9)
     }
 
-    func testOutsidePapersJoinOnlyWhenConnectedAndSitOnAnOuterRing() {
+    func testOutsidePapersJoinOnlyWhenConnectedAndSitByTheirPaper() {
         var a = F.new
         a.external = [Self.link("attn", to: "x", "heads", "same idea")]
         let map = LibraryMap(papers: [Self.paper("a", "A"), Self.paper("b", "B")], maps: ["a": a],
@@ -82,12 +82,11 @@ final class LibraryMapTests: PapertalkTestCase {
         XCTAssertEqual(LibraryMapPresentation.overview(map), "2 papers · 1 connected pair")
 
         let layout = LibraryMapLayout(map)
-        func distance(_ id: String) -> Double {
-            let p = layout.positions[id]!
-            return hypot(p.x - layout.width / 2, p.y - layout.height / 2)
+        func distance(_ a: String, _ b: String) -> Double {
+            let p = layout.positions[a]!, q = layout.positions[b]!
+            return hypot(p.x - q.x, p.y - q.y)
         }
-        XCTAssertGreaterThan(distance("x"), distance("a") + 200)
-        XCTAssertEqual(distance("a"), distance("b"), accuracy: 1e-9)
+        XCTAssertLessThan(distance("a", "x"), distance("b", "x"), "x is pulled towards the paper it connects to")
 
         let inside = LibraryMap(papers: [Self.paper("a", "A"), Self.paper("b", "B")], maps: ["a": a])
         XCTAssertEqual(inside.nodes.map(\.id), ["a", "b"], "without outside papers, the link to x is dropped")
@@ -120,14 +119,14 @@ final class LibraryMapTests: PapertalkTestCase {
         XCTAssertNil(moved.positions["gone"])
     }
 
-    func testABigWindowStretchesTheRingsToFillIt() {
+    func testABigWindowStretchesTheLayoutToFillIt() {
         let map = LibraryMap(papers: (0..<4).map { Self.paper("p\($0)", "P\($0)") }, maps: [:])
         let small = LibraryMapLayout(map)
         let big = LibraryMapLayout(map, minWidth: 2000, minHeight: 1200)
         XCTAssertEqual([big.width, big.height], [2000, 1200])
         XCTAssertEqual(big.fitScale(width: 2000, height: 1200), 1)
         let xs = map.nodes.map { big.positions[$0.id]!.x }, ys = map.nodes.map { big.positions[$0.id]!.y }
-        // The ring reaches the canvas's edges, less the margin and half a box.
+        // The layout reaches the canvas's edges, less the margin and half a box.
         XCTAssertEqual(xs.max()! + LibraryMapLayout.nodeWidth / 2, 2000 - 40, accuracy: 1)
         XCTAssertEqual(ys.min()! - LibraryMapLayout.nodeHeight / 2, 40, accuracy: 1)
         // A window smaller than the papers need doesn't squeeze them.

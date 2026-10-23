@@ -48,7 +48,7 @@ struct TagChip: View {
     var body: some View {
         HStack(spacing: 4) {
             Button { onSelect?() } label: {
-                Text("#\(tag)")
+                Text(PaperPresentation.tagLabel(tag))
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
             }

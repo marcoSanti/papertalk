@@ -22,7 +22,7 @@ struct PapertalkGTK: App {
         .commands {
             CommandMenu(L("File")) {
                 Button(L("Import PDF…")) { bridge.store.beginImport() }
-                Button(L("Settings…")) { bridge.store.settingsPage = .llm; bridge.store.showSettings = true }
+                Button(L("Settings…")) { bridge.store.openSettings(.llm) }
             }
         }
     }

@@ -42,8 +42,17 @@ final class NetworkGuard: URLProtocol {
     private static var installed = false
     private static var _blocked: [String] = []
 
+    private static var _openPorts: Set<Int> = []
+
     static var blocked: [String] { lock.withLock { _blocked } }
     static func reset() { lock.withLock { _blocked = [] } }
+    /// Let requests through to a test's own server on 127.0.0.1:`port` (`StorageServerTests`).
+    static func allowLocal(port: Int) { lock.withLock { _ = _openPorts.insert(port) } }
+    /// Whether `request` goes to a server a test started.
+    private static func isLocal(_ request: URLRequest) -> Bool {
+        guard request.url?.host == "127.0.0.1", let port = request.url?.port else { return false }
+        return lock.withLock { _openPorts.contains(port) }
+    }
 
     static func install() {
         lock.withLock {
@@ -53,7 +62,7 @@ final class NetworkGuard: URLProtocol {
         }
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { MockLLM.onRequest == nil }
+    override class func canInit(with request: URLRequest) -> Bool { MockLLM.onRequest == nil && !isLocal(request) }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let url = request.url?.absoluteString ?? "?"

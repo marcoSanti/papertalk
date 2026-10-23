@@ -52,6 +52,9 @@ struct CastForm: Equatable {
         return ["interviewer", "host", "anchor", "moderator", "presenter"].contains { r.contains($0) }
     }
 
+    /// The voice the speaking-pace slider plays a sample in: the one being previewed, else the last speaker's.
+    func sampleVoice(previewing: String?) -> String? { previewing ?? rows.last?.voice }
+
     // MARK: per-row presentation
 
     /// Guests are chosen from the paper's authors (when it has any); the

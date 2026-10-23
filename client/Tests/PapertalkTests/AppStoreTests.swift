@@ -204,6 +204,77 @@ final class AppStoreTests: PapertalkTestCase {
         XCTAssertEqual(store.selectedId, "1")     // still in scope, kept
     }
 
+    func testAuthorScopeHelpers() async {
+        let store = await makeStore(library)
+        XCTAssertEqual(store.paperCount(byAuthor: " Ada  Lovelace "), 2)
+        XCTAssertEqual(store.paperCount(byAuthor: "Nobody"), 1)
+        store.selectSidebar(.authors)
+        XCTAssertTrue(store.showsAuthorIndex)
+        XCTAssertNil(store.shownAuthor)
+        store.showAuthor("Grace Hopper")
+        XCTAssertFalse(store.showsAuthorIndex)
+        XCTAssertEqual(store.shownAuthor, "Grace Hopper")
+        store.showAllAuthors()
+        XCTAssertEqual(store.view, .authors)
+        XCTAssertNil(store.activeAuthor)
+        XCTAssertTrue(store.showsAuthorIndex)
+    }
+
+    func testOpenSettingsAndClearStatusFilter() async {
+        let store = await makeStore()
+        store.openSettings(.clear)
+        XCTAssertTrue(store.showSettings)
+        XCTAssertEqual(store.settingsPage, .clear)
+        store.statusFilter = "error"
+        store.clearStatusFilter()
+        XCTAssertEqual(store.statusFilter, "all")
+    }
+
+    func testPlayingHelpers() async {
+        let store = await makeStore(library)
+        XCTAssertNil(store.playingPaper)
+        XCTAssertFalse(store.isLoaded("1"))
+        store.playingPaperId = "1"
+        XCTAssertEqual(store.playingPaper?.id, "1")
+        XCTAssertTrue(store.isLoaded("1"))
+        XCTAssertFalse(store.isPlaying("1"))      // loaded, not playing
+        XCTAssertFalse(store.isLoaded("2"))
+        XCTAssertFalse(store.isDrawingMindMap("1"))
+        XCTAssertFalse(store.player.hasAudio)
+    }
+
+    func testPrepareImportFillsTheFormAndHandsOverTheDroppedPDFOnce() async {
+        let store = await makeStore(library)
+        store.selectSidebar(.all)
+        let url = URL(fileURLWithPath: "/tmp/x.pdf")
+        store.beginImport(url)
+        var form = ImportForm()
+        XCTAssertEqual(store.prepareImport(&form), url)
+        XCTAssertNil(form.rerunning)
+        XCTAssertNil(store.pendingUploadURL)
+        XCTAssertNil(store.prepareImport(&form))
+        store.beginRerun(store.papers["1"]!)
+        var rerun = ImportForm()
+        XCTAssertNil(store.prepareImport(&rerun))
+        XCTAssertEqual(rerun.rerunning?.id, "1")
+    }
+
+    func testStartImportRefusesAnIncompleteForm() async {
+        let store = await makeStore()
+        XCTAssertFalse(store.startImport(ImportForm()))   // no file: nothing starts
+        XCTAssertTrue(store.papers.isEmpty)
+    }
+
+    func testTranscriptSheetReadsTheScriptOnDisk() async {
+        let store = await makeStore([Fixtures.paper(id: "p", title: "Waves")])
+        await storage.save(Fixtures.transcript([("Host", "Hi")]), K.transcript("p"))
+        let sheet = await store.transcriptSheet(for: "p")
+        XCTAssertEqual(sheet?.title, "Waves")
+        XCTAssertEqual(sheet?.transcript?.segments.first?.turns.first?.text, "Hi")
+        let missing = await store.transcriptSheet(for: "gone")
+        XCTAssertNil(missing)
+    }
+
     func testRevealResetsFiltersThatHideThePaper() async {
         let store = await makeStore(library)
         store.view = .fav; store.search = "nothing matches"; store.statusFilter = "error"

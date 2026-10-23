@@ -7,7 +7,7 @@ import Foundation
 /// The files of a paper bundle and the rules for taking one in.
 enum PaperBundle {
     /// The bundle's file extension.
-    static let pathExtension = "papertalk"
+    static let pathExtension = LocalStorage.packageExtension
     /// The bundle's uniform type (declared in the macOS Info.plist, a package).
     static let typeIdentifier = "dev.papertalk.paper"
 

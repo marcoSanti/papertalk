@@ -79,7 +79,7 @@ struct OnboardingView: View {
                 storageCard(.local, icon: "internaldrive", title: L("On this Mac"),
                             desc: L("Files kept locally in Application Support."))
                 storageCard(.remote, icon: "network", title: L("Storage server"),
-                            desc: L("Point at your storage_server.py (HTTP)."))
+                            desc: L("Point at your PapertalkServer (HTTP)."))
             }
             if server.mode == .remote {
                 VStack(alignment: .leading, spacing: 4) {

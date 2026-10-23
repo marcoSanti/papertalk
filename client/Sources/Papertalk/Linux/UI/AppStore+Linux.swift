@@ -11,6 +11,18 @@ extension AppStore {
         if showOnboarding { markOnboarded() }
     }
 
+    /// The settings sheet's Save: finish the first-run setup, or save the changes. Returns the
+    /// status line to show ("Saved"), nil when the sheet closes instead.
+    func saveSettingsSheet(isSetup: Bool, llm next: LLMSettings, server: ServerConfig) -> String? {
+        if isSetup {
+            finishSetup(server: server, llm: next, speech: speech)
+            return nil
+        }
+        saveLLMSettings(next)
+        saveServerSettings(server)
+        return L("Saved")
+    }
+
     /// Open the paper's PDF in the desktop's own viewer (macOS shows it in an
     /// in-app window instead).
     func openPDF(_ id: String) {

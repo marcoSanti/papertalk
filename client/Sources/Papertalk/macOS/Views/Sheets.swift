@@ -200,8 +200,7 @@ struct UploadSheet: View {
                             .fixedSize(horizontal: false, vertical: true)
                         Button(L("Open LLM Settings…")) {
                             dismiss()
-                            store.settingsPage = .llm
-                            store.showSettings = true
+                            store.openSettings(.llm)
                         }
                         .buttonStyle(.link)
                         .font(.callout)
@@ -218,15 +217,7 @@ struct UploadSheet: View {
                     .buttonStyle(.tinted(.gray))
                     .keyboardShortcut(.cancelAction)
                 Button(L("Start episode")) {
-                    if let p = form.rerunning {
-                        store.rerun(p.id, depth: form.depth, depthNote: form.depthNote,
-                                    targetMinutes: form.targetMinutes, scriptLanguage: form.scriptLanguage)
-                        dismiss()
-                    } else if let s = form.submission {
-                        store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
-                                     targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage, library: s.library)
-                        dismiss()
-                    }
+                    if store.startImport(form) { dismiss() }
                 }
                 .buttonStyle(.tinted(Color.appAccent, prominent: true))
                 .disabled(!form.canStart)
@@ -239,12 +230,7 @@ struct UploadSheet: View {
         .frame(width: 480)
         .tint(Color.appAccent)
         .onAppear {
-            form.library = store.shownLibrary
-            if let p = store.rerunning { form.rerun(p) }
-            if let url = store.pendingUploadURL {
-                store.pendingUploadURL = nil
-                load(url)
-            }
+            if let url = store.prepareImport(&form) { load(url) }
         }
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.pdf]) { result in
             switch result {
@@ -513,7 +499,7 @@ struct ServerSettingsPage: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(L("Storage server URL")).font(.caption)
                 TextField("http://host:9170", text: $form.apiBase).textFieldStyle(.roundedBorder)
-                Text(L("Optional storage_server.py for sharing the library between Macs. Leave empty to keep papers on this Mac. Conversion always runs in the app.")).font(.caption2).foregroundStyle(.secondary)
+                Text(L("Optional PapertalkServer for sharing the library between Macs. Leave empty to keep papers on this Mac. Conversion always runs in the app.")).font(.caption2).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(L("API token")).font(.caption)
@@ -731,14 +717,7 @@ struct PromptsSettingsPage: View {
 /// The custom-depth presets: add, rename, edit, delete.
 struct CustomPresetsPage: View {
     @EnvironmentObject private var store: AppStore
-    @State private var entries: [Entry] = []
-
-    /// A preset being edited (ids are only for the list).
-    struct Entry: Identifiable {
-        let id = UUID()
-        var name: String
-        var text: String
-    }
+    @State private var form = PresetsForm(CustomDepthPresets(entries: []))
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -746,17 +725,17 @@ struct CustomPresetsPage: View {
             Text(L("Custom depth prompts selectable from the upload sheet's Custom mode. Each preset is a named set of extra instructions sent to the LLM."))
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
-                Button { entries.append(Entry(name: L("New prompt"), text: "")) } label: {
+                Button { form.add() } label: {
                     Label(L("Add preset"), systemImage: "plus")
                 }
                 Spacer()
             }
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    ForEach($entries) { $e in
+                    ForEach($form.entries) { $e in
                         card($e)
                     }
-                    if entries.isEmpty {
+                    if form.entries.isEmpty {
                         ContentUnavailableView(L("No presets yet"), systemImage: "slider.horizontal.3",
                                                description: Text(L("Add one with the + button above.")))
                             .padding(.top, 40)
@@ -766,20 +745,20 @@ struct CustomPresetsPage: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onAppear { entries = store.customPresets.entries.map { Entry(name: $0.name, text: $0.text) } }
+        .onAppear { form = PresetsForm(store.customPresets) }
         .onDisappear { save() }
         .onReceive(NotificationCenter.default.publisher(for: .papertalkSaveSettings)) { _ in save() }
     }
 
     /// One preset: its name, delete button and instructions.
-    private func card(_ e: Binding<Entry>) -> some View {
+    private func card(_ e: Binding<PresetsForm.Entry>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 TextField(L("Prompt name"), text: e.name)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 280)
                 Spacer()
-                Button(role: .destructive) { entries.removeAll { $0.id == e.wrappedValue.id } } label: {
+                Button(role: .destructive) { form.remove(e.wrappedValue.id) } label: {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
@@ -794,9 +773,7 @@ struct CustomPresetsPage: View {
     }
 
     /// Keep the presets, cleaned (`PresetsForm.clean`).
-    private func save() {
-        store.savePresets(PresetsForm.clean(entries.map { ($0.name, $0.text) }))
-    }
+    private func save() { store.savePresets(form.cleaned) }
 }
 
 // MARK: - General: the interface language (applies at once; episodes keep their own)
@@ -864,17 +841,13 @@ struct LanguagePicker: View {
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("papertalk.settingsPage") private var pageRaw: Int = 0
     @State private var showSaved = false
     @State private var savedTask: Task<Void, Never>?
 
     private var selectedIndex: Binding<Int> {
         Binding(
             get: { store.settingsPage.rawValue },
-            set: {
-                pageRaw = $0
-                store.settingsPage = AppStore.SettingsPage(rawValue: $0) ?? .llm
-            }
+            set: { if let page = AppStore.SettingsPage(rawValue: $0) { store.settingsPage = page } }
         )
     }
 
@@ -883,12 +856,12 @@ struct SettingsView: View {
             NavigationSplitView {
                 List(selection: selectedIndex) {
                     Label(LanguagePresentation.generalTitle, systemImage: "gearshape").tag(AppStore.SettingsPage.general.rawValue)
-                    Label(L("LLM Settings"), systemImage: "waveform").tag(0)
+                    Label(L("LLM Settings"), systemImage: "waveform").tag(AppStore.SettingsPage.llm.rawValue)
                     Label(L("Voices"), systemImage: "person.wave.2").tag(AppStore.SettingsPage.voices.rawValue)
-                    Label(L("Server Settings"), systemImage: "server.rack").tag(1)
-                    Label(L("Query Prompts"), systemImage: "quote.bubble").tag(2)
-                    Label(L("Prompt Presets"), systemImage: "slider.horizontal.3").tag(3)
-                    Label(L("Clear Data"), systemImage: "trash").tag(4)
+                    Label(L("Server Settings"), systemImage: "server.rack").tag(AppStore.SettingsPage.server.rawValue)
+                    Label(L("Query Prompts"), systemImage: "quote.bubble").tag(AppStore.SettingsPage.prompts.rawValue)
+                    Label(L("Prompt Presets"), systemImage: "slider.horizontal.3").tag(AppStore.SettingsPage.presets.rawValue)
+                    Label(L("Clear Data"), systemImage: "trash").tag(AppStore.SettingsPage.clear.rawValue)
                 }
                 .listStyle(.sidebar)
                 .frame(minWidth: 190)
@@ -985,7 +958,7 @@ struct CastSheet: View {
             .animation(.snappy, value: form.rows)
 
             SpeakingPaceControl(player: store.player,
-                                sampleVoice: { store.player.preview?.voice ?? form.rows.last?.voice })
+                                sampleVoice: { form.sampleVoice(previewing: store.player.preview?.voice) })
 
             validation
 

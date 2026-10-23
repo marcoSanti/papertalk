@@ -131,7 +131,7 @@ struct LibraryMapView: View {
             }
             .help(L("Zoom out"))
             Button { zoom = nil } label: {
-                Text("\(Int((scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 44, minHeight: 24)
+                Text(MindMapPresentation.zoomLabel(scale)).monospacedDigit().frame(minWidth: 44, minHeight: 24)
             }
             .help(L("Fit the whole map"))
             Button { zoom(to: scale * 1.25, around: viewportCenter) } label: {
@@ -280,7 +280,7 @@ struct LibraryMapView: View {
             case .paper(let id):
                 if let node = map.node(id) { paperDetail(node) }
             case .edge(let id):
-                if let e = map.edges.first(where: { $0.id == id }) { edgeDetail(e) }
+                if let e = map.edge(id) { edgeDetail(e) }
             case nil:
                 Text(LibraryMapPresentation.overview(map)).font(.title3.weight(.semibold))
                 if let note = LibraryMapPresentation.emptyNote(map) {

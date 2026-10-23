@@ -170,7 +170,7 @@ struct ContextMenuItems: View {
         } label: {
             Label(L("Open"), systemImage: "arrow.up.forward.app")
         }
-        let play = PaperPresentation.playButton(paper, isPlaying: store.playingPaperId == paper.id && store.player.isPlaying)
+        let play = PaperPresentation.playButton(paper, isPlaying: store.isPlaying(paper.id))
         Button {
             store.togglePlayback(paper.id)
         } label: {
@@ -240,7 +240,7 @@ struct ContextMenuItems: View {
         Button {
             store.createMindMap(paper.id)
         } label: {
-            Label(PaperPresentation.mindMapRow(paper, drawing: store.drawingMindMaps.contains(paper.id)).title,
+            Label(PaperPresentation.mindMapRow(paper, drawing: store.isDrawingMindMap(paper.id)).title,
                   systemImage: "point.3.connected.trianglepath.dotted")
         }
         .disabled(!store.canCreateMindMap(paper))

@@ -741,6 +741,78 @@ final class FormTests: PapertalkTestCase {
     }
 }
 
+/// Small labels and decisions moved out of the views.
+final class ViewHelperPresentationTests: PapertalkTestCase {
+    func testPaperLabels() {
+        var p = Fixtures.paper(tags: ["a", "b"], doi: "10.1/x")
+        XCTAssertEqual(PaperPresentation.tagLabel("ml"), "#ml")
+        XCTAssertEqual(PaperPresentation.tagLine(p.tags), "#a  #b")
+        XCTAssertNil(PaperPresentation.tagLine([]))
+        XCTAssertEqual(PaperPresentation.suggestionLabel("ml"), "+ ml")
+        XCTAssertNil(PaperPresentation.message(p))
+        p.message = ""
+        XCTAssertNil(PaperPresentation.message(p))
+        p.message = "segment 2"
+        XCTAssertEqual(PaperPresentation.message(p), "segment 2")
+        XCTAssertEqual(PaperPresentation.fileLabel(p), "a.pdf")
+        p.filename = nil
+        XCTAssertEqual(PaperPresentation.fileLabel(p), "—")
+        XCTAssertNil(PaperPresentation.lengthLabel(p))
+        p.duration = 65
+        XCTAssertEqual(PaperPresentation.lengthLabel(p), formatT(65))
+        XCTAssertFalse(PaperPresentation.showsCitation(p))
+        p.bibtex = "@article{x}"
+        XCTAssertTrue(PaperPresentation.showsCitation(p))
+        p.doi = ""
+        XCTAssertFalse(PaperPresentation.showsCitation(p))
+    }
+
+    func testImportAndPlayerLines() {
+        var p = Fixtures.paper(title: "Waves", state: "running")
+        p.stage = "dialogue"
+        let stage = ImportProgressPresentation.stage(p)
+        XCTAssertEqual(ImportProgressPresentation.titleLine(p), "· Waves")
+        XCTAssertEqual(ImportProgressPresentation.detailLine(p), stage)
+        p.message = "segment 2"
+        XCTAssertEqual(ImportProgressPresentation.detailLine(p), stage + " · segment 2")
+        XCTAssertEqual(ImportProgressPresentation.arrowHelp(-1), "Previous import")
+        XCTAssertEqual(ImportProgressPresentation.arrowHelp(1), "Next import")
+        XCTAssertEqual(PlayerBarPresentation.skipHelp(-1), "Previous turn")
+        XCTAssertEqual(PlayerBarPresentation.skipHelp(1), "Next turn")
+    }
+
+    func testAuthorAndTranscriptLabels() {
+        XCTAssertEqual(AuthorsPresentation.moreLabel(4), "+4")
+        XCTAssertNil(AuthorsPresentation.moreLabel(0))
+        XCTAssertEqual(AuthorsPresentation.sharedLabel(3), "3")
+        XCTAssertNil(AuthorsPresentation.sharedLabel(1))
+        XCTAssertNil(TranscriptPresentation.readable(nil))
+        XCTAssertNil(TranscriptPresentation.readable(Transcript(paperTitle: "T", speakers: [], segments: [])))
+        XCTAssertNotNil(TranscriptPresentation.readable(Fixtures.transcript([("A", "hi")])))
+        XCTAssertEqual(MindMapPresentation.zoomLabel(1.254), "125%")
+    }
+
+    func testPresetsFormEditing() {
+        var form = PresetsForm(CustomDepthPresets(entries: [.init(name: "Deep", text: "go deep")]))
+        XCTAssertEqual(form.entries.map(\.name), ["Deep"])
+        form.add()
+        XCTAssertEqual(form.entries.count, 2)
+        XCTAssertEqual(form.cleaned.map(\.name), ["Deep"])    // the new one is still empty
+        form.entries[1].text = "short"
+        XCTAssertEqual(form.cleaned.map(\.name), ["Deep", "New prompt"])
+        form.remove(form.entries[0].id)
+        XCTAssertEqual(form.cleaned.map(\.name), ["New prompt"])
+    }
+
+    func testCastSampleVoice() {
+        let f = CastForm(proposals: [ProposedSpeaker(role: "Interviewer", gender: "female", name: "Jordan"),
+                                     ProposedSpeaker(role: "Scientist", gender: "male", name: "Bob")],
+                         authors: [], authorGenders: [:])
+        XCTAssertEqual(f.sampleVoice(previewing: "af_bella"), "af_bella")
+        XCTAssertEqual(f.sampleVoice(previewing: nil), f.rows.last?.voice)
+    }
+}
+
 /// Cast defaults, renames, gender switches and validation.
 final class CastFormTests: PapertalkTestCase {
     private func form(authors: [String] = ["Ada Lovelace", "William Smith"],

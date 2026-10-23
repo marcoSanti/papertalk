@@ -74,10 +74,6 @@ jobs:
             coverage/totals.json
           retention-days: 30
 
-      - name: Check the storage server
-        working-directory: .
-        run: python3 -m py_compile server/storage_server.py
-
   linux:
     name: Build and test (Linux)
     # The Linux port (AGENTS.md, "Linux port"): the same suite in the dev container

@@ -7,7 +7,7 @@ import FoundationNetworking
 import XCTest
 @testable import Papertalk
 
-/// `HttpStorage` against an in-process fake of `server/storage_server.py`
+/// `HttpStorage` against an in-process fake of the storage server (`StorageServerTests` uses the real one)
 /// (a flat key -> bytes map behind GET / PUT / DELETE).
 final class HttpStorageServerTests: PapertalkTestCase {
     /// The fake server's contents and the requests it received.

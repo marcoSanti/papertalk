@@ -69,7 +69,7 @@ struct LibraryView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
-                if store.view == .author, let name = store.activeAuthor {
+                if let name = store.shownAuthor {
                     AuthorHeader(name: name)
                 }
                 filterBar
@@ -82,9 +82,7 @@ struct LibraryView: View {
             if store.view == .author {
                 ToolbarItem(placement: .navigation) {
                     Button {
-                        withAnimation(.snappy(duration: 0.2)) {
-                            store.view = .authors; store.activeAuthor = nil
-                        }
+                        withAnimation(.snappy(duration: 0.2)) { store.showAllAuthors() }
                     } label: {
                         Label(L("All authors"), systemImage: "chevron.left")
                     }
@@ -129,15 +127,14 @@ struct LibraryView: View {
     /// One filter capsule; the selected one slides under it.
     private func filterButton(_ f: LibraryPresentation.StatusFilter) -> some View {
         let selected = store.statusFilter == f.value
-        let n = store.count(status: f.value)
         return Button {
             withAnimation(.snappy(duration: 0.25)) { store.statusFilter = f.value }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: f.icon).imageScale(.small)
                 Text(f.title)
-                if n > 0 {
-                    Text("\(n)")
+                if let n = LibraryPresentation.badge(store.count(status: f.value)) {
+                    Text(n)
                         .monospacedDigit()
                         .foregroundStyle(selected ? AnyShapeStyle(Color.white.opacity(0.85)) : AnyShapeStyle(HierarchicalShapeStyle.secondary))
                 }
@@ -212,7 +209,7 @@ struct LibraryView: View {
                 Text(L("No papers match the current filters."))
             } actions: {
                 Button(L("Show all papers")) {
-                    withAnimation(.snappy) { store.statusFilter = "all" }
+                    withAnimation(.snappy) { store.clearStatusFilter() }
                 }
                 .buttonStyle(.glass)
             }

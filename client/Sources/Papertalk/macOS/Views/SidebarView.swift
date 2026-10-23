@@ -113,8 +113,7 @@ struct SidebarView: View {
             }
             Spacer()
             Button {
-                store.settingsPage = .general
-                store.showSettings = true
+                store.openSettings(.general)
             } label: {
                 Image(systemName: "gearshape")
             }

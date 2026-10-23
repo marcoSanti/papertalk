@@ -86,6 +86,13 @@ enum AuthorsPresentation {
         return (shown, papers.count - shown.count)
     }
 
+    /// "+4" after the fanned covers, nil when every cover is shown.
+    static func moreLabel(_ more: Int) -> String? { more > 0 ? "+\(more)" : nil }
+    /// The co-authors listed in an author's header, most shared papers first.
+    static let coauthorLimit = 10
+    /// How many papers a co-author shares, shown only when more than one.
+    static func sharedLabel(_ shared: Int) -> String? { shared > 1 ? "\(shared)" : nil }
+
     /// "3 papers · 5 co-authors" under an author's name.
     static func summary(papers: Int, coauthors: Int) -> String {
         let p = LibraryPresentation.paperCount(papers)

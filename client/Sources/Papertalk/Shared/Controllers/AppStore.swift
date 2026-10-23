@@ -73,9 +73,21 @@ final class AppStore: ObservableObject {
     }
     /// Open the transcript sheet with the script as it is on disk now (a rerun may have replaced it).
     func showTranscript(_ id: String) {
-        guard let p = papers[id] else { return }
-        Task { transcriptSheet = TranscriptSheet(title: p.displayTitle, transcript: await transcript(for: id)) }
+        Task { if let sheet = await transcriptSheet(for: id) { transcriptSheet = sheet } }
     }
+    /// A transcript sheet for `id`, read from disk now; nil when the paper is gone.
+    func transcriptSheet(for id: String) async -> TranscriptSheet? {
+        guard let p = papers[id] else { return nil }
+        return TranscriptSheet(title: p.displayTitle, transcript: await transcript(for: id))
+    }
+    /// The paper the player holds.
+    var playingPaper: Paper? { playingPaperId.flatMap { papers[$0] } }
+    /// Whether the player holds `id`'s episode (playing or paused).
+    func isLoaded(_ id: String) -> Bool { playingPaperId == id }
+    /// Whether `id`'s episode is playing now.
+    func isPlaying(_ id: String) -> Bool { isLoaded(id) && player.isPlaying }
+    /// Whether `id`'s mind map is being drawn.
+    func isDrawingMindMap(_ id: String) -> Bool { mindMapJobs[id] != nil }
     /// Whether the import sheet is open, and a file to pre-load into it
     /// (set when a PDF is dropped on the library).
     @Published var showUpload = false
@@ -94,6 +106,30 @@ final class AppStore: ObservableObject {
         rerunning = p
         pendingUploadURL = nil
         showUpload = true
+    }
+    /// Fill a just-opened import sheet: the shown library, the paper being rerun. Returns the
+    /// dropped PDF to load into it, once.
+    func prepareImport(_ form: inout ImportForm) -> URL? {
+        form.library = shownLibrary
+        if let p = rerunning { form.rerun(p) }
+        defer { pendingUploadURL = nil }
+        return pendingUploadURL
+    }
+    /// The import sheet's Start: rerun the paper it was opened for, or import its PDF.
+    /// False (the sheet stays open) while the form is incomplete.
+    @discardableResult
+    func startImport(_ form: ImportForm) -> Bool {
+        guard form.canStart else { return false }
+        if let p = form.rerunning {
+            rerun(p.id, depth: form.depth, depthNote: form.depthNote,
+                  targetMinutes: form.targetMinutes, scriptLanguage: form.scriptLanguage)
+        } else if let s = form.submission {
+            upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
+                   targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage, library: s.library)
+        } else {
+            return false
+        }
+        return true
     }
     /// Destructive action awaiting confirmation. Lives on the store so the
     /// dialog survives the context menu that asked for it being torn down.
@@ -298,6 +334,8 @@ final class AppStore: ObservableObject {
     @Published var search = ""
     @Published var sort: SortOption = .newest
     @Published var statusFilter: String = "all"
+    /// Show every status again (the filtered-out empty state's button).
+    func clearStatusFilter() { statusFilter = "all" }
 
     /// LLM endpoint the in-process pipeline uses. Stored locally.
     @Published var llm = LLMSettings.load() { didSet { llm.save() } }
@@ -355,6 +393,11 @@ final class AppStore: ObservableObject {
     @Published var showSettings = false
     /// The settings page to show once open.
     @Published var settingsPage: SettingsPage = .llm
+    /// Open the settings sheet on `page`.
+    func openSettings(_ page: SettingsPage) {
+        settingsPage = page
+        showSettings = true
+    }
 
     private var toastTask: Task<Void, Never>?
     private var playbackCancelables: Set<AnyCancellable> = []
@@ -667,6 +710,22 @@ final class AppStore: ObservableObject {
     }
     /// `papersByAuthor` as last built; cleared whenever `papers` changes.
     private var authorIndex: [String: [Paper]]?
+
+    /// How many library papers `name` (as an author line spells it) is on; at least this one.
+    func paperCount(byAuthor name: String) -> Int {
+        papersByAuthor[AuthorName.clean(name)]?.count ?? 1
+    }
+
+    /// The author drilled into, while the library shows one author's papers.
+    var shownAuthor: String? { view == .author ? activeAuthor : nil }
+    /// True on the Authors index (every author), not one author's papers.
+    var showsAuthorIndex: Bool { view == .authors && activeAuthor == nil }
+
+    /// Back from one author's papers to every author.
+    func showAllAuthors() {
+        view = .authors
+        activeAuthor = nil
+    }
 
     /// Drill the library into one author's papers.
     func showAuthor(_ name: String) {
@@ -1330,7 +1389,7 @@ final class AppStore: ObservableObject {
 
     /// Whether Create/Redraw mind map is available for `p` right now.
     func canCreateMindMap(_ p: Paper) -> Bool {
-        PaperPresentation.canCreateMindMap(p, llmConfigured: !llm.baseUrl.isEmpty, drawing: drawingMindMaps.contains(p.id))
+        PaperPresentation.canCreateMindMap(p, llmConfigured: !llm.baseUrl.isEmpty, drawing: isDrawingMindMap(p.id))
     }
 
     /// Draw (or redraw) a paper's mind map from its PDF, outside an import.

@@ -35,6 +35,8 @@ final class PlayerController: NSObject, ObservableObject, AVAudioPlayerDelegate 
     /// True until the first turn of a live render is ready to play. Later turns
     /// keep rendering in the background while the episode plays.
     @Published private(set) var isRendering = false
+    /// Whether there's an episode in the player: turns loaded, or being voiced.
+    var hasAudio: Bool { turnCount > 0 || isRendering }
     /// Playback reached a turn that hasn't been rendered yet and is waiting for it.
     @Published private(set) var isBuffering = false
     /// Turns rendered so far in a live render (equals `turnCount` when complete).

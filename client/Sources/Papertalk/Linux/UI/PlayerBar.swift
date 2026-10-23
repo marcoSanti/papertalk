@@ -12,7 +12,7 @@ struct PlayerBar: View {
     var body: some View {
         let store = bridge.store
         let content = BottomBarContent(activeImport: store.shownProgress,
-                                       playing: store.playingPaperId.flatMap { store.papers[$0] },
+                                       playing: store.playingPaper,
                                        selected: store.selectedPaper())
         VStack(alignment: .leading, spacing: 8) {
             if let toast = store.toast {
@@ -45,7 +45,7 @@ struct PlayPane: View {
         let player = store.player
         VStack(alignment: .leading, spacing: 6) {
             Text(paper.displayTitle).font(.headline).lineLimit(1)
-            switch PlayerPane(paper: paper, playerHasAudio: player.turnCount > 0 || player.isRendering) {
+            switch PlayerPane(paper: paper, playerHasAudio: player.hasAudio) {
             case .loaded:
                 switch PlayerBarPresentation.line(isRendering: player.isRendering, error: player.renderError,
                                                   renderedCount: player.renderedCount) {
@@ -93,7 +93,7 @@ struct ImportPane: View {
                     .foregroundColor(.gray)
             }
             HStack {
-                Text(ImportProgressPresentation.stage(paper) + " · " + (paper.message ?? "")).font(.caption).foregroundColor(.gray)
+                Text(ImportProgressPresentation.detailLine(paper)).font(.caption).foregroundColor(.gray)
                 Spacer()
                 Text(ConversionPresentation.percentLabel(paper.progress)).font(.caption)
             }

@@ -10,7 +10,7 @@ struct TranscriptSheetView: View {
     let item: AppStore.TranscriptSheet
 
     var body: some View {
-        if let t = item.transcript, !t.segments.isEmpty {
+        if let t = TranscriptPresentation.readable(item.transcript) {
             TranscriptView(transcript: t, title: item.title)
         } else {
             ContentUnavailableView(L("No transcript yet"), systemImage: "text.quote", description: Text(L("The transcript for this paper isn’t available.")))
@@ -59,7 +59,7 @@ struct TranscriptView: View {
                 HStack(spacing: 6) {
                     Text(TranscriptPresentation.segmentCount(transcript))
                         .font(.caption).foregroundStyle(.secondary)
-                    ForEach(TranscriptPresentation.speakerNames(transcript).prefix(4), id: \.self) { name in
+                    ForEach(TranscriptPresentation.speakerNames(transcript).prefix(TranscriptPresentation.headerSpeakerLimit), id: \.self) { name in
                         HStack(spacing: 4) {
                             Circle().fill(Color.stable(for: name)).frame(width: 7, height: 7)
                             Text(name).font(.caption.weight(.medium))

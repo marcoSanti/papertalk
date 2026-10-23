@@ -1,12 +1,13 @@
 // The mind map's geometry and wording: `MindMapLayout` places every concept on rings around
-// the paper and handles zoom and pan; `MindMapPresentation` words the window and its side panel.
+// the paper, relaxes them with `ForceLayout`, and handles zoom and pan; `MindMapPresentation` words the window and its side panel.
 
 import Foundation
 
 /// Where every concept of a mind map sits: the paper in the centre, one
 /// 120° sector per branch (problem up-left, method up-right, evidence down),
 /// and each concept's sector shared among its children by how many concepts
-/// they lead to. Rings move out until neighbours have room for their labels.
+/// they lead to. Rings move out until neighbours have room for their labels, then forces
+/// tidy the result (`ForceLayout`).
 struct MindMapLayout: Equatable, ZoomableLayout {
     /// A position in layout points.
     struct Point: Equatable { var x: Double; var y: Double }
@@ -212,7 +213,12 @@ struct MindMapLayout: Equatable, ZoomableLayout {
             + map.nodes.compactMap { n in n.parent.map { Edge(from: $0, to: n.id, label: nil) } }
             + map.links.map { Edge(from: $0.from, to: $0.to, label: $0.label) }
 
-        // Other papers' concepts sit on a ring of their own outside the map, each towards the
+        // Forces untangle the rings: linked concepts draw together, crowded ones spread out,
+        // and the pull back to the rings keeps each branch in its sector.
+        raw = ForceLayout.relax(raw, edges: edges.map { ($0.from, $0.to) }, box: (Self.nodeWidth, Self.nodeHeight),
+                                gap: (24, 16), pinned: [Self.centerId], anchor: 0.3)
+
+        // Other papers' concepts start on a ring of their own outside the map, each towards the
         // concepts it connects to, pushed apart so their boxes don't touch.
         var outer: [String: [String]] = [:]
         for l in map.externalLinks where angle[l.from] != nil {
@@ -221,17 +227,21 @@ struct MindMapLayout: Equatable, ZoomableLayout {
         }
         if !outer.isEmpty {
             let step = Self.nodeWidth + 30
-            let r = max((radius.values.max() ?? Self.firstRing) + Self.ringGap, Double(outer.count) * step / (2 * .pi))
+            let reach = raw.values.map { hypot($0.x, $0.y) }.max() ?? Self.firstRing
+            let r = max(reach + Self.ringGap, Double(outer.count) * step / (2 * .pi))
             let gap = step / r * 180 / .pi
             var placed = outer.map { id, froms -> (String, Double) in
-                let x = froms.reduce(0) { $0 + cos((angle[$1] ?? 0) * .pi / 180) }
-                let y = froms.reduce(0) { $0 + sin((angle[$1] ?? 0) * .pi / 180) }
+                let x = froms.reduce(0) { $0 + (raw[$1]?.x ?? 0) }, y = froms.reduce(0) { $0 + (raw[$1]?.y ?? 0) }
                 return (id, atan2(y, x) * 180 / .pi)
             }.sorted { $0.1 != $1.1 ? $0.1 < $1.1 : $0.0 < $1.0 }
             for i in placed.indices.dropFirst() where placed[i].1 < placed[i - 1].1 + gap {
                 placed[i].1 = placed[i - 1].1 + gap
             }
             for (id, a) in placed { raw[id] = Point(x: r * cos(a * .pi / 180), y: r * sin(a * .pi / 180)) }
+            // Then forces move them, with the map held still, close to the concepts they connect to
+            // (no pull to the middle, which would wedge them in by the paper).
+            raw = ForceLayout.relax(raw, edges: edges.map { ($0.from, $0.to) }, box: (Self.nodeWidth, Self.nodeHeight),
+                                    gap: (24, 16), pinned: Set(raw.keys.filter { !Self.isExternal($0) }), gravity: 0)
         }
 
         // The canvas holds every node, and every link's curve and label: a link

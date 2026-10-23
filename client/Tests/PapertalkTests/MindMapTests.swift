@@ -218,7 +218,7 @@ final class MindMapLayoutTests: PapertalkTestCase {
 
         // A concept follows the pointer, divided by the zoom, and stops at the canvas edge.
         let start = try XCTUnwrap(base.positions["method0"])
-        XCTAssertEqual(base.dragged(from: start, dx: 20, dy: -10, scale: 0.5), P(x: start.x + 40, y: start.y - 20))
+        XCTAssertEqual(base.dragged(from: start, dx: -20, dy: 10, scale: 0.5), P(x: start.x - 40, y: start.y + 20))
         let far = base.dragged(from: start, dx: -1e5, dy: 1e5, scale: 1)
         XCTAssertEqual(far, P(x: MindMapLayout.nodeWidth / 2, y: base.height - MindMapLayout.nodeHeight / 2))
 

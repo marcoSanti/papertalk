@@ -94,7 +94,7 @@ final class MindMapConnectionsTests: PapertalkTestCase {
         XCTAssertTrue(m.externalLinks.isEmpty)
     }
 
-    func testOtherPapersConceptsAreDrawnOutsideTheMapWithoutOverlapping() throws {
+    func testOtherPapersConceptsSitByTheirConceptWithoutOverlapping() throws {
         var m = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(parts: 3)))
         m.external = (0..<6).map { MindMap.ExternalLink(from: "method0", paperId: "p\($0)", paperTitle: "P\($0)",
                                                          nodeId: "n", nodeLabel: "N\($0)", label: "rel") }
@@ -102,12 +102,10 @@ final class MindMapConnectionsTests: PapertalkTestCase {
         let layout = MindMapLayout(m)
         let ext = layout.positions.keys.filter(MindMapLayout.isExternal)
         XCTAssertEqual(ext.count, 6, "a link from a missing concept isn't drawn")
-        let center = try XCTUnwrap(layout.positions[MindMapLayout.centerId])
-        let inner = m.nodes.compactMap { layout.positions[$0.id] }.map { hypot($0.x - center.x, $0.y - center.y) }.max() ?? 0
+        let from = try XCTUnwrap(layout.positions["method0"])
         let all = Array(layout.positions.values)
         for id in ext {
             let p = try XCTUnwrap(layout.positions[id])
-            XCTAssertGreaterThan(hypot(p.x - center.x, p.y - center.y), inner)
             XCTAssertTrue(p.x - MindMapLayout.nodeWidth / 2 >= 0 && p.x + MindMapLayout.nodeWidth / 2 <= layout.width)
             XCTAssertTrue(p.y - MindMapLayout.nodeHeight / 2 >= 0 && p.y + MindMapLayout.nodeHeight / 2 <= layout.height)
             for q in all where q != p {
@@ -115,6 +113,10 @@ final class MindMapConnectionsTests: PapertalkTestCase {
             }
             XCTAssertEqual(MindMapPresentation.tier(layout, id), .external)
         }
+        // Pulled in around the concept they connect to (within two boxes on average), not left on
+        // a ring around the whole map.
+        let spread = ext.compactMap { layout.positions[$0] }.map { hypot($0.x - from.x, $0.y - from.y) }.reduce(0, +) / 6
+        XCTAssertLessThan(spread, 2 * (MindMapLayout.nodeWidth + 24))
         XCTAssertTrue(layout.edges.contains { $0.from == "method0" && $0.to == MindMapLayout.externalId(paperId: "p0", nodeId: "n") })
     }
 

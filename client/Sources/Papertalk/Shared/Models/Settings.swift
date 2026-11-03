@@ -54,7 +54,7 @@ enum KeychainStore {
 
 // MARK: - Server configuration (persisted in the app)
 /// Where the library lives: an empty `apiBase` means this machine (`LocalStorage`),
-/// a URL means `storage_server.py` (`HttpStorage`).
+/// a URL means the storage server (`StorageServer`) (`HttpStorage`).
 struct ServerConfig: Codable, Equatable {
     /// The storage server's URL without a trailing slash; empty for local storage.
     var apiBase: String

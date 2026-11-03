@@ -2,7 +2,7 @@
 # Papertalk app: build, run, test, release and versioning.
 # Run from anywhere; things that need the Swift package run from client/.
 #
-#   ./app.sh [build|app|run|release|test|coverage|clean|version]
+#   ./app.sh [build|app|run|release|test|coverage|server|clean|version]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,7 +25,7 @@ DEV_ICON="$CLIENT/.build/icons/Papertalk-dev.icns"
 DOCUMENT_ICON="$CLIENT/.build/icons/PaperDocument.icns"
 
 usage() {
-    echo "usage: $0 [build|app|run|release|test|coverage|clean|version]" >&2
+    echo "usage: $0 [build|app|run|release|test|coverage|server|clean|version]" >&2
     exit 2
 }
 
@@ -120,6 +120,12 @@ coverage() {
     "$ROOT/scripts/coverage.sh"
 }
 
+# Build and run the storage server (PAPER2POD_STORAGE_* settings, see README).
+server() {
+    cd "$CLIENT"
+    swift run -c release PapertalkServer
+}
+
 clean() {
     cd "$CLIENT"
     swift package clean
@@ -134,6 +140,7 @@ case "${1:-}" in
     release) release ;;  # VERSION=... overrides the file for this build only; CHANNEL=stable for the official icon
     test)    test ;;
     coverage) coverage ;;
+    server)  server ;;
     clean)   clean ;;
     version) echo "$VERSION" ;;
     '') usage ;;

@@ -30,7 +30,7 @@ struct PaperDetail: View {
     var body: some View {
         let store = bridge.store
         let player = store.player
-        let isLoaded = store.playingPaperId == paper.id
+        let isLoaded = store.isLoaded(paper.id)
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 16) {
                 CoverView(bridge: bridge, paperId: paper.id, width: 120, height: 156)
@@ -41,8 +41,8 @@ struct PaperDetail: View {
                         Text(published).font(.caption).foregroundColor(.gray)
                     }
                     Text(PaperPresentation.statusText(paper)).font(.caption)
-                    if !paper.tags.isEmpty {
-                        Text(paper.tags.map { "#" + $0 }.joined(separator: "  ")).font(.caption).foregroundColor(.blue)
+                    if let tags = PaperPresentation.tagLine(paper.tags) {
+                        Text(tags).font(.caption).foregroundColor(.blue)
                     }
                 }
             }
@@ -66,7 +66,7 @@ struct PaperDetail: View {
             if PaperPresentation.showsEpisodeCard(paper) {
                 let progress = EpisodeProgress(paper: paper, isLoaded: isLoaded, playerTime: player.currentTime,
                                                playerDuration: player.duration, playerIsPlaying: player.isPlaying)
-                let play = PaperPresentation.playButton(paper, isPlaying: isLoaded && player.isPlaying)
+                let play = PaperPresentation.playButton(paper, isPlaying: store.isPlaying(paper.id))
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L("Episode")).font(.headline)
                     HStack {

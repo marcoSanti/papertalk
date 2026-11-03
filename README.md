@@ -178,14 +178,14 @@ importing, **Regenerate audio**, playing a paper that has no audio yet, and the 
 Papers normally live in `~/Library/Application Support/papertalk/papers/`, one `.papertalk`
 package each (Finder shows each as a single item). **Settings → General → Library folder** moves
 the library to another folder; papers already in that folder join it. To use one library from
-several Macs, run the small storage server that comes with the project on any machine with
-Python 3. It only stores files; conversion still happens in the app.
+several Macs, run the small storage server that comes with the project on any Mac or Linux
+machine with Swift 6.2. It only stores files; conversion still happens in the app.
 
 ```bash
-python3 server/storage_server.py
+./app.sh server      # or, from client/: swift run -c release PapertalkServer
 ```
 
-It listens on port 9170 and uses only the standard library, so there's nothing to install. Set
+It listens on port 9170 and needs nothing beyond Swift's standard libraries. Set
 `PAPER2POD_STORAGE_TOKEN` to require a token. Then point the app at it in **Settings → Server
 Settings** (`http://<host>:9170`, plus the token). Clearing the URL switches back to the local
 library.
@@ -199,7 +199,9 @@ The server reads `PAPER2POD_STORAGE_PORT` (default `9170`), `PAPER2POD_STORAGE_H
 
 It's a flat key/value store over HTTP: `GET /` lists the keys, and `GET`, `PUT`, `DELETE` and
 `HEAD` on `/<key>` read, write, delete and check a file. Keys look like
-`papers/<id>/paper.json`, `papers/<id>/source.pdf` or `papers/<id>/turns/<n>.wav`.
+`papers/<id>/paper.json`, `papers/<id>/source.pdf` or `papers/<id>/turns/<n>.wav`. On disk the
+root is laid out like the app's own library (one `.papertalk` package per paper), and a root
+written by the older Python server (`storage_server.py`) is converted when the server starts.
 
 </details>
 
@@ -246,7 +248,7 @@ made on the CPU with the same Kokoro voices as on the Mac.
 ## Contributing
 
 As the note at the top says, there are rough edges, and help is very welcome. The app is the
-Swift package in `client/`, the storage server is in `server/`, and
+Swift package in `client/` (the storage server is its `PapertalkServer` target), and
 [AGENTS.md](AGENTS.md) explains how the code is laid out and the rules it follows. If you report
 a bug, the **Activity** log in the paper's details is the most useful thing to include.
 

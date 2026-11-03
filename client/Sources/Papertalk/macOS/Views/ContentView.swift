@@ -18,7 +18,7 @@ struct ContentView: View {
         } detail: {
             HStack(spacing: 0) {
                 Group {
-                    if store.view == .authors, store.activeAuthor == nil {
+                    if store.showsAuthorIndex {
                         AuthorsView()
                     } else {
                         LibraryView(onImport: { store.beginImport() })

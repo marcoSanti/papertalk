@@ -85,6 +85,8 @@ struct LibraryMap: Equatable {
 
     /// The node with this id.
     func node(_ id: String) -> Node? { nodes.first { $0.id == id } }
+    /// The line `id`, if it's on the map.
+    func edge(_ id: String) -> Edge? { edges.first { $0.id == id } }
     /// The edges touching paper `id`.
     func edges(of id: String) -> [Edge] { edges.filter { $0.a == id || $0.b == id } }
     /// The paper at the other end of `edge` from `id`.

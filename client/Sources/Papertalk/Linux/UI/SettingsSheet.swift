@@ -103,14 +103,7 @@ struct SettingsSheet: View {
 
     /// Finish setup, or save the changed settings and say so.
     private func save() {
-        let store = bridge.store
-        if isSetup {
-            store.finishSetup(server: server.configFromURL, llm: llm.settings, speech: store.speech)
-        } else {
-            store.saveLLMSettings(llm.settings)
-            store.saveServerSettings(server.configFromURL)
-            status = L("Saved")
-        }
+        status = bridge.store.saveSettingsSheet(isSetup: isSetup, llm: llm.settings, server: server.configFromURL) ?? status
     }
 }
 #endif

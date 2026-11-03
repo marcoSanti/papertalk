@@ -37,7 +37,7 @@ struct SidebarPane: View {
             HStack {
                 Text(LibraryPresentation.storageLocation(isStandalone: store.isStandalone).title).font(.caption)
                 Spacer()
-                Button(L("Settings")) { store.settingsPage = .llm; store.showSettings = true }
+                Button(L("Settings")) { store.openSettings(.llm) }
             }
             .padding(12)
             PaneWidth(230)

@@ -396,6 +396,34 @@ final class MindMapPresentationTests: PapertalkTestCase {
         XCTAssertNil(MindMapPresentation.edgeDetail(map, MindMapLayout.Edge(from: "x", to: "method", label: nil)))
     }
 
+    func testSelectionRulesFollowEdits() throws {
+        typealias P = MindMapPresentation
+        let links = #"[{"from":"evidence0","to":"method0","label":"validates"}]"#
+        var map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply(links: links)))
+        var layout = MindMapLayout(map)
+        let link = try XCTUnwrap(layout.selectableEdges.first { $0.label != nil })
+        // Nothing selected: the paper is, and its edges aren't highlighted.
+        XCTAssertTrue(P.isSelected(MindMapLayout.centerId, nil))
+        XCTAssertFalse(P.isSelected("method0", nil))
+        XCTAssertTrue(P.isHighlighted(link, .node("method0")))
+        XCTAssertTrue(P.isHighlighted(link, .edge(link.id)))
+        XCTAssertFalse(P.isHighlighted(link, .node("problem")))
+        XCTAssertEqual(P.selection(clicking: "method0", map: map), .node("method0"))
+        XCTAssertNil(P.selection(clicking: MindMapLayout.centerId, map: map))
+        // Drafts start from what's selected.
+        XCTAssertEqual(P.draft(for: .node("method0"), map: map, layout: layout).label, "method part 0")
+        XCTAssertEqual(P.draft(for: .edge(link.id), map: map, layout: layout), P.Draft(label: "validates"))
+        XCTAssertEqual(P.draft(for: nil, map: map, layout: layout), P.Draft())
+        // A deleted concept or link drops the selection; one still there keeps it.
+        XCTAssertEqual(P.kept(.node("method0"), map: map, layout: layout), .node("method0"))
+        XCTAssertEqual(P.kept(.edge(link.id), map: map, layout: layout), .edge(link.id))
+        map.deleteNode("method0")
+        layout = MindMapLayout(map)
+        XCTAssertNil(P.kept(.node("method0"), map: map, layout: layout))
+        XCTAssertNil(P.kept(.edge(link.id), map: map, layout: layout))
+        XCTAssertNil(P.kept(nil, map: map, layout: layout))
+    }
+
     func testWordingAndTiers() throws {
         XCTAssertEqual(MindMap.Branch.allCases.map(MindMapPresentation.branchTitle),
                        ["The problem", "The approach", "The demonstration"])

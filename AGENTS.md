@@ -18,8 +18,9 @@ this file (for Claude Code), so keep the guidance here.
     `Linux/KokoroCompat.swift`). `Shared/Controllers/Kokoro.swift` holds voice lists, labels
     and pools.
   - `Shared/Controllers/PlayerController.swift`: episode playback and voice-sample previews.
-  - `Shared/Controllers/Storage.swift`: `LocalStorage` (Application Support) and `HttpStorage`
-    (`server/storage_server.py`), plus the `K` key layout.
+  - `Shared/Controllers/Storage.swift`: `StorageFactory` and `HttpStorage` (the storage
+    server's client). It re-exports `PapertalkStore`, so the app sees `Storage`, `K` and
+    `LocalStorage` without importing it.
   - `Shared/Presentation/`: everything the views show or decide, as pure Swift with no SwiftUI:
     wording and labels, form state and validation (`ImportForm`, `MetadataForm`,
     `LLMSettingsForm`, `ServerSettingsForm`, `CastForm`), grouping/sorting (`AuthorsPresentation`),
@@ -27,7 +28,13 @@ this file (for Claude Code), so keep the guidance here.
   - `macOS/Views/`, `macOS/Components/`: SwiftUI layout only (see "Views hold no logic" below).
     `macOS/Support/Theme.swift` has shared styling (`glassCard`, `StatusBadge`, `FlowLayout`,
     `Color.stable(for:)`); `macOS/Support/Clipboard.swift` copies text.
-- `server/storage_server.py`: optional stdlib-only HTTP key/value file store. No compute.
+- `client/Sources/PapertalkStore/`: a library target shared by the app and the server:
+  `Storage.swift` (the `Storage` protocol, the `K` key layout, `LocalStorage`) and
+  `StorageServer.swift` (the HTTP key/value server over a `LocalStorage` folder; no compute).
+  Foundation and POSIX sockets only: it must never depend on the app's frameworks.
+- `client/Sources/PapertalkServer/main.swift`: the server's command line (`app.sh server`),
+  configured by the `PAPER2POD_STORAGE_*` env vars. It replaced `server/storage_server.py`
+  and adopts roots that script wrote (plain `papers/<id>/` folders become packages).
 - `VERSION`: the app version, edited by hand (`app.sh version` prints it).
 - `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
 - `.github/workflows/`: `tests.yml` (pull requests) and `release.yml` (`main`: dev + stable releases).
@@ -47,7 +54,7 @@ swift build          # compile (from client/)
 ../app.sh app        # build dist/Papertalk.app (debug); `app.sh release` → dist/Papertalk-<version>.zip
 ```
 
-`app.sh` (repo root) replaces the old Makefile: build/app/run/release/test/coverage/clean/version.
+`app.sh` (repo root) replaces the old Makefile: build/app/run/release/test/coverage/server/clean/version.
 It's run from anywhere; from `client/` prefix it with `../`.
 
 - Requires macOS 26 and Swift 6.2 tools; app and tests compile in Swift 5 language mode.
@@ -66,8 +73,8 @@ It's run from anywhere; from `client/` prefix it with `../`.
 
 - Work goes through pull requests into `main` (squash or rebase; one approving review). CI does
   only what's needed, on GitHub's `macos-26` runner:
-  - `tests.yml`, on every PR: `app.sh coverage` (the suite, once, with coverage) and a syntax
-    check of the storage server. No app bundle: nothing would be uploaded. PRs that change only
+  - `tests.yml`, on every PR: `app.sh coverage` (the suite, once, with coverage; it builds and
+    tests the storage server too). No app bundle: nothing would be uploaded. PRs that change only
     Markdown skip it (no check is required, so they can still merge).
   - `release.yml`, on every push to `main` (Markdown-only pushes skip it): `app.sh test`, then the
     release build and the GitHub release (see below). It's the only run on `main`, so it's what
@@ -178,7 +185,9 @@ Still to do, in order:
 - **LLM calls**: use `MockLLM.install { request in ... }` and match on
   `MockLLM.allText(in:)` (e.g. outline prompts contain `"segments": [{"title"`, dialogue prompts
   `TARGET LENGTH: about N words`, monologue prompts `METHOD TEXT`). Reply with
-  `MockLLM.chatReply(_:)`. The storage server is faked the same way (`HttpStorageServerTests`).
+  `MockLLM.chatReply(_:)`. The storage server is faked the same way (`HttpStorageServerTests`);
+  `StorageServerTests` runs the real one on a loopback port, let through by
+  `NetworkGuard.allowLocal(port:)`.
 - **`AppStore`**: always `AppStore(storage: LocalStorage(root: Fixtures.tempDir()))`. Never build
   a store on the default storage: that's the user's real library. Seed finished papers on disk
   and let the store's startup scan load them (it drops in-memory-only papers). Keep converting

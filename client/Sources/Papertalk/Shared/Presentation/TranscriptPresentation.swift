@@ -13,6 +13,14 @@ enum TranscriptPresentation {
         return seen
     }
 
+    /// The transcript to show, nil when there's none or it has no segments (the sheet's placeholder).
+    static func readable(_ t: Transcript?) -> Transcript? {
+        guard let t, !t.segments.isEmpty else { return nil }
+        return t
+    }
+    /// The speakers named in the sheet's header.
+    static let headerSpeakerLimit = 4
+
     /// "12 segments" in the sheet's header.
     static func segmentCount(_ t: Transcript) -> String {
         LibraryPresentation.count(t.segments.count, L("1 segment"), L("{0} segments"))

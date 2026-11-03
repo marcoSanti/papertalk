@@ -121,7 +121,7 @@ struct LLMSettingsForm: Equatable, KeySourceEditing {
 
 /// The storage server settings, in Settings and in the setup wizard.
 struct ServerSettingsForm: Equatable {
-    /// Local: papers on this machine; remote: on `storage_server.py`.
+    /// Local: papers on this machine; remote: on the storage server (`StorageServer`).
     enum Mode: String { case local, remote }
     /// Chosen in setup; Settings derives it from the URL (`configFromURL`).
     var mode: Mode
@@ -173,7 +173,7 @@ enum SettingsSheetPresentation {
     /// When "From environment" is chosen but no key variable is set.
     static var noEnvVars: String { L("No API-key environment variables are set. Add one (e.g. OPENWEBUI_API_KEY) and reopen this window.") }
     /// Under the storage server fields.
-    static var serverHelp: String { L("Optional storage_server.py for sharing the library. Leave empty to keep papers on {0}.", Device.this) }
+    static var serverHelp: String { L("Optional PapertalkServer for sharing the library. Leave empty to keep papers on {0}.", Device.this) }
 }
 
 /// The first-run setup wizard's steps.
@@ -220,7 +220,27 @@ enum SetupStep: Equatable {
 }
 
 /// Custom-depth presets as edited in Settings.
-enum PresetsForm {
+struct PresetsForm {
+    /// A preset being edited (ids are only for the list).
+    struct Entry: Identifiable {
+        let id = UUID()
+        var name: String
+        var text: String
+    }
+    var entries: [Entry]
+
+    /// Starts from the saved presets.
+    init(_ presets: CustomDepthPresets) {
+        entries = presets.entries.map { Entry(name: $0.name, text: $0.text) }
+    }
+
+    /// A new, empty preset at the end.
+    mutating func add() { entries.append(Entry(name: L("New prompt"), text: "")) }
+    /// Remove the preset `id`.
+    mutating func remove(_ id: UUID) { entries.removeAll { $0.id == id } }
+    /// What Save keeps (`clean`).
+    var cleaned: [CustomDepthPresets.Entry] { Self.clean(entries.map { ($0.name, $0.text) }) }
+
     /// What gets saved: trimmed, without empty names or texts, first of each name wins.
     static func clean(_ entries: [(name: String, text: String)]) -> [CustomDepthPresets.Entry] {
         var seen = Set<String>()

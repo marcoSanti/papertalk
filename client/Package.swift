@@ -15,9 +15,24 @@ let package = Package(
         .package(url: "https://github.com/moreSwift/swift-cross-ui", exact: "0.9.0"),
     ],
     targets: [
+        // The library folder (`Storage`, `K`, `LocalStorage`) and the HTTP server that shares it:
+        // used by the app and by the server, which needs none of the app's frameworks.
+        .target(
+            name: "PapertalkStore",
+            path: "Sources/PapertalkStore",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // `swift run -c release PapertalkServer` (or `app.sh server`): the storage server.
+        .executableTarget(
+            name: "PapertalkServer",
+            dependencies: ["PapertalkStore"],
+            path: "Sources/PapertalkServer",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .executableTarget(
             name: "Papertalk",
             dependencies: [
+                "PapertalkStore",
                 .product(name: "FluidAudio", package: "FluidAudio", condition: .when(platforms: [.macOS])),
                 .product(name: "PythonKit", package: "PythonKit", condition: .when(platforms: [.linux])),
                 .product(name: "OpenCombine", package: "OpenCombine", condition: .when(platforms: [.linux])),
@@ -31,7 +46,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PapertalkTests",
-            dependencies: ["Papertalk"],
+            dependencies: ["Papertalk", "PapertalkStore"],
             path: "Tests/PapertalkTests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         )

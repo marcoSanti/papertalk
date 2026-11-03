@@ -52,16 +52,7 @@ struct ImportSheet: View {
                 Spacer()
                 Button(L("Cancel")) { store.showUpload = false }
                 Button(L("Start episode")) {
-                    if let p = form.rerunning {
-                        store.rerun(p.id, depth: form.depth, depthNote: form.depthNote,
-                                    targetMinutes: form.targetMinutes, scriptLanguage: form.scriptLanguage)
-                        store.showUpload = false
-                    } else if let s = form.submission {
-                        store.upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
-                                     targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage,
-                                     library: s.library ?? store.shownLibrary)   // no picker here yet
-                        store.showUpload = false
-                    }
+                    if store.startImport(form) { store.showUpload = false }
                 }
                 .disabled(!form.canStart)
             }
@@ -69,12 +60,8 @@ struct ImportSheet: View {
         .padding(24)
         .frame(width: 520)
         .onAppear {
-            if let p = store.rerunning { form.rerun(p) }
             // A PDF given on the command line (or "Open with") arrives pre-chosen.
-            if let url = store.pendingUploadURL {
-                store.pendingUploadURL = nil
-                load(url)
-            }
+            if let url = store.prepareImport(&form) { load(url) }
         }
     }
 

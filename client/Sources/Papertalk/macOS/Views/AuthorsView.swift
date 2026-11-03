@@ -146,8 +146,8 @@ private struct AuthorCard: View {
                     .rotationEffect(.degrees(shown.count == 1 ? 0 : Double(i - 1) * 6))
                     .zIndex(Double(shown.count - i))
             }
-            if more > 0 {
-                Text("+\(more)")
+            if let more = AuthorsPresentation.moreLabel(more) {
+                Text(more)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.leading, 18)
@@ -176,15 +176,15 @@ struct AuthorHeader: View {
                     .foregroundStyle(.secondary)
                 if !coauthors.isEmpty {
                     FlowLayout(spacing: 6, lineSpacing: 6) {
-                        ForEach(coauthors.prefix(10), id: \.name) { co, shared in
+                        ForEach(coauthors.prefix(AuthorsPresentation.coauthorLimit), id: \.name) { co, shared in
                             Button {
                                 store.showAuthor(co)
                             } label: {
                                 HStack(spacing: 5) {
                                     AuthorAvatar(name: co, size: 16)
                                     Text(co).font(.caption.weight(.medium)).lineLimit(1)
-                                    if shared > 1 {
-                                        Text("\(shared)").font(.caption2).foregroundStyle(.secondary)
+                                    if let shared = AuthorsPresentation.sharedLabel(shared) {
+                                        Text(shared).font(.caption2).foregroundStyle(.secondary)
                                     }
                                 }
                                 .padding(.leading, 3).padding(.trailing, 8).padding(.vertical, 3)

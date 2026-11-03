@@ -84,7 +84,7 @@ struct PlayerBar: View {
     private var transport: some View {
         GlassEffectContainer(spacing: 6) {
             HStack(spacing: 6) {
-                skipButton(-1, systemImage: "backward.fill", help: "Previous turn",
+                skipButton(-1, systemImage: "backward.fill",
                            enabled: PlayerBarPresentation.canSkipBack(activeTurn: player.activeTurn))
                 Button {
                     player.playPause()
@@ -99,7 +99,7 @@ struct PlayerBar: View {
                 .buttonStyle(.plain)
                 .disabled(!PlayerBarPresentation.canPlay(isRendering: player.isRendering, turnCount: player.turnCount))
                 .help(PlayerBarPresentation.playButton(isPlaying: player.isPlaying).help)
-                skipButton(1, systemImage: "forward.fill", help: "Next turn",
+                skipButton(1, systemImage: "forward.fill",
                            enabled: PlayerBarPresentation.canSkipForward(activeTurn: player.activeTurn,
                                                                          turnCount: player.turnCount))
             }
@@ -107,7 +107,7 @@ struct PlayerBar: View {
     }
 
     /// Previous/next turn button.
-    private func skipButton(_ delta: Int, systemImage: String, help: String, enabled: Bool) -> some View {
+    private func skipButton(_ delta: Int, systemImage: String, enabled: Bool) -> some View {
         Button {
             player.skip(by: delta)
         } label: {
@@ -119,7 +119,7 @@ struct PlayerBar: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.4)
-        .help(help)
+        .help(PlayerBarPresentation.skipHelp(delta))
     }
 }
 
@@ -131,7 +131,7 @@ struct BottomBar: View {
 
     var body: some View {
         let content = BottomBarContent(activeImport: store.shownProgress,
-                                       playing: store.playingPaperId.flatMap { store.papers[$0] },
+                                       playing: store.playingPaper,
                                        selected: store.selectedPaper())
         Group {
             switch content {
@@ -158,7 +158,7 @@ struct BottomBar: View {
     @ViewBuilder
     private func playPane(_ paper: Paper) -> some View {
         pane {
-            switch PlayerPane(paper: paper, playerHasAudio: player.turnCount > 0 || player.isRendering) {
+            switch PlayerPane(paper: paper, playerHasAudio: player.hasAudio) {
             case .loaded:
                 PlayerBar(player: player,
                           onSeek: { player.seek(toTime: $0) },
@@ -258,7 +258,7 @@ struct BottomBar: View {
                     Text(ImportProgressPresentation.stage(p))
                         .font(.callout.weight(.semibold))
                         .lineLimit(1)
-                    Text("· " + p.displayTitle)
+                    Text(ImportProgressPresentation.titleLine(p))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -278,7 +278,7 @@ struct BottomBar: View {
                     .tint(Color.appAccent)
                     .controlSize(.small)
                     .animation(.easeInOut(duration: 0.25), value: p.progress)
-                if let m = p.message, !m.isEmpty {
+                if let m = PaperPresentation.message(p) {
                     Text(m).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
@@ -297,7 +297,7 @@ struct BottomBar: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(delta < 0 ? L("Previous import") : L("Next import"))
+        .help(ImportProgressPresentation.arrowHelp(delta))
     }
 }
 

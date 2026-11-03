@@ -291,6 +291,62 @@ enum MindMapPresentation {
     static var coreTitle: String { L("Core") }
     static var descriptionTitle: String { L("What it is") }
     static var connectionsTitle: String { L("Connections") }
+    /// What the side panel shows: a concept (or another paper's), or an edge between two concepts.
+    enum Selection: Equatable { case node(String), edge(String) }
+    /// The selected concept's text being edited, or the selected link's label (in `label`).
+    struct Draft: Equatable {
+        var label = "", core = "", description = ""
+        init(label: String = "", core: String = "", description: String = "") {
+            self.label = label; self.core = core; self.description = description
+        }
+        /// A concept's text as it is.
+        init(_ node: MindMap.Node) { self.init(label: node.label, core: node.core, description: node.description) }
+        /// A link's label as it is.
+        init(_ edge: MindMapLayout.Edge) { self.init(label: edge.label ?? "") }
+    }
+
+    /// The selected concept's id, if a concept is selected.
+    static func selectedNode(_ s: Selection?) -> String? { if case .node(let id) = s { id } else { nil } }
+    /// The selected edge, if an edge is selected and still drawn.
+    static func selectedEdge(_ s: Selection?, in layout: MindMapLayout) -> MindMapLayout.Edge? {
+        guard case .edge(let id) = s else { return nil }
+        return layout.selectableEdges.first { $0.id == id }
+    }
+    /// The selection after an edit: dropped when its concept or edge is gone.
+    static func kept(_ s: Selection?, map: MindMap, layout: MindMapLayout) -> Selection? {
+        switch s {
+        case .node(let id): map.node(id) != nil || external(map, id) != nil ? s : nil
+        case .edge: selectedEdge(s, in: layout) == nil ? nil : s
+        case nil: nil
+        }
+    }
+    /// The editor's starting text for the selection.
+    static func draft(for s: Selection?, map: MindMap, layout: MindMapLayout) -> Draft {
+        if let id = selectedNode(s), let n = map.node(id) { return Draft(n) }
+        if let e = selectedEdge(s, in: layout) { return Draft(e) }
+        return Draft()
+    }
+    /// Clicking box `id`: select it, unless it has nothing to show (then show the paper).
+    static func selection(clicking id: String, map: MindMap) -> Selection? {
+        map.node(id) == nil && external(map, id) == nil ? nil : .node(id)
+    }
+    /// Whether box `id` is drawn selected; with nothing selected, the paper is.
+    static func isSelected(_ id: String, _ s: Selection?) -> Bool {
+        s == .node(id) || (s == nil && id == MindMapLayout.centerId)
+    }
+    /// Whether an edge stands out: it's selected, or it touches the selected concept.
+    static func isHighlighted(_ e: MindMapLayout.Edge, _ s: Selection?) -> Bool {
+        if s == .edge(e.id) { return true }
+        guard let id = selectedNode(s) else { return false }
+        return e.from == id || e.to == id
+    }
+
+    /// The zoom button's label, "125%".
+    static func zoomLabel(_ scale: Double) -> String { "\(Int((scale * 100).rounded()))%" }
+    /// A box's tooltip: another paper's concept with its paper, else the concept (or the paper's title).
+    static func nodeHelp(external: ExternalNode?, node: MindMap.Node?, title: String) -> String {
+        external.map { "\($0.label) — \($0.paperTitle)" } ?? node?.label ?? title
+    }
     /// The Delete concept button's tooltip: the three main concepts hold the map up and can't go.
     static func deleteHelp(_ canDelete: Bool) -> String {
         canDelete ? L("Delete this concept, everything under it and its connections")

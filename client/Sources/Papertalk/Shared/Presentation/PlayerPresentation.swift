@@ -64,6 +64,9 @@ enum PlayerBarPresentation {
         isPlaying ? ("pause.fill", L("Pause")) : ("play.fill", L("Play"))
     }
 
+    /// The previous/next turn buttons' tooltip.
+    static func skipHelp(_ delta: Int) -> String { delta < 0 ? L("Previous turn") : L("Next turn") }
+
     /// Previous turn needs one before the current one.
     static func canSkipBack(activeTurn: Int) -> Bool { max(activeTurn, 0) > 0 }
     /// Next turn needs one after it.
@@ -145,4 +148,12 @@ enum ImportProgressPresentation {
 
     /// The pane's stage line, e.g. "Writing dialogue".
     static func stage(_ p: Paper) -> String { stageLabel(p.stage ?? "extract") }
+    /// The paper's title after the stage: "· Attention is all you need".
+    static func titleLine(_ p: Paper) -> String { "· " + p.displayTitle }
+    /// The stage and the latest message on one line: "Writing dialogue · segment 2 of 5".
+    static func detailLine(_ p: Paper) -> String {
+        PaperPresentation.message(p).map { stage(p) + " · " + $0 } ?? stage(p)
+    }
+    /// The up/down arrows' tooltip.
+    static func arrowHelp(_ delta: Int) -> String { delta < 0 ? L("Previous import") : L("Next import") }
 }

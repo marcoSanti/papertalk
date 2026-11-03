@@ -31,10 +31,10 @@ struct PapertalkApp: App {
                     .disabled(store.isCheckingForUpdates)
             }
             CommandGroup(after: .appSettings) {
-                Button(L("Settings…")) { store.settingsPage = .general; store.showSettings = true }
+                Button(L("Settings…")) { store.openSettings(.general) }
                     .keyboardShortcut(",", modifiers: .command)
                 Divider()
-                Button(L("Clear All Data…")) { store.settingsPage = .clear; store.showSettings = true }
+                Button(L("Clear All Data…")) { store.openSettings(.clear) }
             }
             CommandGroup(replacing: .newItem) {
                 Button(L("Import PDF…")) { store.beginImport() }

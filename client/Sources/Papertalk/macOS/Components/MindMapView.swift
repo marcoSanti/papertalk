@@ -17,13 +17,12 @@ struct MindMapView: View {
     let onOpenPaper: ((String) -> Void)?
     /// Whether the side panel shows the editing controls.
     @State private var editing = false
-    /// The selected concept's text being edited, or the selected link's label (in `label`).
-    private struct Draft: Equatable { var label = "", core = "", description = "" }
+    private typealias Draft = MindMapPresentation.Draft
+    private typealias Selection = MindMapPresentation.Selection
     @State private var draft = Draft()
     /// What the side panel shows: a concept, or an edge with both its concepts.
-    private enum Selection: Equatable { case node(String), edge(String) }
     @State private var selection: Selection?
-    private var selectedNode: String? { if case .node(let id) = selection { id } else { nil } }
+    private var selectedNode: String? { MindMapPresentation.selectedNode(selection) }
     /// nil: fit the whole map in the window.
     @State private var zoom: Double?
     @State private var fit = 1.0
@@ -86,22 +85,13 @@ struct MindMapView: View {
     private func edit(_ change: (inout MindMap) -> Void) {
         change(&map)
         drawn = Drawn(map, arrangement)
-        if case .node(let id) = selection, map.node(id) == nil, MindMapPresentation.external(map, id) == nil { selection = nil }
-        if case .edge(let id) = selection, !layout.selectableEdges.contains(where: { $0.id == id }) { selection = nil }
+        selection = MindMapPresentation.kept(selection, map: map, layout: layout)
         loadDraft()
         onSave?(map)
     }
 
     /// Put the selected concept's text, or the selected link's label, in the draft.
-    private func loadDraft() {
-        if let id = selectedNode, let n = map.node(id) {
-            draft = Draft(label: n.label, core: n.core, description: n.description)
-        } else if let e = selectedEdge {
-            draft = Draft(label: e.label ?? "")
-        } else {
-            draft = Draft()
-        }
-    }
+    private func loadDraft() { draft = MindMapPresentation.draft(for: selection, map: map, layout: layout) }
 
     /// Change what the user has dragged, and redraw on top of the same computed layout.
     private func arrange(_ change: (inout MindMapLayout.Arrangement) -> Void) {
@@ -131,10 +121,7 @@ struct MindMapView: View {
     }
 
     /// The selected edge, if one is.
-    private var selectedEdge: MindMapLayout.Edge? {
-        guard case .edge(let id) = selection else { return nil }
-        return layout.selectableEdges.first { $0.id == id }
-    }
+    private var selectedEdge: MindMapLayout.Edge? { MindMapPresentation.selectedEdge(selection, in: layout) }
 
     private var scale: Double { MindMapLayout.clampScale(zoom ?? fit) }
     private var viewport: (width: Double, height: Double) { (geometry.viewport.width, geometry.viewport.height) }
@@ -212,7 +199,7 @@ struct MindMapView: View {
             }
             .help(L("Zoom out"))
             Button { zoom = nil } label: {
-                Text("\(Int((scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 44, minHeight: 24)
+                Text(MindMapPresentation.zoomLabel(scale)).monospacedDigit().frame(minWidth: 44, minHeight: 24)
             }
             .help(L("Fit the whole map"))
             Button { zoom(to: scale * 1.25, around: viewportCenter) } label: {
@@ -259,8 +246,7 @@ struct MindMapView: View {
                     } else {
                         path.addLine(to: p2)
                     }
-                    let highlighted = selection == .edge(e.id)
-                        || (selectedNode != nil && (e.from == selectedNode || e.to == selectedNode))
+                    let highlighted = MindMapPresentation.isHighlighted(e, selection)
                     let color = edgeColor(e)
                     ctx.stroke(path, with: .color(color.opacity(highlighted ? 0.95 : 0.45)),
                                style: StrokeStyle(lineWidth: highlighted ? 3 : 2, lineCap: .round,
@@ -314,11 +300,11 @@ struct MindMapView: View {
         let node = nodes[id]
         let color = node.map { Self.color($0.branch) } ?? Color.appAccent
         // Nothing selected means the paper is: its summary is the panel's default.
-        let isSelected = selection == .node(id) || (selection == nil && id == MindMapLayout.centerId)
+        let isSelected = MindMapPresentation.isSelected(id, selection)
         let shape = RoundedRectangle(cornerRadius: tier == .detail ? 10 : 14, style: .continuous)
         let external = tier == .external ? MindMapPresentation.external(map, id) : nil
         Button {
-            withAnimation(.snappy) { selection = node == nil && external == nil ? nil : .node(id) }
+            withAnimation(.snappy) { selection = MindMapPresentation.selection(clicking: id, map: map) }
         } label: {
             Group {
                 if let external {
@@ -353,7 +339,7 @@ struct MindMapView: View {
             .contentShape(shape)
         }
         .buttonStyle(.plain)
-        .help(external.map { "\($0.label) — \($0.paperTitle)" } ?? node?.label ?? title)
+        .help(MindMapPresentation.nodeHelp(external: external, node: node, title: title))
     }
 
     /// Tree edges take their child's branch colour; links are grey.
@@ -517,7 +503,7 @@ struct MindMapView: View {
                 edit { $0.editNode(node.id, label: draft.label, core: draft.core, description: draft.description) }
             }
             .buttonStyle(.borderedProminent)
-            .disabled(draft == Draft(label: node.label, core: node.core, description: node.description))
+            .disabled(draft == Draft(node))
             Divider()
             Menu(L("Move under…")) {
                 ForEach(map.parentOptions(for: node.id)) { p in
@@ -563,7 +549,7 @@ struct MindMapView: View {
             HStack {
                 Button(L("Save changes")) { edit { $0.editLink(from: e.from, to: e.to, label: draft.label) } }
                     .buttonStyle(.borderedProminent)
-                    .disabled(draft.label == (e.label ?? ""))
+                    .disabled(draft == Draft(e))
                 Spacer()
                 Button(role: .destructive) { edit { $0.deleteLink(from: e.from, to: e.to) } } label: {
                     Label(L("Delete connection"), systemImage: "trash")

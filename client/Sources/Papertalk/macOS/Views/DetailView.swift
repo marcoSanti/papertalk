@@ -187,7 +187,7 @@ struct DetailView: View {
             SectionLabel(title: L("Authors"), systemImage: "person.2", trailing: LibraryPresentation.badge(paper.authors.count))
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(visible.enumerated()), id: \.offset) { _, name in
-                    AuthorRow(name: name, paperCount: store.papersByAuthor[AuthorName.clean(name)]?.count ?? 1) {
+                    AuthorRow(name: name, paperCount: store.paperCount(byAuthor: name)) {
                         store.showAuthor(name)
                     }
                 }
@@ -230,7 +230,7 @@ struct DetailView: View {
                             CopyButton(value: paper.doi)
                         }
                     }
-                    if let bib = paper.bibtex, !bib.isEmpty {
+                    if PaperPresentation.showsCitation(paper) {
                         detailRow(L("LaTeX")) {
                             Button {
                                 showCitation = true
@@ -242,13 +242,13 @@ struct DetailView: View {
                     }
                 }
                 detailRow(L("File")) {
-                    Text(paper.filename ?? "—").lineLimit(1).truncationMode(.middle)
+                    Text(PaperPresentation.fileLabel(paper)).lineLimit(1).truncationMode(.middle)
                 }
                 if let date = PaperPresentation.publishedDate(paper) {
                     detailRow(L("Published")) { Text(date) }
                 }
-                if paper.duration > 0 {
-                    detailRow(L("Length")) { Text(formatT(paper.duration)) }
+                if let length = PaperPresentation.lengthLabel(paper) {
+                    detailRow(L("Length")) { Text(length) }
                 }
                 detailRow(L("Assets")) {
                     HStack(spacing: 10) {
@@ -316,7 +316,7 @@ struct DetailView: View {
                             Button {
                                 store.addTag(paper.id, tag)
                             } label: {
-                                Text("+ \(tag)").font(.caption2)
+                                Text(PaperPresentation.suggestionLabel(tag)).font(.caption2)
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
@@ -372,8 +372,7 @@ struct DetailView: View {
                 store.requestRerun(paper)
             }
             .disabled(!PaperPresentation.canRerun(paper))
-            let drawing = store.drawingMindMaps.contains(paper.id)
-            let mindMap = PaperPresentation.mindMapRow(paper, drawing: drawing)
+            let mindMap = PaperPresentation.mindMapRow(paper, drawing: store.isDrawingMindMap(paper.id))
             ManageRow(title: mindMap.title, subtitle: mindMap.subtitle,
                       icon: "point.3.connected.trianglepath.dotted", tint: .purple) {
                 store.createMindMap(paper.id)
@@ -431,10 +430,8 @@ struct DetailView: View {
 
     /// Open the transcript sheet with the script as it is on disk now.
     private func openTranscript() {
-        Task {
-            // Always read the current file: a rerun may have replaced it.
-            transcriptSheet = AppStore.TranscriptSheet(title: paper.displayTitle, transcript: await store.transcript(for: paper.id))
-        }
+        // Always read the current file: a rerun may have replaced it.
+        Task { transcriptSheet = await store.transcriptSheet(for: paper.id) }
     }
 
     /// Open the mind map window.
@@ -491,10 +488,10 @@ private struct QuickActionBar: View {
     /// Opens the paper window; nil inside that window, where there's nothing more to open.
     var onDetails: (() -> Void)?
 
-    private var isLoaded: Bool { store.playingPaperId == paper.id }
+    private var isLoaded: Bool { store.isLoaded(paper.id) }
 
     var body: some View {
-        let play = PaperPresentation.playButton(paper, isPlaying: isLoaded && player.isPlaying)
+        let play = PaperPresentation.playButton(paper, isPlaying: store.isPlaying(paper.id))
         let favorite = PaperPresentation.favoriteButton(paper)
         // Play is the main action and gets the full width; six round buttons in one row left
         // no room between them in a narrow inspector. Details, in the inspector, gets a wide row too.
@@ -640,7 +637,7 @@ private struct ConversionStatusCard: View {
                     }
                 }
             }
-            if let m = paper.message, !m.isEmpty {
+            if let m = PaperPresentation.message(paper) {
                 Text(m)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -691,7 +688,7 @@ private struct EpisodeCard: View {
     @ObservedObject var player: PlayerController
     let paper: Paper
 
-    private var isLoaded: Bool { store.playingPaperId == paper.id }
+    private var isLoaded: Bool { store.isLoaded(paper.id) }
 
     var body: some View {
         let progress = EpisodeProgress(paper: paper, isLoaded: isLoaded, playerTime: player.currentTime,

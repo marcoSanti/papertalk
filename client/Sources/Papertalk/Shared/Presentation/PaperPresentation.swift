@@ -53,6 +53,27 @@ enum PaperPresentation {
     /// "3 papers" beside an author in the details panel, only when they have more than this one.
     static func otherPapersLabel(_ count: Int) -> String? { count > 1 ? LibraryPresentation.paperCount(count) : nil }
 
+    /// A tag as its chip shows it: "#reading".
+    static func tagLabel(_ tag: String) -> String { "#" + tag }
+    /// Every tag on one line, "#a  #b"; nil without tags.
+    static func tagLine(_ tags: [String]) -> String? {
+        tags.isEmpty ? nil : tags.map(tagLabel).joined(separator: "  ")
+    }
+    /// A suggested tag's button: "+ reading".
+    static func suggestionLabel(_ tag: String) -> String { "+ " + tag }
+
+    /// The paper's latest pipeline message, nil when there's none to show.
+    static func message(_ p: Paper) -> String? {
+        guard let m = p.message, !m.isEmpty else { return nil }
+        return m
+    }
+    /// The details panel's file name ("—" without one).
+    static func fileLabel(_ p: Paper) -> String { p.filename ?? "—" }
+    /// The episode's length in the details panel; nil before there's audio.
+    static func lengthLabel(_ p: Paper) -> String? { p.duration > 0 ? formatT(p.duration) : nil }
+    /// The LaTeX citation row: only with a DOI and the BibTeX it resolved to.
+    static func showsCitation(_ p: Paper) -> Bool { !p.doi.isEmpty && !(p.bibtex ?? "").isEmpty }
+
     /// The doi.org link for a DOI, nil when there's none.
     static func doiURL(_ doi: String) -> URL? {
         doi.isEmpty ? nil : URL(string: "https://doi.org/\(doi)")

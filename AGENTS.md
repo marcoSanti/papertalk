@@ -56,6 +56,9 @@ swift build          # compile (from client/)
 
 `app.sh` (repo root) replaces the old Makefile: build/app/run/release/test/coverage/server/clean/version.
 It's run from anywhere; from `client/` prefix it with `../`.
+Every build of the app bundle (`app`, `run`, `release`) registers it with Launch Services and
+unregisters every other `Papertalk.app` macOS knows, except copies in `/Applications` (an installed
+release stays), so Finder, "Open With" and Help open the build just made.
 
 - Requires macOS 26 and Swift 6.2 tools; app and tests compile in Swift 5 language mode.
 - After every change, run `swift build` **and** `app.sh test`, and report the results. Read the
@@ -360,8 +363,7 @@ Still to do, in order:
   version (`…/group.com.apple.helpviewer.content/Library/Caches/dev.papertalk.desktop.*<VERSION>.help`),
   and shows that copy until the version changes. Releases always change it. To see guide edits in a
   local build, build with a plain numeric version macOS hasn't seen yet (`VERSION=0.4.99 app.sh app`,
-  then 0.4.100 for the next edit: a suffix like `0.4.2-x` is read as 0.4.2), run `lsregister -f
-  client/dist/Papertalk.app`, and reopen. Deleting the cache instead needs Full Disk Access, and
+  then 0.4.100 for the next edit: a suffix like `0.4.2-x` is read as 0.4.2) and reopen. Deleting the cache instead needs Full Disk Access, and
   deleting only part of it leaves Tips showing "content unavailable". To check a page without the
   cache, render the built bundle's `en.lproj/index.html` with `qlmanage -t`. Dev pre-releases
   (`<VERSION>-dev.<commit>`) count as `<VERSION>`, so their users see the guide of the first dev

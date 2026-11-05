@@ -66,6 +66,23 @@ help_book() {
     hiutil -I lsm -Caf "$pages/Papertalk.helpindex" "$pages" >/dev/null
 }
 
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+
+# Make $1 the only Papertalk build macOS knows about, besides installed copies in /Applications
+# (a release stays registered): unregister every other registered Papertalk.app, so Finder,
+# "Open With" and Help open this build, then register it.
+register_build() {
+    local new="$1" path
+    [ -x "$LSREGISTER" ] || return 0
+    "$LSREGISTER" -dump 2>/dev/null \
+        | sed -nE 's/^path: +(.*Papertalk\.app) \(0x[0-9a-f]+\)$/\1/p' | sort -u \
+        | while IFS= read -r path; do
+            case "$path" in /Applications/*|"$new") continue ;; esac
+            "$LSREGISTER" -u "$path" 2>/dev/null && echo "Unregistered $path"
+        done
+    "$LSREGISTER" -f "$new"
+}
+
 build() {
     local config="$1"
     cd "$CLIENT"
@@ -93,6 +110,7 @@ app() {
     plutil -replace CFBundleIconFile -string Papertalk "$app/Contents/Info.plist"
     help_book "$app/Contents/Resources"
     codesign --force --sign - "$app" >/dev/null 2>&1 || true
+    register_build "$CLIENT/$app"
     echo "Built $app (version $VERSION, build $BUILD_NUMBER, $CHANNEL icon)"
     if [ "${2:-}" = zip ]; then
         rm -f dist/Papertalk-*.zip dist/Papertalk-*-source.tar.gz

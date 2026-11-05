@@ -356,6 +356,16 @@ Still to do, in order:
 - Same copy rules as the interface: plain, specific, named exactly as the UI names things.
   `HelpBookTests` fails on a page not linked from `index.html` or a broken link. The guide is
   English only for now.
+- macOS copies the guide into its own cache the first time it's opened, keyed by the **app's**
+  version (`…/group.com.apple.helpviewer.content/Library/Caches/dev.papertalk.desktop.*<VERSION>.help`),
+  and shows that copy until the version changes. Releases always change it. To see guide edits in a
+  local build, build with a plain numeric version macOS hasn't seen yet (`VERSION=0.4.99 app.sh app`,
+  then 0.4.100 for the next edit: a suffix like `0.4.2-x` is read as 0.4.2), run `lsregister -f
+  client/dist/Papertalk.app`, and reopen. Deleting the cache instead needs Full Disk Access, and
+  deleting only part of it leaves Tips showing "content unavailable". To check a page without the
+  cache, render the built bundle's `en.lproj/index.html` with `qlmanage -t`. Dev pre-releases
+  (`<VERSION>-dev.<commit>`) count as `<VERSION>`, so their users see the guide of the first dev
+  build they opened until the next stable release.
 
 ## Style
 

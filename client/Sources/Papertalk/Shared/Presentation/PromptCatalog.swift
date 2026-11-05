@@ -126,6 +126,9 @@ enum PromptCatalog {
         PromptEntry(id: "outputLanguage", group: L("Language"), title: L("Episode language"),
                     usedWhen: L("Only when an import asks for the episode in the app's language: added to the planning, dialogue, monologue and mind map prompts."),
                     tokens: ["language"], keyPath: \.outputLanguage),
+        PromptEntry(id: "ask", group: L("Ask"), title: L("Ask about a paper"),
+                    usedWhen: L("When you ask a question in a paper's Ask window: the paper's details and text are added after it, then the chat so far."),
+                    tokens: [], keyPath: \.ask),
     ] }
 
     /// The entries by group, in order, for the page's list.

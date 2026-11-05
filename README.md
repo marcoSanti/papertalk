@@ -29,6 +29,12 @@ ideas. It's a native macOS app written in SwiftUI.
   [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) on the Neural Engine (through
   [FluidAudio](https://github.com/FluidInference/FluidAudio)), or by a text-to-speech server of
   your own. The audio is saved with the paper, so playback is instant.
+- **Ask a paper.** **Ask AI** (in the paper's panel, beside **Details**, or **Ask…** in its
+  context menu) opens a chat about it with your LLM. Every question is sent with the paper's text, read
+  from its PDF, and its details (title, authors, affiliations, DOI, topics), so answers come from
+  the paper. The chat lasts while the app is open; **New chat** starts over. Scanned PDFs without a
+  text layer can't be asked about, and very long papers are cut at about 30,000 tokens. The prompt
+  is editable under Query Prompts.
 - **A mind map of every paper.** The key concepts as a graph around three branches: the problem,
   the approach and the demonstration, each broken into its parts, with links between them. It
   opens on a plain-language summary of the paper; click a concept for its core idea and
@@ -116,7 +122,7 @@ paper's details; bring one in with **File → Import Paper…** (⇧⌘O), by dr
 or by double-clicking it in Finder. A paper whose id is already in the library comes in as a copy.
 
 Select a paper to see it on the right, with its tags: play it, read the transcript, open the PDF
-or the mind map, favourite it, or fix its metadata. **Details and actions…** (under those buttons),
+or the mind map, favourite it, or fix its metadata. **Details** (under those buttons),
 a double-click on the paper, or **Open** in its context menu opens the paper in a wide window of its
 own, with its authors, details, tag editing, activity log and every action below.
 

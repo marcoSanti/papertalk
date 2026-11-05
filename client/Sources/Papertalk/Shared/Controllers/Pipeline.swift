@@ -652,12 +652,23 @@ struct LocalPipeline {
 
     /// One chat completion: the reply's text. Throws on HTTP errors and unreadable replies.
     private func chat(system: String, user: String, maxTokens: Int) async throws -> String {
+        try await chat(messages: [["role": "system", "content": system], ["role": "user", "content": user]],
+                       maxTokens: maxTokens)
+    }
+
+    /// Answer the last question of a chat about a paper. `context` is the paper's details and
+    /// text (`PaperChat.context`); `history` is the conversation so far, the question last.
+    func ask(context: String, history: [ChatMessage]) async throws -> String {
+        let messages = [["role": "system", "content": prompts.ask + "\n\n" + context]]
+            + history.map { ["role": $0.role.rawValue, "content": $0.text] }
+        return try await chat(messages: messages, maxTokens: 2000).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// One chat completion over `messages` (each a `role` and `content`).
+    private func chat(messages: [[String: String]], maxTokens: Int) async throws -> String {
         let body: [String: Any] = [
             "model": model,
-            "messages": [
-                ["role": "system", "content": system],
-                ["role": "user", "content": user]
-            ],
+            "messages": messages,
             "temperature": 0.5,
             "max_tokens": maxTokens
         ]

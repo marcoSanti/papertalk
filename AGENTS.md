@@ -38,7 +38,7 @@ this file (for Claude Code), so keep the guidance here.
 - `VERSION`: the app version, edited by hand (`app.sh version` prints it).
 - `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
 - `.github/workflows/`: `tests.yml` (pull requests) and `release.yml` (`main`: dev + stable releases).
-- `shared/`: app icon.
+- `shared/`: app icon, and `Papertalk.help/`, the user guide (macOS Help Book, see "User guide").
 - Linux port pieces: `client/Sources/Papertalk/Linux/` (compat shims, `#if os(Linux)`),
   `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
   `client/linux-dev/` (dev container `Dockerfile`, `dev.sh`).
@@ -342,6 +342,20 @@ Still to do, in order:
   `.app` bundle; they are skipped under `swift run`.
 - Settings pages save silently and only when values change; the Save button shows an inline
   "Saved". Don't add toasts there, because the toast overlay sits behind the settings sheet.
+
+## User guide (Help → Papertalk Help)
+
+- `shared/Papertalk.help/` is a macOS Help Book: plain HTML pages in `Contents/Resources/en.lproj/`
+  with `help.css`, opened from the Help menu (the app's `Info.plist` names it with
+  `CFBundleHelpBookFolder` / `CFBundleHelpBookName`). `app.sh` copies it into the bundle and indexes it
+  with `hiutil` for the Help menu's search, and makes the home page's `icon.png` from the official
+  icon; both are build output, never committed.
+- **Every PR that adds or changes a user-visible feature updates the guide in the same PR**: the
+  page for that area (new menu items, buttons, shortcuts, settings, behaviour), or a new page linked
+  from `index.html`. Removing a feature removes it from the guide. Keep it in step with `README.md`.
+- Same copy rules as the interface: plain, specific, named exactly as the UI names things.
+  `HelpBookTests` fails on a page not linked from `index.html` or a broken link. The guide is
+  English only for now.
 
 ## Style
 

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<meta name="description" content="Every settings page: General, LLM, Voices, Server, Query Prompts, Prompt Presets and Clear Data.">
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<nav><a href="index.html">Papertalk Help</a></nav>
+<h1>Settings</h1>
+<p class="lead">Open Settings with <b>Papertalk → Settings…</b> (<kbd>⌘,</kbd>). Pages save when you click <b>Save</b>, and show “Saved”.</p>
+<h2>First-run setup</h2>
+<p>The first time, a short setup asks where the library lives, which LLM writes the episodes, and where the voices are made. <b>Test connection</b> checks the servers answer. You can skip it and change everything here later.</p>
+<h2>General</h2>
+<p>The interface language (it follows your Mac's language unless you pick one: English, Italian, Spanish, German or French) and the <b>Library folder</b>.</p>
+<h2>LLM Settings</h2>
+<p>Any OpenAI-compatible chat server writes the episodes: LM Studio, llama.cpp, Ollama behind Open WebUI, or a hosted API. Enter its <b>LLM base URL</b>, the <b>API key source</b> (none, typed, or an environment variable) and the <b>Model</b> (<b>Refresh models</b> asks the server). With a local LLM, nothing about your papers leaves your Mac.</p>
+<h2>Voices</h2>
+<p>Voices are made on this Mac with Kokoro on the Neural Engine, or by an OpenAI-compatible text-to-speech server. A server saves memory on 8 GB Macs. Enter its <b>Server URL</b>, API key and model, and <b>Requests at a time</b> (1 to 16).</p>
+<h2>Server Settings</h2>
+<p>An optional storage server for sharing the library between Macs. See <a href="sharing.html">Share papers</a>.</p>
+<h2>Query Prompts</h2>
+<p>Edit any prompt sent to the LLM. This includes the <b>Ask</b> prompt used when you <a href="ask.html">chat about a paper</a>. Reply formats are added automatically, so an edit can't break an import. <b>Restore prompt defaults</b> undoes your edits.</p>
+<h2>Prompt Presets</h2>
+<p>Named instructions for the <b>Custom</b> depth when importing.</p>
+<h2>Clear Data</h2>
+<p><b>Erase library and settings…</b> deletes every paper and resets all settings (voice models are kept). <b>Delete voice models…</b> frees their disk space; they download again when needed. This page also turns <b>Ask after listening</b> back on.</p>
+<h2>Keys and privacy</h2>
+<p>API keys are kept in your Mac's Keychain, never in the preferences file.</p>
+</body>
+</html>

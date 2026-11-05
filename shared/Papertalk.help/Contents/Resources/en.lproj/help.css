@@ -1,0 +1,49 @@
+/* Papertalk Help: shared styling for every page, light and dark. */
+:root {
+  color-scheme: light dark;
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --accent: #d07040;
+  --rule: #d2d2d7;
+  --note: #fbf1eb;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --text: #f5f5f7; --muted: #a1a1a6; --rule: #424245; --note: #3a2a22; }
+}
+body {
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--text);
+  background: Canvas;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 24px 48px;
+}
+h1 { font-size: 24px; margin: 8px 0 12px; }
+h2 { font-size: 17px; margin: 24px 0 6px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+nav { font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--rule); padding-bottom: 6px; }
+.lead { color: var(--muted); font-size: 15px; }
+.note { background: var(--note); border-radius: 8px; padding: 8px 12px; }
+table { border-collapse: collapse; width: 100%; }
+td, th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--rule); border-radius: 4px; padding: 0 4px; }
+code { font: 12px ui-monospace, monospace; }
+ul.topics li { margin: 4px 0; }
+
+/* Home page */
+.home h2 { margin-top: 32px; }
+.hero { text-align: center; padding: 24px 0 8px; }
+.hero h1 { font-size: 30px; margin: 8px 0; }
+.hero p { color: var(--muted); font-size: 16px; max-width: 520px; margin: 0 auto 18px; }
+.button { display: inline-block; background: var(--accent); color: #fff; border-radius: 8px; padding: 7px 18px; font-weight: 600; }
+.button:hover { text-decoration: none; filter: brightness(1.08); }
+.steps { list-style: none; counter-reset: step; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.steps li { counter-increment: step; display: flex; flex-direction: column; gap: 4px; }
+.steps li::before { content: counter(step); width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.steps span, .card span { color: var(--muted); font-size: 13px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.card { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; color: var(--text); }
+.card:hover { border-color: var(--accent); text-decoration: none; }
+.card b { color: var(--accent); }
+@media (max-width: 560px) { .steps { grid-template-columns: 1fr; } }

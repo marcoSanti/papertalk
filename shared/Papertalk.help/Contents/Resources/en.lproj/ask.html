@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ask a paper</title>
+<meta name="description" content="Chat with your LLM about a paper: ask questions, get answers from its text and details.">
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<nav><a href="index.html">Papertalk Help</a></nav>
+<h1>Ask a paper</h1>
+<p class="lead">Ask your LLM anything about a paper, and get answers drawn from the paper itself.</p>
+<h2>Open a chat</h2>
+<ul>
+<li>Select a paper and click <b>Ask AI</b>, beside <b>Details</b> in its panel.</li>
+<li>Or right-click the paper and choose <b>Ask…</b>.</li>
+</ul>
+<p>The chat opens in its own window. An empty chat suggests starter questions, such as <b>What is the main contribution?</b> or <b>What are the limitations?</b>: click one to send it.</p>
+<h2>Ask</h2>
+<p>Type in <b>Ask about this paper…</b> and press <kbd>Return</kbd> to send. <kbd>⌥Return</kbd> starts a new line. While the LLM works, the chat shows <b>Reading the paper…</b>.</p>
+<p>Every question is sent with the paper's text (read from its PDF), its details (title, authors, affiliations, published date, DOI, topics) and the chat so far, so you can ask follow-ups.</p>
+<h2>Start over</h2>
+<p>A chat lasts while Papertalk is open. <b>New chat</b> clears it and starts over.</p>
+<h2>Good to know</h2>
+<ul>
+<li>Answers come from the LLM set in <a href="settings.html">Settings → LLM Settings</a>. With a local LLM, the paper never leaves your Mac.</li>
+<li>Scanned PDFs without a text layer can't be asked about.</li>
+<li>Very long papers are cut at about 30,000 tokens, so questions about their last pages may go unanswered.</li>
+<li>Change how the LLM answers by editing the <b>Ask</b> prompt in <a href="settings.html">Settings → Query Prompts</a>.</li>
+</ul>
+</body>
+</html>

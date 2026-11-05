@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Share papers</title>
+<meta name="description" content="Export and import .papertalk files, and share a library between Macs.">
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<nav><a href="index.html">Papertalk Help</a></nav>
+<h1>Share papers</h1>
+<h2>Papertalk files</h2>
+<p>A converted paper can travel as a <code>.papertalk</code> file: its record, script, mind map and voiced audio.</p>
+<ul>
+<li><b>Export paper…</b> saves one. Papertalk asks whether to include the PDF; most papers' PDFs are under copyright, so <b>Export Without PDF</b> is the default.</li>
+<li>Bring one in with <b>File → Import Paper…</b> (<kbd>⇧⌘O</kbd>), by dropping it on the library, or by double-clicking it in Finder.</li>
+<li>A paper whose id is already in your library comes in as a copy.</li>
+</ul>
+<h2>Where the library lives</h2>
+<p>Papers live in <code>~/Library/Application Support/papertalk/papers/</code>, one package per paper (Finder shows each as a single item). <a href="settings.html">Settings → General → Library folder</a> moves it, for example into a folder you back up; papers already in that folder join the library.</p>
+<h2>One library on several Macs</h2>
+<p>Run the storage server that comes with Papertalk (<code>./app.sh server</code> in the source) on any Mac or Linux machine, then enter its address (<code>http://&lt;host&gt;:9170</code>) and token in <b>Settings → Server Settings</b>. Clearing the URL switches back to the library on this Mac.</p>
+</body>
+</html>

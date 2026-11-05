@@ -55,6 +55,17 @@ document_icon() {
     echo "$DOCUMENT_ICON"
 }
 
+# Copy the Help Book (Help → Papertalk Help) into $1 and index it for the Help menu's search.
+help_book() {
+    local book="$1/Papertalk.help" pages
+    cp -R "$ROOT/shared/Papertalk.help" "$book"
+    pages="$book/Contents/Resources/en.lproj"
+    # The home page's icon, made from the official one so the guide matches on every channel.
+    sips -s format png -Z 256 "$OFFICIAL_ICON" --out "$pages/icon.png" >/dev/null
+    hiutil -I corespotlight -Caf "$pages/Papertalk.cshelpindex" "$pages" >/dev/null
+    hiutil -I lsm -Caf "$pages/Papertalk.helpindex" "$pages" >/dev/null
+}
+
 build() {
     local config="$1"
     cd "$CLIENT"
@@ -80,6 +91,7 @@ app() {
     cp "$icon_file" "$app/Contents/Resources/Papertalk.icns"
     cp "$document_icon_file" "$app/Contents/Resources/PaperDocument.icns"
     plutil -replace CFBundleIconFile -string Papertalk "$app/Contents/Info.plist"
+    help_book "$app/Contents/Resources"
     codesign --force --sign - "$app" >/dev/null 2>&1 || true
     echo "Built $app (version $VERSION, build $BUILD_NUMBER, $CHANNEL icon)"
     if [ "${2:-}" = zip ]; then

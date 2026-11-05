@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Troubleshooting</title>
+<meta name="description" content="Fixes for common problems: the app won't open, imports fail, Papertalk quits while voicing.">
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<nav><a href="index.html">Papertalk Help</a></nav>
+<h1>Troubleshooting</h1>
+<h2>macOS won't open Papertalk</h2>
+<p>The app is only ad-hoc signed. The first time, right-click <b>Papertalk.app</b> and choose <b>Open</b>.</p>
+<h2>An import fails or stops</h2>
+<p>Check the address, key and model in <b>Settings → LLM Settings</b> (<b>Refresh models</b> shows whether the server answers), then use <b>Try again</b>: it carries on from where it stopped. The paper's <b>Activity</b> log says what went wrong.</p>
+<h2>Papertalk quits while making voices</h2>
+<p>Now and then the speech library on the Mac uses far too much memory and macOS stops the app. Nothing is lost: the script is saved, and voicing picks up where it stopped. Until this upstream bug is fixed, voices on a server (<a href="settings.html">Settings → Voices</a>) avoid it.</p>
+<h2>No notifications</h2>
+<p>Notifications appear only while Papertalk is in the background. Allow them in <b>System Settings → Notifications → Papertalk</b>.</p>
+<h2>Free disk space</h2>
+<p><b>Delete audio</b> on papers you've heard, or <b>Delete voice models…</b> in <a href="settings.html">Settings → Clear Data</a>.</p>
+</body>
+</html>

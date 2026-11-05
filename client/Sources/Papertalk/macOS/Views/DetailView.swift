@@ -92,6 +92,7 @@ struct DetailView: View {
         if !inWindow, !paper.tags.isEmpty { tagChips }
         QuickActionBar(player: store.player, paper: paper,
                        onPDF: openPDF, onTranscript: openTranscript, onMindMap: openMindMap, onEdit: onEdit,
+                       onAsk: { PaperChatWindow.present(paperId: paper.id, store: store) },
                        onDetails: inWindow ? nil : { PaperWindow.present(paperId: paper.id, store: store) })
         if PaperPresentation.showsConversionCard(paper) {
             ConversionStatusCard(paper: paper)
@@ -485,6 +486,8 @@ private struct QuickActionBar: View {
     var onMindMap: () -> Void
     /// Opens the Edit paper sheet.
     var onEdit: () -> Void
+    /// Opens the Ask chat window.
+    var onAsk: () -> Void
     /// Opens the paper window; nil inside that window, where there's nothing more to open.
     var onDetails: (() -> Void)?
 
@@ -500,7 +503,11 @@ private struct QuickActionBar: View {
                 playButton(play.title, icon: play.icon, busy: isLoaded && player.isRendering,
                            enabled: PaperPresentation.isPlayable(paper))
                 secondaryActions(favorite)
-                if let onDetails { detailsButton(onDetails) }
+                // Details (inspector only) and Ask share a row, half the width each.
+                HStack(spacing: 10) {
+                    if let onDetails { detailsButton(onDetails) }
+                    askButton
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -531,13 +538,37 @@ private struct QuickActionBar: View {
         .help(title)
     }
 
-    /// The wide button to the paper window: as big as Play but lightly tinted, so it stands out
+    /// The button to the Ask chat: a violet-to-orange "AI" gradient with sparkles and a soft glow,
+    /// so it reads as the assistant rather than another app action.
+    private var askButton: some View {
+        Button(action: onAsk) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles").font(.system(size: 15, weight: .semibold))
+                    .symbolEffect(.breathe, options: .repeating, isActive: paper.hasPdf)
+                Text(L("Ask AI")).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .background(Theme.aiGradient, in: Capsule())
+            .glassEffect(Glass.clear.interactive(), in: Capsule())
+            .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.5))
+            .shadow(color: Theme.aiGlow.opacity(paper.hasPdf ? 0.45 : 0), radius: 10, y: 3)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!paper.hasPdf)
+        .opacity(paper.hasPdf ? 1 : 0.4)
+        .help(L("Chat with the LLM about this paper"))
+    }
+
+    /// The button to the paper window: as tall as Play but lightly tinted, so it stands out
     /// without competing with Play.
     private func detailsButton(_ open: @escaping () -> Void) -> some View {
         Button(action: open) {
             HStack(spacing: 8) {
                 Image(systemName: "macwindow").font(.system(size: 15, weight: .semibold))
-                Text(L("Details and actions…")).font(.headline)
+                Text(L("Details")).font(.headline).lineLimit(1).minimumScaleFactor(0.8)
             }
             .foregroundStyle(Color.appAccent)
             .frame(maxWidth: .infinity)

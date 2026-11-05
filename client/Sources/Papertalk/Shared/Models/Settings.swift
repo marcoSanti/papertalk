@@ -328,6 +328,8 @@ struct PromptSettings: Codable, Equatable {
     var blockLast: String
     /// Added to the prompts whose replies are heard or read when an episode isn't in English.
     var outputLanguage: String
+    /// System prompt for Ask: chatting about one paper (its details and text appended).
+    var ask: String
 
     /// Replace each `{token}` in `template`; unknown tokens are left as typed.
     static func fill(_ template: String, _ values: [String: String]) -> String {
@@ -433,6 +435,13 @@ struct PromptSettings: Codable, Equatable {
         blockLast: "This is the final block.",
         outputLanguage: """
         LANGUAGE: Write everything the listener hears or reads in {language}: the dialogue, the narration, segment titles, goals and key points, the summary, concept labels and descriptions. The paper and these instructions may be in English; write in {language} anyway, using the usual {language} terms for technical concepts. Keep the speaker names, the reply format, JSON keys and fixed values (such as "problem", "method" and "evidence") exactly as specified.
+        """,
+        ask: """
+        You are a research assistant chatting with a reader about one research paper. Its details and its full text, extracted from the PDF, follow below.
+        - Answer from the paper. Say where in it the answer comes from (a section, figure, table or equation) when you can.
+        - When the paper doesn't say, say so plainly, then add general background only if it helps, marked as not from the paper.
+        - The text comes from PDF extraction and may have broken words and mangled equations: read through them, and write equations in plain notation.
+        - Be concise and specific. Answer in the language of the question.
         """
     )
 }
@@ -462,7 +471,7 @@ extension PromptSettings {
                   monologueRules: try v(.monologueRules, d.monologueRules),
                   blockOnly: try v(.blockOnly, d.blockOnly), blockFirst: try v(.blockFirst, d.blockFirst),
                   blockMiddle: try v(.blockMiddle, d.blockMiddle), blockLast: try v(.blockLast, d.blockLast),
-                  outputLanguage: try v(.outputLanguage, d.outputLanguage))
+                  outputLanguage: try v(.outputLanguage, d.outputLanguage), ask: try v(.ask, d.ask))
     }
     /// The saved prompts, else the defaults.
     static func load() -> PromptSettings {

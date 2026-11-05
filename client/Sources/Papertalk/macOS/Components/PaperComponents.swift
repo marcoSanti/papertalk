@@ -195,6 +195,12 @@ struct ContextMenuItems: View {
             Label(L("Mind map"), systemImage: "point.3.connected.trianglepath.dotted")
         }
         .disabled(!PaperPresentation.hasMindMap(paper))
+        Button {
+            PaperChatWindow.present(paperId: paper.id, store: store)
+        } label: {
+            Label(L("Ask…"), systemImage: "bubble.left.and.text.bubble.right")
+        }
+        .disabled(!paper.hasPdf)
         Divider()
         let favorite = PaperPresentation.favoriteToggle(paper)
         Button {

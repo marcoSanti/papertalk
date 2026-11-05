@@ -20,6 +20,12 @@ enum Theme {
     static let thumbRadius: CGFloat = 8
     /// Typical paper page aspect ratio (US Letter / A4 ≈ 0.71–0.77).
     static let pageAspect: CGFloat = 0.75
+    /// The violet-to-orange wash that marks Ask (the LLM chat), apart from the app's orange.
+    static let aiGradient = LinearGradient(colors: [Color(red: 0.42, green: 0.36, blue: 0.95), Color(red: 0.72, green: 0.33, blue: 0.9),
+                                                    Color(red: 0.95, green: 0.38, blue: 0.55), Color(red: 1, green: 0.6, blue: 0.3)],
+                                           startPoint: .leading, endPoint: .trailing)
+    /// The glow under Ask's gradient buttons.
+    static let aiGlow = Color(red: 0.72, green: 0.33, blue: 0.9)
 }
 
 // MARK: - Glass card

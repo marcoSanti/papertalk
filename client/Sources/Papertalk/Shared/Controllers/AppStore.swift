@@ -1056,6 +1056,7 @@ final class AppStore: ObservableObject {
                 await saveQueue?.value
                 try await storage.deleteFolder(K.folder(id))
                 thumbCache[id] = nil
+                chats[id] = nil
                 if selectedId == id { selectedId = nil }
                 papers.removeValue(forKey: id)
             } catch { show(L("Delete failed: {0}", error.localizedDescription)) }
@@ -1360,6 +1361,54 @@ final class AppStore: ObservableObject {
         if playingPaperId != nil { player.stopAll(); playingPaperId = nil }
         for dir in voiceModelDirs { try? FileManager.default.removeItem(at: dir) }
         show(L("Voice models deleted — they'll download again when needed"))
+    }
+
+    /// Each paper's Ask chat, kept while the app runs (not saved), so reopening Ask resumes it.
+    @Published private(set) var chats: [String: [ChatMessage]] = [:]
+    /// Papers whose Ask question is waiting for the LLM.
+    @Published private(set) var answering: Set<String> = []
+
+    // MARK: - Ask: a chat with the LLM about one paper, its PDF text and stored details as the context
+
+    /// Add `draft` to the paper's chat, then the LLM's answer, or why there is none. Ignored when
+    /// empty or while the paper's previous question is still being answered.
+    func ask(_ id: String, _ draft: String) async {
+        guard let question = PaperChat.question(draft), !answering.contains(id), let paper = papers[id] else { return }
+        chats[id, default: []].append(ChatMessage(role: .user, text: question))
+        answering.insert(id)
+        defer { answering.remove(id) }
+        let reply = await answer(paper, history: PaperChat.history(chats[id] ?? []))
+        guard chats[id] != nil else { return }   // cleared or deleted while waiting
+        chats[id]?.append(reply)
+    }
+
+    /// Start the paper's chat over (not while an answer is pending: it would land in the new chat).
+    func clearChat(_ id: String) {
+        guard !answering.contains(id) else { return }
+        chats[id] = nil
+    }
+
+    /// The LLM's reply to the last message of `history`, with the paper's text read fresh from
+    /// its PDF (a rerun or a new PDF may have replaced it).
+    private func answer(_ paper: Paper, history: [ChatMessage]) async -> ChatMessage {
+        guard let pdf = try? await storage.read(K.pdf(paper.id)) else {
+            return .failure(L("This paper has no PDF to read."))
+        }
+        // shortcut: text layer only (PDFKit), no OCR; a scanned PDF without one gets the message below.
+        let text = await Task.detached { LocalPipeline.extractText(pdf) }.value
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .failure(L("Couldn't read any text in this paper's PDF. A scanned PDF needs a text layer first."))
+        }
+        guard !llm.baseUrl.isEmpty else { return .failure(L("Configure an LLM in Settings to ask about papers.")) }
+        var pipeline = LocalPipeline(baseUrl: llm.baseUrl, apiKey: llm.resolvedKey(),
+                                     model: llm.model.isEmpty ? "llama3.1:70b" : llm.model)
+        pipeline.prompts = prompts
+        do {
+            let reply = try await pipeline.ask(context: PaperChat.context(for: paper, text: text), history: history)
+            return reply.isEmpty ? .failure(L("The LLM sent an empty answer. Try asking again.")) : ChatMessage(role: .assistant, text: reply)
+        } catch {
+            return .failure(error.localizedDescription)
+        }
     }
 
     /// A mind map being drawn outside an import, for the bottom bar's progress pane.

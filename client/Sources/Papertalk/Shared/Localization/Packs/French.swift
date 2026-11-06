@@ -579,7 +579,7 @@ extension LanguagePacks {
         "Faster": "Plus rapide",
         "Used for this episode's voices and remembered for the next import. Release the slider to hear it.": "Utilisé pour les voix de cet épisode et mémorisé pour la prochaine importation. Relâchez le curseur pour l’entendre.",
         "Browse papers by author — like a contact book": "Parcourir les articles par auteur, comme un carnet d’adresses",
-        "Add tags in a paper's Details and actions… to group papers here.": "Ajoutez des tags dans « Détails et actions… » d’un article pour les regrouper ici.",
+        "Add tags in a paper's Details to group papers here.": "Ajoutez des tags dans « Détails » d’un article pour les regrouper ici.",
         "Converted in-app": "Converti dans l’app",
         "Settings (⌘,)": "Réglages (⌘,)",
         "No saved audio: the voices are made live as you listen and aren't kept. Regenerate audio voices it once and saves it.": "Aucun audio enregistré : les voix sont créées en direct pendant l’écoute et ne sont pas conservées. Régénérer l’audio les synthétise une fois et les enregistre.",

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Import a paper</title>
+<meta name="description" content="Turn a PDF into a podcast episode: depth, length, language, library and cast.">
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<nav><a href="index.html">Papertalk Help</a></nav>
+<h1>Import a paper</h1>
+<p class="lead">Papertalk turns a PDF into an episode: an interviewer talks with one of the paper's authors.</p>
+<h2>Start an import</h2>
+<ul>
+<li>Choose <b>File → Import PDF…</b> (<kbd>⌘O</kbd>), or click <b>+</b> in the toolbar.</li>
+<li>Drag a PDF from Finder onto the library.</li>
+</ul>
+<h2>Choose the depth</h2>
+<table>
+<tr><th>Depth</th><th>What you get</th></tr>
+<tr><td>In-depth</td><td>Walks through the method faithfully, as long as the paper needs.</td></tr>
+<tr><td>Summary</td><td>Stays high-level and fits the length you set (5 to 60 minutes).</td></tr>
+<tr><td>Custom</td><td>Follows your own instructions. <b>Save as preset</b> keeps them for later; manage presets in <a href="settings.html">Settings → Prompt Presets</a>.</td></tr>
+<tr><td>Direct read</td><td>Skips the LLM and reads the paper out as it is.</td></tr>
+</table>
+<p>The sheet also asks which library the paper goes into (see <a href="libraries.html">Libraries</a>), and you can turn on <b>Write the episode in this language</b> to have the script written in the app's language. That is experimental: the voices are English, so they read other languages with an accent.</p>
+<h2>Choose who speaks</h2>
+<p>Before writing, Papertalk proposes the cast. You can rename the speakers, pick which author is interviewed, set each one's gender and voice, and hear a sample. The <b>Speaking pace</b> slider plays a sample when you release it, and is remembered for the next import. Click <b>Use these voices</b> to go on, or <b>Skip audio</b> to write the script now and voice it later with <b>Regenerate audio</b>.</p>
+<h2>If the paper is already in your library</h2>
+<p>Papertalk checks every library for the same paper and asks whether to keep importing. Declining discards the new copy.</p>
+<h2>While it works</h2>
+<p>Progress shows at the bottom of the window, and you can keep listening to other episodes. When the window is in the background, a notification tells you when an episode is ready or needs you. <b>Stop conversion</b> (in the paper's context menu) stops it; <b>Try again</b> carries on from where it stopped.</p>
+<p class="note">The first episode voiced on this Mac downloads the voice models (about 120 MB), so it takes a little longer.</p>
+</body>
+</html>

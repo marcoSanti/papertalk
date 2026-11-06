@@ -78,6 +78,8 @@ ideas. It's a native macOS app written in SwiftUI.
   unless you turn on **Write the episode in this language** when importing (experimental: the
   Kokoro voices are English, so they read other languages with an English accent).
 
+**Help → Papertalk Help** opens a guide to every part of the app, searchable from the Help menu.
+
 ## Getting started
 
 Ready-made builds are on the [Releases](https://github.com/marcoSanti/papertalk/releases) page.

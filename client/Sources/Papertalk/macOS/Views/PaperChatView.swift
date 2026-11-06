@@ -77,17 +77,21 @@ struct PaperChatView: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
             }
+            // Overlay scrollers hide until you scroll, leaving no sign that a long answer goes on:
+            // flash them when a message arrives.
+            .scrollIndicatorsFlash(trigger: messages.count)
             .defaultScrollAnchor(.bottom)
             .onChange(of: messages.count) { _, _ in scrollDown(proxy) }
             .onChange(of: isAnswering) { _, _ in scrollDown(proxy) }
         }
     }
 
-    /// Scroll to the typing bubble or the last message.
+    /// Scroll to the typing bubble or the last message. A message lands with its top in view, so
+    /// an answer taller than the window reads from its start (a short one still ends at the bottom).
     private func scrollDown(_ proxy: ScrollViewProxy) {
         withAnimation(.snappy) {
             if isAnswering { proxy.scrollTo("typing", anchor: .bottom) }
-            else if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+            else if let last = messages.last { proxy.scrollTo(last.id, anchor: .top) }
         }
     }
 

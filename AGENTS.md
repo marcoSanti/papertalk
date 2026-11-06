@@ -38,7 +38,8 @@ this file (for Claude Code), so keep the guidance here.
 - `VERSION`: the app version, edited by hand (`app.sh version` prints it).
 - `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
 - `.github/workflows/`: `tests.yml` (pull requests) and `release.yml` (`main`: dev + stable releases).
-- `shared/`: app icon, and `Papertalk.help/`, the user guide (macOS Help Book, see "User guide").
+- `shared/`: app icon (`icon.icns`, drawn by `scripts/app_icon.swift`), and `Papertalk.help/`, the
+  user guide (macOS Help Book, see "User guide").
 - Linux port pieces: `client/Sources/Papertalk/Linux/` (compat shims, `#if os(Linux)`),
   `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
   `client/linux-dev/` (dev container `Dockerfile`, `dev.sh`).
@@ -104,6 +105,10 @@ release stays), so Finder, "Open With" and Help open the build just made.
   from anything but a stable release. The exception is the Finder icon of `.papertalk` files
   (`PaperDocument.icns`, a page with the app icon on it, from `scripts/document_icon.swift`): it's
   made from the official icon on every channel, so a file's icon doesn't depend on the build.
+- The official icon is drawn in code: change `scripts/app_icon.swift`, run
+  `swift scripts/app_icon.swift shared/icon.icns`, and commit both. Every other icon (dev,
+  document, the Help Book's `icon.png`, the Linux AppImage's PNG) is generated from that file at
+  build time, so never edit those. Keep shapes filled and thick: it has to read at 16 px.
 - The in-app updater (`UpdateInstall`, `macOS/Controllers/UpdateInstaller.swift`) installs a stable
   release from its `Papertalk-<version>.zip` and `Papertalk-<version>.zip.sha256` assets, checks the
   unzipped app's bundle id and version, and swaps it in with `UpdateInstall.swapScript` after the app

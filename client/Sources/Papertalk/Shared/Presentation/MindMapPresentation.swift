@@ -1,13 +1,13 @@
 // The mind map's geometry and wording: `MindMapLayout` places every concept on rings around
-// the paper, relaxes them with `ForceLayout`, and handles zoom and pan; `MindMapPresentation` words the window and its side panel.
+// the paper (other papers' concepts with `ForceLayout`), and handles zoom and pan; `MindMapPresentation` words the window and its side panel.
 
 import Foundation
 
 /// Where every concept of a mind map sits: the paper in the centre, one
 /// 120° sector per branch (problem up-left, method up-right, evidence down),
 /// and each concept's sector shared among its children by how many concepts
-/// they lead to. Rings move out until neighbours have room for their labels, then forces
-/// tidy the result (`ForceLayout`).
+/// they lead to. Rings move out until neighbours have room for their labels. Other papers'
+/// concepts are then placed around the map by `ForceLayout`.
 struct MindMapLayout: Equatable, ZoomableLayout {
     /// A position in layout points.
     struct Point: Equatable { var x: Double; var y: Double }
@@ -132,7 +132,9 @@ struct MindMapLayout: Equatable, ZoomableLayout {
     static let nodeWidth = 172.0, nodeHeight = 64.0
     /// Room left for a link's label tag.
     static let linkLabelWidth = 130.0, linkLabelHeight = 26.0
-    private static let firstRing = 180.0, ringGap = 190.0, margin = 24.0
+    private static let firstRing = 240.0, ringGap = 190.0, margin = 24.0
+    /// The clear space kept between neighbouring boxes on a ring.
+    private static let ringSpacing = (x: 48.0, y: 28.0)
 
     /// Concept id (and `centerId`) → centre of its node, in points from the top-left.
     private(set) var positions: [String: Point] = [:]
@@ -198,7 +200,8 @@ struct MindMapLayout: Equatable, ZoomableLayout {
             var needed = 0.0
             for (a, b) in zip(angles, angles.dropFirst() + angles.prefix(angles.count > 2 ? 1 : 0)) {
                 let dx = abs(cos(a * .pi / 180) - cos(b * .pi / 180)), dy = abs(sin(a * .pi / 180) - sin(b * .pi / 180))
-                needed = max(needed, min((Self.nodeWidth + 24) / max(dx, 1e-3), (Self.nodeHeight + 16) / max(dy, 1e-3)))
+                needed = max(needed, min((Self.nodeWidth + Self.ringSpacing.x) / max(dx, 1e-3),
+                                         (Self.nodeHeight + Self.ringSpacing.y) / max(dy, 1e-3)))
             }
             let previous = d == 1 ? 0 : (radius[d - 1] ?? 0) + Self.ringGap
             radius[d] = max(d == 1 ? Self.firstRing : previous, needed)
@@ -213,10 +216,8 @@ struct MindMapLayout: Equatable, ZoomableLayout {
             + map.nodes.compactMap { n in n.parent.map { Edge(from: $0, to: n.id, label: nil) } }
             + map.links.map { Edge(from: $0.from, to: $0.to, label: $0.label) }
 
-        // Forces untangle the rings: linked concepts draw together, crowded ones spread out,
-        // and the pull back to the rings keeps each branch in its sector.
-        raw = ForceLayout.relax(raw, edges: edges.map { ($0.from, $0.to) }, box: (Self.nodeWidth, Self.nodeHeight),
-                                gap: (24, 16), pinned: [Self.centerId], anchor: 0.3)
+        // No force pass on the map itself: it pulled concepts into a clump, with tree lines
+        // running through other concepts. The rings keep each branch's lines clear.
 
         // Other papers' concepts start on a ring of their own outside the map, each towards the
         // concepts it connects to, pushed apart so their boxes don't touch.

@@ -112,11 +112,11 @@ struct LibraryView: View {
     /// The status filter capsules (All, Converting, Ready, Failed) with their counts.
     private var filterBar: some View {
         HStack {
-            HStack(spacing: 2) {
-                ForEach(LibraryPresentation.statusFilters) { f in filterButton(f) }
+            // Titles drop to icons and counts when the pane is too narrow, instead of wrapping.
+            ViewThatFits(in: .horizontal) {
+                filterCapsules(compact: false)
+                filterCapsules(compact: true)
             }
-            .padding(3)
-            .glassEffect(.regular, in: Capsule())
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
@@ -124,21 +124,32 @@ struct LibraryView: View {
         .padding(.bottom, 8)
     }
 
+    /// The row of filter capsules on its glass; `compact` leaves the titles to the tooltips.
+    private func filterCapsules(compact: Bool) -> some View {
+        HStack(spacing: 2) {
+            ForEach(LibraryPresentation.statusFilters) { f in filterButton(f, compact: compact) }
+        }
+        .padding(3)
+        .glassEffect(.regular, in: Capsule())
+    }
+
     /// One filter capsule; the selected one slides under it.
-    private func filterButton(_ f: LibraryPresentation.StatusFilter) -> some View {
+    private func filterButton(_ f: LibraryPresentation.StatusFilter, compact: Bool) -> some View {
         let selected = store.statusFilter == f.value
         return Button {
             withAnimation(.snappy(duration: 0.25)) { store.statusFilter = f.value }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: f.icon).imageScale(.small)
-                Text(f.title)
+                if !compact { Text(f.title) }
                 if let n = LibraryPresentation.badge(store.count(status: f.value)) {
                     Text(n)
                         .monospacedDigit()
                         .foregroundStyle(selected ? AnyShapeStyle(Color.white.opacity(0.85)) : AnyShapeStyle(HierarchicalShapeStyle.secondary))
                 }
             }
+            .lineLimit(1)
+            .fixedSize()
             .font(.callout.weight(selected ? .semibold : .regular))
             .foregroundStyle(selected ? AnyShapeStyle(Color.white) : AnyShapeStyle(HierarchicalShapeStyle.primary))
             .padding(.horizontal, 12)
@@ -147,12 +158,13 @@ struct LibraryView: View {
                 if selected {
                     Capsule()
                         .fill(Color.appAccent.gradient)
-                        .matchedGeometryEffect(id: "selection", in: filterNS)
+                        .matchedGeometryEffect(id: compact ? "selection-compact" : "selection", in: filterNS)
                 }
             }
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .help(f.title)
     }
 
     // MARK: layouts

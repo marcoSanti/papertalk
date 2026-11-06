@@ -17,6 +17,7 @@ struct OnboardingView: View {
     @State private var loadingModels = false
     @State private var testing = false
     @State private var testResult: (ok: Bool, message: String)?
+    @State private var checkUpdates = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -198,6 +199,8 @@ struct OnboardingView: View {
                 Button(L("Test connection")) { runTests() }
                     .disabled(testing || !llm.canFetchModels)
             }
+
+            UpdateCheckToggle(isOn: $checkUpdates)
         }
     }
 
@@ -247,7 +250,7 @@ struct OnboardingView: View {
                 Button(L("Back")) { step = previous }.buttonStyle(.borderless)
             }
             Button(step.nextTitle) {
-                if let next = step.next { step = next } else { store.finishSetup(server: server.config, llm: llm.settings, speech: speech.settings) }
+                if let next = step.next { step = next } else { store.finishSetup(server: server.config, llm: llm.settings, speech: speech.settings, checkUpdates: checkUpdates) }
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(step.next == nil ? .defaultAction : nil)

@@ -11,9 +11,10 @@
 <h1>Settings</h1>
 <p class="lead">Open Settings with <b>Papertalk → Settings…</b> (<kbd>⌘,</kbd>). Pages save when you click <b>Save</b>, and show “Saved”.</p>
 <h2>First-run setup</h2>
-<p>The first time, a short setup asks where the library lives, which LLM writes the episodes, and where the voices are made. <b>Test connection</b> checks the servers answer. You can skip it and change everything here later.</p>
+<p>The first time, a short setup asks where the library lives, which LLM writes the episodes, and where the voices are made. <b>Test connection</b> checks the servers answer. Its last step also asks whether to <b>check for updates when Papertalk starts</b>. You can skip it and change everything here later.</p>
 <h2>General</h2>
 <p>The interface language (it follows your Mac's language unless you pick one: English, Italian, Spanish, German or French) and the <b>Library folder</b>.</p>
+<p><b>Check for updates when Papertalk starts</b>: at each start, Papertalk asks GitHub for a newer stable release. When there is one, it asks whether to install it: <b>Install and Relaunch</b> downloads it, checks it against its published checksum, then quits, replaces the app and opens the new version. Nothing is installed without asking, and nothing is shown when Papertalk is up to date or GitHub can't be reached. If you never chose (you skipped setup, or updated from an older version), Papertalk asks once at startup.</p>
 <h2>LLM Settings</h2>
 <p>Any OpenAI-compatible chat server writes the episodes: LM Studio, llama.cpp, Ollama behind Open WebUI, or a hosted API. Enter its <b>LLM base URL</b>, the <b>API key source</b> (none, typed, or an environment variable) and the <b>Model</b> (<b>Refresh models</b> asks the server). With a local LLM, nothing about your papers leaves your Mac.</p>
 <h2>Voices</h2>

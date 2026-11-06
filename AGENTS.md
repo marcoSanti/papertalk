@@ -104,6 +104,10 @@ release stays), so Finder, "Open With" and Help open the build just made.
   from anything but a stable release. The exception is the Finder icon of `.papertalk` files
   (`PaperDocument.icns`, a page with the app icon on it, from `scripts/document_icon.swift`): it's
   made from the official icon on every channel, so a file's icon doesn't depend on the build.
+- The in-app updater (`UpdateInstall`, `macOS/Controllers/UpdateInstaller.swift`) installs a stable
+  release from its `Papertalk-<version>.zip` and `Papertalk-<version>.zip.sha256` assets, checks the
+  unzipped app's bundle id and version, and swaps it in with `UpdateInstall.swapScript` after the app
+  quits. Renaming those release assets, or the zip's top-level `Papertalk.app`, breaks it: keep them.
 - `app.sh release` also writes `dist/Papertalk-<version>-source.tar.gz` (`git archive` of HEAD);
   the release workflow publishes it, with checksums, beside the app zip.
 - Dev builds: every push to `main` that didn't bump the version publishes a **pre-release**
@@ -173,7 +177,8 @@ Still to do, in order:
    clipboard copy, and `Notifier.isAppActive` from the window's focus (notifications are off
    until then). Then a pass on looks (spacing, a grid layout option).
 2. **Updates on Linux:** the update check (menu on macOS) and `UpdateCheck` picking the
-   AppImage asset; the Linux build has no version stamped in yet (macOS uses Info.plist).
+   AppImage asset, and installing in place (`Linux/UpdateInstallerCompat.swift` only refuses);
+   the Linux build has no version stamped in yet (macOS uses Info.plist).
 3. Later: an arm64 AppImage (an `ubuntu-24.04-arm` runner), an in-app PDF viewer from
    pypdfium2 renders, and a re-check of OpenSwiftUI for a Linux renderer.
 

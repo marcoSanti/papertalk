@@ -150,6 +150,20 @@ final class MindMapLayoutTests: PapertalkTestCase {
         }
     }
 
+    func testNoTreeLineRunsThroughAnotherConcept() throws {
+        let layout = MindMapLayout(try crowded())
+        for e in layout.edges where e.label == nil {
+            let a = try XCTUnwrap(layout.positions[e.from]), b = try XCTUnwrap(layout.positions[e.to])
+            for (id, c) in layout.positions where id != e.from && id != e.to {
+                let hit = stride(from: 0.0, through: 1.0, by: 0.02).contains { t in
+                    abs(a.x + (b.x - a.x) * t - c.x) < MindMapLayout.nodeWidth / 2
+                        && abs(a.y + (b.y - a.y) * t - c.y) < MindMapLayout.nodeHeight / 2
+                }
+                XCTAssertFalse(hit, "\(e.id) runs through \(id)")
+            }
+        }
+    }
+
     func testBranchesSitInTheirOwnSectors() throws {
         let map = try XCTUnwrap(MindMap.parse(MindMapFixtures.reply()))
         let layout = MindMapLayout(map)

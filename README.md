@@ -108,9 +108,13 @@ On first launch a short setup asks:
 and change all of it later in **Settings** (⌘,). With voices on this Mac, the first episode
 takes a little longer because it downloads the voice models (about 120 MB).
 
+**Updates.** Papertalk can check GitHub for a new stable release each time it starts (setup asks;
+change it in **Settings → General**, and if you never chose, it asks once at startup). When there is
+one, **Install and Relaunch** downloads the release zip, checks it against its published SHA-256,
+then quits, swaps the app in place and reopens it. Nothing is installed without asking. If
+Papertalk can't write to its folder, it offers the release page instead.
 **Papertalk → Check for Updates…** (stable releases) and **Check for Dev Builds…** (the latest
-builds of `main`) ask GitHub whether there's something newer and offer its release page. Nothing
-is ever downloaded or installed by itself.
+builds of `main`, which open their release page) check by hand.
 
 ## Using it
 

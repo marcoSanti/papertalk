@@ -101,10 +101,106 @@ struct GitHubRelease: Decodable, Equatable {
     let prerelease: Bool
     /// Unpublished; never offered.
     let draft: Bool
+    /// The files attached to the release (the app zip and its checksum, the source).
+    var assets: [Asset]? = nil
+
+    /// One file attached to a release.
+    struct Asset: Decodable, Equatable {
+        let name: String
+        let downloadURL: URL
+
+        enum CodingKeys: String, CodingKey {
+            case name, downloadURL = "browser_download_url"
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
-        case tagName = "tag_name", htmlURL = "html_url", prerelease, draft
+        case tagName = "tag_name", htmlURL = "html_url", prerelease, draft, assets
     }
+}
+
+/// Installing a stable release in place: which files to fetch, how to check them, and the
+/// script that swaps the app once it has quit. The downloading is `UpdateInstaller`'s.
+enum UpdateInstall {
+    /// Where to download the app zip and its checksum from.
+    struct Files: Equatable {
+        let zip: URL
+        let checksum: URL
+    }
+
+    /// The release's `Papertalk-<version>.zip` and `.zip.sha256` (as the release workflow
+    /// names them); nil when either is missing.
+    static func files(for c: UpdateCheck.Candidate) -> Files? {
+        let name = "Papertalk-\(c.version.text).zip"
+        let assets = c.release.assets ?? []
+        guard let zip = assets.first(where: { $0.name == name }),
+              let sum = assets.first(where: { $0.name == name + ".sha256" }) else { return nil }
+        return Files(zip: zip.downloadURL, checksum: sum.downloadURL)
+    }
+
+    /// Whether an update can be installed over the running copy at `app`: it's an app bundle
+    /// with a version, and the release has the files.
+    static func canInstall(_ c: UpdateCheck.Candidate, build: AppBuild, app: URL) -> Bool {
+        app.pathExtension == "app" && build.release != nil && files(for: c) != nil
+    }
+
+    /// The SHA-256 in a `shasum -a 256` line ("<hex>  <file>"), lowercased; nil if there is none.
+    static func checksum(in text: String) -> String? {
+        guard let first = text.split(whereSeparator: \.isWhitespace).first else { return nil }
+        let hex = first.lowercased()
+        return hex.count == 64 && hex.allSatisfy(\.isHexDigit) ? hex : nil
+    }
+
+    /// Whether the unzipped app is Papertalk (`bundleId`) at the version that was offered.
+    static func isExpectedApp(info: [String: Any]?, bundleId: String?, version: ReleaseVersion) -> Bool {
+        guard let info, let id = info["CFBundleIdentifier"] as? String,
+              let v = (info["CFBundleShortVersionString"] as? String).flatMap(ReleaseVersion.init) else { return false }
+        return id == bundleId && v == version
+    }
+
+    /// The shell script that waits for the app (`$1`, a pid) to quit, swaps the installed app
+    /// (`$2`) for `Papertalk.app` in the staging folder (`$3`, on the same volume), removes the
+    /// staging folder and the old app, and opens the app unless `$4` is 0. If the new app can't
+    /// be moved in, the old one goes back. Run as `/bin/sh -c script sh pid app staging open`.
+    static let swapScript = """
+        while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
+        if mv "$2" "$3/Papertalk-old.app"; then
+          mv "$3/Papertalk.app" "$2" || mv "$3/Papertalk-old.app" "$2"
+        fi
+        rm -rf "$3"
+        [ "$4" = 0 ] || open "$2"
+        """
+
+    /// Why an install stopped, worded for the alert.
+    enum Failure: Error, Equatable {
+        case download, checksum, unzip, notPapertalk, notWritable(String), unsupported
+
+        var message: String {
+            switch self {
+            case .download: return L("The update couldn’t be downloaded. Check your internet connection and try again.")
+            case .checksum: return L("The downloaded update didn’t match its checksum, so it wasn’t installed. Try again later.")
+            case .unzip: return L("The downloaded update couldn’t be unpacked. Try again later.")
+            case .notPapertalk: return L("The downloaded file isn’t the expected version of Papertalk, so it wasn’t installed.")
+            case .notWritable(let folder): return L("Papertalk can’t replace itself in {0}. Install the update from its release page instead.", folder)
+            case .unsupported: return L("Installing updates isn’t supported on this system yet. Use the release page instead.")
+            }
+        }
+    }
+}
+
+/// Wording for checking at startup.
+enum UpdatePreferencePresentation {
+    /// The toggle in setup and in Settings → General.
+    static var toggle: String { L("Check for updates when Papertalk starts") }
+    /// Under the toggle.
+    static var note: String { L("Papertalk asks GitHub for a newer release at startup and offers to install it. Nothing is installed without asking.") }
+    /// The question asked once at startup when the choice was never made.
+    static var askTitle: String { L("Check for updates automatically?") }
+    static var askMessage: String { L("Papertalk can look for a new release each time it starts and offer to install it. You can change this in Settings → General.") }
+    static var askYes: String { L("Check Automatically") }
+    static var askNo: String { L("Don’t Check") }
+    /// The toast while an update downloads.
+    static func downloading(_ version: String) -> String { L("Downloading Papertalk {0}…", version) }
 }
 
 /// Deciding whether a newer release exists. The network part lives in `UpdateChecker`.
@@ -224,11 +320,20 @@ struct UpdateAlert: Identifiable, Equatable {
     let actionLabel: String?
     /// The page `actionLabel` opens.
     let link: URL?
+    /// The release `actionLabel` installs in place (then `link` is only the fallback).
+    var install: UpdateCheck.Candidate? = nil
     var id: String { title + message }
 
-    /// The alert for a check's outcome on `channel`.
-    init(_ outcome: UpdateCheck.Outcome, channel: ReleaseChannel, build: AppBuild) {
+    /// The alert for a check's outcome on `channel`. `installable`: a stable update can be
+    /// installed in place (`UpdateInstall.canInstall`).
+    init(_ outcome: UpdateCheck.Outcome, channel: ReleaseChannel, build: AppBuild, installable: Bool = false) {
         switch outcome {
+        case .available(let c) where channel == .stable && installable:
+            title = L("Papertalk {0} is available", c.version.text)
+            message = L("You have {0}. Install it now? Papertalk quits, updates itself and opens again.", build.display)
+            actionLabel = L("Install and Relaunch")
+            link = c.release.htmlURL
+            install = c
         case .available(let c):
             title = channel == .stable
                 ? L("Papertalk {0} is available", c.version.text)
@@ -265,5 +370,13 @@ struct UpdateAlert: Identifiable, Equatable {
             actionLabel = nil
             link = nil
         }
+    }
+
+    /// An install of `c` that failed: why, with its release page to do it by hand.
+    init(installFailed failure: UpdateInstall.Failure, _ c: UpdateCheck.Candidate) {
+        title = L("Couldn’t install Papertalk {0}", c.version.text)
+        message = failure.message
+        actionLabel = L("View Release")
+        link = c.release.htmlURL
     }
 }

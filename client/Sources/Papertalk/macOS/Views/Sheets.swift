@@ -790,9 +790,24 @@ struct LanguageSettingsPage: View {
                 .fixedSize()
             Divider().padding(.vertical, 4)
             LibraryFolderSection()
+            Divider().padding(.vertical, 4)
+            UpdateCheckToggle(isOn: $store.checkUpdatesToggle)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
+    }
+}
+
+/// The startup update check, the same in setup and in Settings → General.
+struct UpdateCheckToggle: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(UpdatePreferencePresentation.toggle, isOn: $isOn)
+            Text(UpdatePreferencePresentation.note)
+                .font(.caption).foregroundStyle(.secondary)
+        }
     }
 }
 

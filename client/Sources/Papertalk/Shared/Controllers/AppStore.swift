@@ -195,8 +195,10 @@ final class AppStore: ObservableObject {
             : (false, L("Could not reach: {0}.", failures.joined(separator: ", ")))
     }
 
-    /// Setup wizard: save everything and close it.
-    func finishSetup(server: ServerConfig, llm next: LLMSettings, speech voices: SpeechSettings) {
+    /// Setup wizard: save everything and close it. `checkUpdates` is the startup update check
+    /// (nil leaves it unasked; the Linux setup has no such question yet).
+    func finishSetup(server: ServerConfig, llm next: LLMSettings, speech voices: SpeechSettings, checkUpdates: Bool? = nil) {
+        if let checkUpdates { checkUpdatesAtLaunch = checkUpdates }
         config = server
         llm = next
         llm.saveResolvedKey()
@@ -1174,7 +1176,7 @@ final class AppStore: ObservableObject {
             logEntries = []
             // 2. All settings + old (pre-rename) keys.
             let d = UserDefaults.standard
-            for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.prompts.json", "papertalk.customDepths.json", "papertalk.settingsPage", "papertalk.voiceSpeed", "papertalk.onboarded", LocalStorage.folderDefaultsKey, Localization.defaultsKey, AppStore.askDeleteKey, SpeechSettings.defaultsKey,
+            for key in ["papertalk.server.json", "papertalk.llm.json", "papertalk.prompts.json", "papertalk.customDepths.json", "papertalk.settingsPage", "papertalk.voiceSpeed", "papertalk.onboarded", LocalStorage.folderDefaultsKey, Localization.defaultsKey, AppStore.askDeleteKey, AppStore.checkUpdatesKey, SpeechSettings.defaultsKey,
                         "paper2pod.server.json", "paper2pod.llm.json", "paper2pod.onboarded"] {
                 d.removeObject(forKey: key)
             }
@@ -1190,6 +1192,7 @@ final class AppStore: ObservableObject {
             llm = LLMSettings.load()
             speech = SpeechSettings.load()
             askToDeleteListenedAudio = true
+            checkUpdatesAtLaunch = nil
             prompts = PromptSettings.defaults
             Localization.language = Localization.load()
             language = Localization.language
@@ -2118,14 +2121,51 @@ final class AppStore: ObservableObject {
     /// Result of the last update check, shown as an alert.
     @Published var updateAlert: UpdateAlert?
 
+    /// Whether to check for a stable update at startup; nil until the user has chosen (in setup,
+    /// in Settings → General, or when asked at startup).
+    @Published var checkUpdatesAtLaunch = UserDefaults.standard.object(forKey: AppStore.checkUpdatesKey) as? Bool {
+        didSet { UserDefaults.standard.set(checkUpdatesAtLaunch, forKey: Self.checkUpdatesKey) }
+    }
+    nonisolated static let checkUpdatesKey = "papertalk.checkUpdatesAtLaunch"
+    /// The Settings toggle for `checkUpdatesAtLaunch`: off until chosen.
+    var checkUpdatesToggle: Bool {
+        get { checkUpdatesAtLaunch ?? false }
+        set { checkUpdatesAtLaunch = newValue }
+    }
+    /// Shows the one-time question whether to check for updates at startup.
+    @Published var askAboutUpdateChecks = false
+    /// An update is downloading; the menu items wait.
+    @Published private(set) var isInstallingUpdate = false
+    /// Where the running app is; tests point it elsewhere.
+    var appURL = Bundle.main.bundleURL
+
     /// Menu entry point: check GitHub for a newer release on `channel`.
     func requestUpdateCheck(_ channel: ReleaseChannel) {
         Task { await checkForUpdates(channel) }
     }
 
+    /// At startup: check quietly for a stable update when that's on, or ask once whether to.
+    /// Setup asks the question itself, so nothing happens while it's open.
+    func launchUpdateCheck(checker: UpdateChecker = UpdateChecker()) async {
+        guard !showOnboarding else { return }
+        switch checkUpdatesAtLaunch {
+        case nil: askAboutUpdateChecks = true
+        case true?: await checkForUpdates(.stable, checker: checker, quietly: true)
+        case false?: break
+        }
+    }
+
+    /// The answer to the startup question; yes checks right away.
+    func answerUpdateChecks(_ yes: Bool, checker: UpdateChecker = UpdateChecker()) async {
+        askAboutUpdateChecks = false
+        checkUpdatesAtLaunch = yes
+        if yes { await checkForUpdates(.stable, checker: checker, quietly: true) }
+    }
+
     /// Ask GitHub for the newest release on `channel` and show the result as an alert.
-    func checkForUpdates(_ channel: ReleaseChannel, checker: UpdateChecker = UpdateChecker()) async {
-        guard !isCheckingForUpdates else { return }
+    /// `quietly` (the startup check): only a newer release is shown, never "up to date" or a failure.
+    func checkForUpdates(_ channel: ReleaseChannel, checker: UpdateChecker = UpdateChecker(), quietly: Bool = false) async {
+        guard !isCheckingForUpdates, !isInstallingUpdate else { return }
         isCheckingForUpdates = true
         defer { isCheckingForUpdates = false }
         let outcome: UpdateCheck.Outcome
@@ -2139,13 +2179,28 @@ final class AppStore: ObservableObject {
         } catch {
             outcome = .failed(error.message)
         }
-        updateAlert = UpdateAlert(outcome, channel: channel, build: build)
+        if quietly { guard case .available = outcome else { return } }
+        var installable = false
+        if case .available(let c) = outcome { installable = UpdateInstall.canInstall(c, build: build, app: appURL) }
+        updateAlert = UpdateAlert(outcome, channel: channel, build: build, installable: installable)
     }
 
-    /// Close the update alert and open its release page.
-    func openUpdateLink(_ alert: UpdateAlert) {
+    /// The update alert's button: install the release in place, or open its page.
+    func acceptUpdate(_ alert: UpdateAlert, installer: UpdateInstaller = UpdateInstaller()) async {
         updateAlert = nil
-        if let link = alert.link { NSWorkspace.shared.open(link) }
+        guard let c = alert.install else {
+            if let link = alert.link { NSWorkspace.shared.open(link) }
+            return
+        }
+        isInstallingUpdate = true
+        show(UpdatePreferencePresentation.downloading(c.version.text))
+        do {
+            try await installer.install(c, over: appURL)
+            installer.quit()
+        } catch {
+            isInstallingUpdate = false
+            updateAlert = UpdateAlert(installFailed: error, c)
+        }
     }
 
     /// Show a toast for a few seconds; a newer one replaces it.

@@ -108,13 +108,19 @@ struct ContentView: View {
         .alert(store.updateAlert?.title ?? "", isPresented: updateAlertShown,
                presenting: store.updateAlert) { alert in
             if let label = alert.actionLabel {
-                Button(label) { store.openUpdateLink(alert) }
+                Button(label) { Task { await store.acceptUpdate(alert) } }
                 Button(L("Not Now"), role: .cancel) {}
             } else {
                 Button(L("OK"), role: .cancel) {}
             }
         } message: { alert in
             Text(alert.message)
+        }
+        .alert(UpdatePreferencePresentation.askTitle, isPresented: $store.askAboutUpdateChecks) {
+            Button(UpdatePreferencePresentation.askYes) { Task { await store.answerUpdateChecks(true) } }
+            Button(UpdatePreferencePresentation.askNo, role: .cancel) { Task { await store.answerUpdateChecks(false) } }
+        } message: {
+            Text(UpdatePreferencePresentation.askMessage)
         }
         .overlay(alignment: .bottom) {
             if let t = store.toast {
@@ -130,6 +136,7 @@ struct ContentView: View {
         .onAppear {
             store.trackPlayback()
             NowPlaying.shared.attach(to: store)
+            Task { await store.launchUpdateCheck() }
         }
     }
 

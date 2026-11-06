@@ -26,9 +26,9 @@ struct PapertalkApp: App {
         .commands {
             CommandGroup(after: .appInfo) {
                 Button(L("Check for Updates…")) { store.requestUpdateCheck(.stable) }
-                    .disabled(store.isCheckingForUpdates)
+                    .disabled(store.isCheckingForUpdates || store.isInstallingUpdate)
                 Button(L("Check for Dev Builds…")) { store.requestUpdateCheck(.dev) }
-                    .disabled(store.isCheckingForUpdates)
+                    .disabled(store.isCheckingForUpdates || store.isInstallingUpdate)
             }
             CommandGroup(after: .appSettings) {
                 Button(L("Settings…")) { store.openSettings(.general) }

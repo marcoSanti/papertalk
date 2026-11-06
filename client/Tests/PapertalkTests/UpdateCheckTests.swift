@@ -129,6 +129,99 @@ final class UpdateCheckTests: PapertalkTestCase {
         XCTAssertEqual(failed.message, "Offline.")
         XCTAssertNil(failed.actionLabel)
     }
+
+    private func withAssets(_ tag: String, _ names: [String]) -> UpdateCheck.Candidate {
+        var r = release(tag)
+        r.assets = names.map { GitHubRelease.Asset(name: $0, downloadURL: URL(string: "https://example.com/\($0)")!) }
+        return UpdateCheck.Candidate(release: r, version: ReleaseVersion(tag)!)
+    }
+
+    func testInstallFindsTheZipAndItsChecksum() {
+        let c = withAssets("v0.6.1", ["Papertalk-0.6.1-source.tar.gz", "Papertalk-0.6.1.zip", "Papertalk-0.6.1.zip.sha256"])
+        XCTAssertEqual(UpdateInstall.files(for: c)?.zip.lastPathComponent, "Papertalk-0.6.1.zip")
+        XCTAssertEqual(UpdateInstall.files(for: c)?.checksum.lastPathComponent, "Papertalk-0.6.1.zip.sha256")
+        XCTAssertNil(UpdateInstall.files(for: withAssets("v0.6.1", ["Papertalk-0.6.1.zip"])))   // no checksum
+        XCTAssertNil(UpdateInstall.files(for: candidate("v0.6.1")))                              // no assets
+
+        let build = AppBuild(version: "0.6.0", commit: "abc1234")
+        let app = URL(fileURLWithPath: "/Applications/Papertalk.app")
+        XCTAssertTrue(UpdateInstall.canInstall(c, build: build, app: app))
+        XCTAssertFalse(UpdateInstall.canInstall(c, build: AppBuild(), app: app))                 // swift run
+        XCTAssertFalse(UpdateInstall.canInstall(c, build: build, app: URL(fileURLWithPath: "/usr/bin/Papertalk")))
+    }
+
+    func testChecksumAndDownloadedAppChecks() {
+        let hex = String(repeating: "ab", count: 32)
+        XCTAssertEqual(UpdateInstall.checksum(in: "\(hex.uppercased())  dist/Papertalk-0.6.1.zip\n"), hex)
+        XCTAssertNil(UpdateInstall.checksum(in: "not a checksum"))
+        XCTAssertNil(UpdateInstall.checksum(in: ""))
+
+        let v = ReleaseVersion("0.6.1")!
+        let info: [String: Any] = ["CFBundleIdentifier": "dev.papertalk.desktop", "CFBundleShortVersionString": "0.6.1"]
+        XCTAssertTrue(UpdateInstall.isExpectedApp(info: info, bundleId: "dev.papertalk.desktop", version: v))
+        XCTAssertFalse(UpdateInstall.isExpectedApp(info: info, bundleId: "com.other.app", version: v))
+        XCTAssertFalse(UpdateInstall.isExpectedApp(info: info, bundleId: "dev.papertalk.desktop", version: ReleaseVersion("0.6.2")!))
+        XCTAssertFalse(UpdateInstall.isExpectedApp(info: nil, bundleId: "dev.papertalk.desktop", version: v))
+    }
+
+    func testInstallableUpdateAlert() {
+        let c = withAssets("v0.6.1", ["Papertalk-0.6.1.zip", "Papertalk-0.6.1.zip.sha256"])
+        let build = AppBuild(version: "0.6.0", commit: "abc1234")
+        let alert = UpdateAlert(.available(c), channel: .stable, build: build, installable: true)
+        XCTAssertEqual(alert.title, "Papertalk 0.6.1 is available")
+        XCTAssertEqual(alert.actionLabel, "Install and Relaunch")
+        XCTAssertEqual(alert.install, c)
+        // Not installable, or a dev build: the release page, as before.
+        XCTAssertNil(UpdateAlert(.available(c), channel: .stable, build: build).install)
+        XCTAssertEqual(UpdateAlert(.available(c), channel: .stable, build: build).actionLabel, "View Release")
+        XCTAssertNil(UpdateAlert(.available(c), channel: .dev, build: build, installable: true).install)
+
+        let failed = UpdateAlert(installFailed: .checksum, c)
+        XCTAssertEqual(failed.title, "Couldn’t install Papertalk 0.6.1")
+        XCTAssertEqual(failed.message, UpdateInstall.Failure.checksum.message)
+        XCTAssertEqual(failed.link, c.release.htmlURL)
+        XCTAssertNil(failed.install)
+        XCTAssertTrue(UpdateInstall.Failure.notWritable("/Applications").message.contains("/Applications"))
+    }
+
+    /// Runs the swap script on a fake app, waiting on a real process that quits shortly.
+    private func swap(app: URL, staging: URL) throws {
+        let waiter = Process()
+        waiter.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        waiter.arguments = ["0.3"]
+        try waiter.run()
+        let sh = Process()
+        sh.executableURL = URL(fileURLWithPath: "/bin/sh")
+        sh.arguments = ["-c", UpdateInstall.swapScript, "sh", String(waiter.processIdentifier), app.path, staging.path, "0"]
+        try sh.run()
+        sh.waitUntilExit()
+        XCTAssertFalse(waiter.isRunning, "the swap waits for the app to quit")
+    }
+
+    private func fakeApp(_ url: URL, _ marker: String) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try Data(marker.utf8).write(to: url.appendingPathComponent("marker"))
+    }
+
+    func testSwapScriptReplacesTheAppAndCleansUp() throws {
+        let dir = Fixtures.tempDir()
+        let app = dir.appendingPathComponent("Papertalk.app"), staging = dir.appendingPathComponent("staging")
+        try fakeApp(app, "old")
+        try fakeApp(staging.appendingPathComponent("Papertalk.app"), "new")
+        try swap(app: app, staging: staging)
+        XCTAssertEqual(try String(contentsOf: app.appendingPathComponent("marker"), encoding: .utf8), "new")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
+    }
+
+    func testSwapScriptKeepsTheOldAppWhenTheNewOneIsMissing() throws {
+        let dir = Fixtures.tempDir()
+        let app = dir.appendingPathComponent("Papertalk.app"), staging = dir.appendingPathComponent("staging")
+        try fakeApp(app, "old")
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        try swap(app: app, staging: staging)
+        XCTAssertEqual(try String(contentsOf: app.appendingPathComponent("marker"), encoding: .utf8), "old")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
+    }
 }
 
 /// The store's update check, against a mocked GitHub API.
@@ -181,6 +274,85 @@ final class UpdateCheckStoreTests: PapertalkTestCase {
         let store = makeStore(version: "0.0.1", commit: "aaa1111")
         await store.checkForUpdates(.dev)
         XCTAssertEqual(store.updateAlert?.title, "A newer dev build is available")
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: AppStore.checkUpdatesKey)
+        super.tearDown()
+    }
+
+    private func installableRelease(_ tag: String) -> [String: Any] {
+        var r = releaseJSON(tag)
+        let zip = "Papertalk-\(tag.dropFirst()).zip"
+        r["assets"] = [zip, zip + ".sha256"].map { ["name": $0, "browser_download_url": "https://example.com/\($0)"] }
+        return r
+    }
+
+    func testStartupAsksOnceWhenNeverChosen() async {
+        let store = makeStore(version: "0.6.0", commit: "aaa1111")
+        store.showOnboarding = false
+        store.checkUpdatesAtLaunch = nil
+        await store.launchUpdateCheck()          // no request: NetworkGuard would fail the test
+        XCTAssertTrue(store.askAboutUpdateChecks)
+
+        await store.answerUpdateChecks(false)
+        XCTAssertFalse(store.askAboutUpdateChecks)
+        XCTAssertEqual(store.checkUpdatesAtLaunch, false)
+        XCTAssertEqual(UserDefaults.standard.object(forKey: AppStore.checkUpdatesKey) as? Bool, false)
+        XCTAssertFalse(store.checkUpdatesToggle)
+        await store.launchUpdateCheck()          // off: nothing asked, nothing fetched
+        XCTAssertFalse(store.askAboutUpdateChecks)
+        XCTAssertNil(store.updateAlert)
+    }
+
+    func testStartupWaitsForSetup() async {
+        let store = makeStore(version: "0.6.0", commit: "aaa1111")
+        store.showOnboarding = true
+        store.checkUpdatesAtLaunch = nil
+        await store.launchUpdateCheck()
+        XCTAssertFalse(store.askAboutUpdateChecks)
+        store.finishSetup(server: store.config, llm: store.llm, speech: store.speech, checkUpdates: true)
+        XCTAssertEqual(store.checkUpdatesAtLaunch, true)
+    }
+
+    func testStartupCheckIsQuietUnlessThereIsAnUpdate() async {
+        MockLLM.install { _ in (200, self.json([self.releaseJSON("v0.6.0")])) }
+        let store = makeStore(version: "0.6.0", commit: "aaa1111")
+        store.showOnboarding = false
+        store.checkUpdatesAtLaunch = true
+        await store.launchUpdateCheck()
+        XCTAssertNil(store.updateAlert)          // up to date: no alert at startup
+
+        MockLLM.install { _ in (500, Data()) }
+        await store.launchUpdateCheck()
+        XCTAssertNil(store.updateAlert)          // failed: no alert at startup either
+
+        MockLLM.install { _ in (200, self.json([self.installableRelease("v0.6.1")])) }
+        store.appURL = URL(fileURLWithPath: "/Applications/Papertalk.app")
+        await store.launchUpdateCheck()
+        XCTAssertEqual(store.updateAlert?.actionLabel, "Install and Relaunch")
+        XCTAssertEqual(store.updateAlert?.install?.version.text, "0.6.1")
+    }
+
+    func testAnsweringYesChecksRightAway() async {
+        MockLLM.install { _ in (200, self.json([self.releaseJSON("v0.6.1")])) }
+        let store = makeStore(version: "0.6.0", commit: "aaa1111")
+        await store.answerUpdateChecks(true)
+        XCTAssertEqual(store.checkUpdatesAtLaunch, true)
+        XCTAssertEqual(store.updateAlert?.title, "Papertalk 0.6.1 is available")
+        XCTAssertNil(store.updateAlert?.install)  // no zip on that release: the page instead
+    }
+
+    func testInstallThatCantWriteShowsWhyAndTheReleasePage() async throws {
+        let store = makeStore(version: "0.6.0", commit: "aaa1111")
+        store.appURL = URL(fileURLWithPath: "/System/Papertalk.app")   // not writable: stops before any download
+        let r = try JSONDecoder().decode(GitHubRelease.self, from: json(installableRelease("v0.6.1")))
+        let c = UpdateCheck.Candidate(release: r, version: ReleaseVersion("0.6.1")!)
+        await store.acceptUpdate(UpdateAlert(.available(c), channel: .stable, build: store.build, installable: true))
+        XCTAssertEqual(store.updateAlert?.title, "Couldn’t install Papertalk 0.6.1")
+        XCTAssertEqual(store.updateAlert?.message, UpdateInstall.Failure.notWritable("/System").message)
+        XCTAssertEqual(store.updateAlert?.link, r.htmlURL)
+        XCTAssertFalse(store.isInstallingUpdate)
     }
 
     func testRateLimitAndBadReplies() async {

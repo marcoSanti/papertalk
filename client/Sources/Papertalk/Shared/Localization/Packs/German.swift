@@ -683,5 +683,22 @@ extension LanguagePacks {
         "Chat with the LLM about this paper": "Mit dem LLM über diesen Artikel chatten",
         "Ask…": "Fragen…",
         "Ask AI": "KI fragen",
+        // Updates at startup
+        "Check for updates when Papertalk starts": "Beim Start von Papertalk nach Updates suchen",
+        "Papertalk asks GitHub for a newer release at startup and offers to install it. Nothing is installed without asking.": "Papertalk fragt beim Start auf GitHub nach einer neueren Version und bietet an, sie zu installieren. Ohne Nachfrage wird nichts installiert.",
+        "Check for updates automatically?": "Automatisch nach Updates suchen?",
+        "Papertalk can look for a new release each time it starts and offer to install it. You can change this in Settings → General.": "Papertalk kann bei jedem Start nach einer neuen Version suchen und anbieten, sie zu installieren. Das lässt sich unter Einstellungen → Allgemein ändern.",
+        "Check Automatically": "Automatisch suchen",
+        "Don’t Check": "Nicht suchen",
+        "Downloading Papertalk {0}…": "Papertalk {0} wird geladen…",
+        "Install and Relaunch": "Installieren und neu starten",
+        "You have {0}. Install it now? Papertalk quits, updates itself and opens again.": "Du hast {0}. Jetzt installieren? Papertalk wird beendet, aktualisiert sich und öffnet sich wieder.",
+        "Couldn’t install Papertalk {0}": "Papertalk {0} konnte nicht installiert werden",
+        "The update couldn’t be downloaded. Check your internet connection and try again.": "Das Update konnte nicht geladen werden. Prüfe deine Internetverbindung und versuche es erneut.",
+        "The downloaded update didn’t match its checksum, so it wasn’t installed. Try again later.": "Das geladene Update passte nicht zu seiner Prüfsumme und wurde nicht installiert. Versuche es später erneut.",
+        "The downloaded update couldn’t be unpacked. Try again later.": "Das geladene Update konnte nicht entpackt werden. Versuche es später erneut.",
+        "The downloaded file isn’t the expected version of Papertalk, so it wasn’t installed.": "Die geladene Datei ist nicht die erwartete Version von Papertalk und wurde nicht installiert.",
+        "Papertalk can’t replace itself in {0}. Install the update from its release page instead.": "Papertalk kann sich in {0} nicht selbst ersetzen. Installiere das Update stattdessen über seine Release-Seite.",
+        "Installing updates isn’t supported on this system yet. Use the release page instead.": "Updates zu installieren wird auf diesem System noch nicht unterstützt. Nutze stattdessen die Release-Seite.",
     ]
 }

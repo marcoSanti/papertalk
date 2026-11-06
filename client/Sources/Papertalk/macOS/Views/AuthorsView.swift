@@ -199,9 +199,10 @@ struct AuthorHeader: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 2)
+        // Papers scroll under this header, so it floats on glass like the filter bar below it.
+        .glassCard()
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
     }
 
 }

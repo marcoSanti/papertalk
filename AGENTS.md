@@ -96,10 +96,12 @@ release stays), so Finder, "Open With" and Help open the build just made.
   `macOS/Support/Theme.swift`.
 - Bump by editing `VERSION` as part of a PR. Patch for fixes, minor for features, major for
   breaking changes (e.g. a library format that older builds can't read).
-- Stable releases are CI-driven: merge the bumped `VERSION` to `main` and
+- Stable releases are CI-driven: merge a `VERSION` bumped to `X.Y.0` to `main` and
   `.github/workflows/release.yml` publishes a full release tagged `v<VERSION>`, marked Latest.
+  A patch version (`X.Y.1`, …) never makes a full release: it ships as dev pre-releases
+  (`v<VERSION>-dev.<commit>`), so users of stable builds only get it with the next `X.Y.0`.
 - Icons: the `CHANNEL` env var of `app.sh` (default `dev`) picks the app icon. Only the stable
-  release (a `VERSION` bump merged to `main`) builds with `CHANNEL=stable` and gets the official
+  release (an `X.Y.0` bump merged to `main`) builds with `CHANNEL=stable` and gets the official
   `shared/icon.icns`; every other build (local, CI, dev pre-releases) gets a "DEV" stripe version
   generated into `client/.build/icons/` by `scripts/dev_icon.swift`. Don't ship the official icon
   from anything but a stable release. The exception is the Finder icon of `.papertalk` files

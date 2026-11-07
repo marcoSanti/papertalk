@@ -288,9 +288,9 @@ The version follows [semantic versioning](https://semver.org) and lives only in 
 file; to release, change it by hand in a pull request. Every merge to `main` (except
 Markdown-only ones) runs `.github/workflows/release.yml`, which tests `main` again and then:
 
-- if `VERSION` has no release yet, publishes it as a **stable release** tagged `v<VERSION>`,
-  marked Latest, with the official icon;
-- otherwise publishes a **development build**, a pre-release tagged `v<VERSION>-dev.<commit>`
+- if `VERSION` is an `X.Y.0` with no release yet, publishes it as a **stable release** tagged
+  `v<VERSION>`, marked Latest, with the official icon;
+- otherwise (patch versions such as `X.Y.1` included) publishes a **development build**, a pre-release tagged `v<VERSION>-dev.<commit>`
   with the "DEV" icon. Only the ten newest are kept.
 
 Each release has `Papertalk-<version>.zip`, the source it was built from

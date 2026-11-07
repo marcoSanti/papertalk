@@ -5,12 +5,14 @@ name: Release
 # (Papertalk-<version>-source.tar.gz) and a SHA-256 for each. A second job
 # adds the Linux AppImage (Papertalk-<version>-x86_64.AppImage) to it.
 #
-# Which kind of release is decided by one rule: does the tag v<VERSION> exist?
-#  - No  → Stable: a full release, marked Latest, tagged v<VERSION>, with the
-#          official icon (CHANNEL=stable). Bump VERSION, merge to main, done.
-#  - Yes → Dev: a pre-release v<VERSION>-dev.<short commit>, so the newest merged
+# Which kind of release is decided by one rule: is VERSION an X.Y.0 that has no
+# tag v<VERSION> yet?
+#  - Yes → Stable: a full release, marked Latest, tagged v<VERSION>, with the
+#          official icon (CHANNEL=stable). Bump to X.Y.0, merge to main, done.
+#  - No  → Dev: a pre-release v<VERSION>-dev.<short commit>, so the newest merged
 #          code is always downloadable. Only the newest few dev builds are kept.
-#          They carry the "DEV" stripe icon, like local builds.
+#          They carry the "DEV" stripe icon, like local builds. Patch bumps
+#          (X.Y.1, X.Y.2…) land here too: they never make a full release.
 # If a stable run fails before its release is created, the tag doesn't exist
 # yet, so the next push to main simply tries the stable release again.
 #
@@ -59,8 +61,10 @@ jobs:
           if [ -z "${BASE}" ]; then
             echo "::error::Could not read VERSION"; exit 1
           fi
+          # Only X.Y.0 makes a full release; patch versions ship as dev builds.
           # Ask the remote directly, so a stale or missing local tag can't fool us.
-          if git ls-remote --exit-code --tags origin "refs/tags/v${BASE}" >/dev/null 2>&1; then
+          if [ "${BASE##*.}" != "0" ] \
+            || git ls-remote --exit-code --tags origin "refs/tags/v${BASE}" >/dev/null 2>&1; then
             KIND=dev
             VERSION="${BASE}-dev.${SHORT}"
           else

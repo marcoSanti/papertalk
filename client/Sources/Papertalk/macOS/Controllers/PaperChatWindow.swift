@@ -35,12 +35,12 @@ final class PaperChatWindow: NSObject, NSWindowDelegate {
 
     private init(paperId: String) {
         self.paperId = paperId
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 720),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: PaperChat.windowWidth, height: 760),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         super.init()
         window.isReleasedWhenClosed = false   // we own it
-        window.minSize = NSSize(width: 440, height: 420)
+        window.minSize = NSSize(width: 800, height: 420)   // the chat (440) beside the narrowest paper pane
         window.delegate = self
     }
 

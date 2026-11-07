@@ -1413,8 +1413,9 @@ final class AppStore: ObservableObject {
             return .failure(L("This paper has no PDF to read."))
         }
         // shortcut: text layer only (PDFKit), no OCR; a scanned PDF without one gets the message below.
-        let text = await Task.detached { LocalPipeline.extractText(pdf) }.value
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let pages = await Task.detached { LocalPipeline.extractPages(pdf) }.value
+        let text = PaperChat.pagedText(pages)
+        guard !pages.joined().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .failure(L("Couldn't read any text in this paper's PDF. A scanned PDF needs a text layer first."))
         }
         guard !llm.baseUrl.isEmpty else { return .failure(L("Configure an LLM in Settings to ask about papers.")) }

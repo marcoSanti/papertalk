@@ -9,6 +9,15 @@ struct PaperChatView: View {
     let paperId: String
     @State private var draft = ""
     @FocusState private var composerFocused: Bool
+    /// The citation the paper beside the chat shows: the last one clicked, or the first of the
+    /// newest answer.
+    @State private var citation: PaperChat.Citation?
+    /// Bumped on every citation click, so clicking the same one again scrolls back to it.
+    @State private var citationClicks = 0
+    /// The paper pane's width, set by dragging the divider.
+    @State private var paneWidth: CGFloat = 560
+    /// The pane's width when the current divider drag began.
+    @State private var dragStartWidth: CGFloat?
 
     private var messages: [ChatMessage] { store.chats[paperId] ?? [] }
     private var isAnswering: Bool { store.answering.contains(paperId) }
@@ -16,11 +25,30 @@ struct PaperChatView: View {
     var body: some View {
         Group {
             if let paper = store.papers[paperId] {
-                VStack(spacing: 0) {
-                    header(paper)
-                    Divider()
-                    if messages.isEmpty { emptyState } else { conversation }
-                    composer
+                // A plain HStack: inside an HSplitView the chat's ScrollView stopped scrolling.
+                HStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        header(paper)
+                        Divider()
+                        if messages.isEmpty { emptyState } else { conversation }
+                        composer
+                    }
+                    .frame(minWidth: 440, maxWidth: .infinity)
+                    if paper.hasPdf {
+                        divider
+                        SourcePane(paperId: paperId, citation: citation, clicks: citationClicks)
+                            .frame(width: paneWidth)
+                    }
+                }
+                // A citation link shows its page beside the chat; other links open as usual.
+                .environment(\.openURL, OpenURLAction { url in
+                    guard let c = PaperChat.citation(from: url) else { return .systemAction }
+                    citation = c
+                    citationClicks += 1
+                    return .handled
+                })
+                .onChange(of: messages.last?.id) { _, _ in
+                    if let first = PaperChat.citations(in: messages.last?.text ?? "").first { citation = first }
                 }
                 .onAppear {
                     PaperChatWindow.setTitle(PaperChat.windowTitle(paper), paperId: paperId)
@@ -37,6 +65,22 @@ struct PaperChatView: View {
         .onChange(of: store.papers[paperId] == nil) { _, gone in
             if gone { PaperChatWindow.close(paperId: paperId) }
         }
+    }
+
+    /// The line between the chat and the paper; drag it to resize the paper pane.
+    private var divider: some View {
+        Divider()
+            .padding(.horizontal, 3)
+            .contentShape(Rectangle())
+            .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { drag in
+                    let start = dragStartWidth ?? paneWidth
+                    dragStartWidth = start
+                    paneWidth = min(max(start - drag.translation.width, 320), 1000)
+                }
+                .onEnded { _ in dragStartWidth = nil })
+            .padding(.horizontal, -3)
     }
 
     // MARK: - Header
@@ -70,7 +114,9 @@ struct PaperChatView: View {
     private var conversation: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 14) {
+                // Not lazy: a lazy stack guesses the heights of long answers wrongly, leaving blank
+                // space where messages should be and cutting answers off. A chat is short.
+                VStack(spacing: 14) {
                     ForEach(messages) { MessageRow(message: $0).id($0.id) }
                     if isAnswering { TypingBubble().id("typing") }
                 }
@@ -171,6 +217,50 @@ struct PaperChatView: View {
     }
 }
 
+/// The paper beside the chat, open from the start, scrolled to the cited place with the quote
+/// highlighted. Clicking another citation moves it; the pages render once.
+private struct SourcePane: View {
+    @EnvironmentObject private var store: AppStore
+    let paperId: String
+    let citation: PaperChat.Citation?
+    let clicks: Int
+    @State private var pdf: Data?
+    /// Where the citation's quote was found: nil while searching (or before any citation),
+    /// empty rects when it wasn't found.
+    @State private var found: (page: Int, rects: [CGRect])?
+    /// Bumped after each search and each click, to scroll to the quote.
+    @State private var reveals = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(PaperChat.sourceTitle(page: found?.page ?? citation?.page)).font(.headline)
+                if let note = PaperChat.sourceNote(highlights: found?.rects) {
+                    Text(note).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            Divider()
+            if let pdf {
+                PDFPagesView(pdf: pdf, found: found, revealToken: reveals)
+            } else {
+                ProgressView(PaperChat.sourceLoading).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(.background)
+        .task { pdf = await store.pdfData(for: paperId) }
+        .task(id: [citation?.hashValue ?? 0, pdf?.count ?? 0]) {
+            guard let pdf, let c = citation else { return }
+            found = nil
+            found = await Task.detached { PDFSource.find(c, in: pdf) }.value ?? (c.page, [])
+            reveals += 1
+        }
+        .onChange(of: clicks) { _, _ in reveals += 1 }
+    }
+}
+
 /// One message: the reader's on the right in an accent bubble, the LLM's on the left beside its
 /// avatar, a failed answer tinted red with why.
 private struct MessageRow: View {
@@ -199,7 +289,7 @@ private struct MessageRow: View {
                         Label(message.text, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
                     } else {
-                        Text(PaperChat.formatted(message.text))
+                        AnswerText(text: message.text)
                     }
                 }
                 .textSelection(.enabled)

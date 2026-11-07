@@ -50,6 +50,9 @@ ideas. It's a native macOS app written in SwiftUI.
   removes it from the other, and an open map window updates when the other side changes.
 - **Metadata and citations done for you.** Title, authors, affiliations, DOI and tags come from
   the paper itself, and a DOI fetches a BibTeX citation. Everything can be edited.
+- **Cited papers.** The papers a paper cites are listed one by one (from Crossref, or read from
+  the PDF's References section): open each one's DOI or a Google Scholar search, copy it, or jump
+  to it when it's already in your library.
 - **A library you can find things in.** Covers in a grid or a list, favourites and tags in the
   sidebar (the most-used tags first), and **Authors**: everyone in your library like a contact book, with their papers and
   co-authors. Search titles, authors and DOIs, or start with `#` to search tags.

@@ -95,6 +95,8 @@ struct Paper: Identifiable, Codable, Equatable {
     var scriptLanguage: String? = nil
     /// The `Library` it's filed in (its id); nil when in none.
     var library: String? = nil
+    /// The papers it cites, from Crossref or the PDF's reference list; nil until looked up.
+    var references: [CitedPaper]? = nil
     /// While converting, the progress bar's fraction (0…1); once done, the playback position in seconds.
     var progress: Double
     /// The episode's length in seconds, once it has been played or baked.
@@ -119,7 +121,7 @@ struct Paper: Identifiable, Codable, Equatable {
         case targetMinutes = "target_minutes"
         case hasMindMap = "has_mind_map"
         case scriptLanguage = "script_language"
-        case library
+        case library, references
     }
 
     /// The episode's cast (names + chosen voices); empty when never set.

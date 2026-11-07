@@ -1598,11 +1598,19 @@ final class AppStore: ObservableObject {
                         appendLog("WARN: could not resolve a citation for \(doi)", paper: id)
                     }
                 }
-                // Publication date from the DOI service (shown instead of the
-                // import date). Leave empty when the DOI doesn't publish one.
-                if papers[id]?.publishedIso == nil, let pub = await fetchPublishedDate(doi: doi) {
-                    optimistic(id, { $0.publishedIso = pub })
+                // Publication date (shown instead of the import date) and the reference
+                // list, from one Crossref lookup. Either may be missing.
+                if papers[id]?.publishedIso == nil || papers[id]?.references == nil,
+                   let record = await fetchCrossref(doi: doi) {
+                    optimistic(id, {
+                        if $0.publishedIso == nil { $0.publishedIso = record.published }
+                        if $0.references == nil, !record.references.isEmpty { $0.references = record.references }
+                    })
                 }
+            }
+            // No references from Crossref: read the PDF's own list, without holding up the import.
+            if papers[id]?.references == nil {
+                Task { await readCitedPapers(id, text: text, pipeline: pipeline) }
             }
             return meta
         } catch {
@@ -2088,9 +2096,21 @@ final class AppStore: ObservableObject {
         return s.hasPrefix("@") ? s : nil
     }
 
-    /// Best-effort publication date (YYYY, YYYY-MM or YYYY-MM-DD) for a DOI,
-    /// from Crossref. Returns nil when the registry has no date.
-    private func fetchPublishedDate(doi: String) async -> String? {
+    /// The paper's reference list as the LLM reads it from the PDF text. Best-effort: a failure
+    /// only logs, and the list stays unset so the next metadata refresh tries again.
+    private func readCitedPapers(_ id: String, text: String, pipeline: LocalPipeline) async {
+        do {
+            let refs = try await pipeline.citedPapers(text: text)
+            optimistic(id, { if $0.references == nil { $0.references = refs } })
+            appendLog("Cited papers: \(refs.count) read from the PDF", paper: id)
+        } catch {
+            appendLog("WARN: reading the cited papers failed: \(error.localizedDescription)", paper: id)
+        }
+    }
+
+    /// Best-effort publication date (YYYY, YYYY-MM or YYYY-MM-DD; nil when the registry has
+    /// none) and reference list for a DOI, from Crossref. Nil when the lookup fails.
+    private func fetchCrossref(doi: String) async -> (published: String?, references: [CitedPaper])? {
         var doi = doi.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !doi.isEmpty else { return nil }
         if doi.hasPrefix("doi:") { doi = String(doi.dropFirst(4)) }
@@ -2102,15 +2122,16 @@ final class AppStore: ObservableObject {
               let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let message = json["message"] as? [String: Any] else { return nil }
+        let references = CitedPaper.fromCrossref(message)
         let parts = (message["published"] as? [String: Any])?["date-parts"] as? [[Int]]
             ?? (message["issued"] as? [String: Any])?["date-parts"] as? [[Int]]
-        guard let p = parts?.first, p.first ?? 0 > 0 else { return nil }
+        guard let p = parts?.first, p.first ?? 0 > 0 else { return (nil, references) }
         var s = String(p[0])
         if p.count > 1, p[1] > 0 {
             s += String(format: "-%02d", p[1])
             if p.count > 2, p[2] > 0 { s += String(format: "-%02d", p[2]) }
         }
-        return s
+        return (s, references)
     }
 
     // MARK: Updates

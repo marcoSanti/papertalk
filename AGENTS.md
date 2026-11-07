@@ -36,6 +36,7 @@ this file (for Claude Code), so keep the guidance here.
   configured by the `PAPER2POD_STORAGE_*` env vars. It replaced `server/storage_server.py`
   and adopts roots that script wrote (plain `papers/<id>/` folders become packages).
 - `VERSION`: the app version, edited by hand (`app.sh version` prints it).
+- `CHANGELOG.md`: what each release changes, shown in the app's "What's new" sheet (see below).
 - `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
 - `.github/workflows/`: `tests.yml` (pull requests) and `release.yml` (`main`: dev + stable releases).
 - `shared/`: app icon (`icon.icns`, drawn by `scripts/app_icon.swift`), and `Papertalk.help/`, the
@@ -94,6 +95,16 @@ release stays), so Finder, "Open With" and Help open the build just made.
   published elsewhere. `scripts/coverage.sh` and `scripts/coverage_summary.py` produce the files;
   the "logic" figure excludes `macOS/Views/`, `macOS/Components/`, `macOS/App/` and
   `macOS/Support/Theme.swift`.
+- **Before merging, every PR with a user-visible change adds one line to `CHANGELOG.md`**
+  under `## Unreleased`: `- <emoji> **Title**: one short sentence.` Pick one emoji that shows
+  the action (📚 a new list, 🐛 a fix, ⚡️ faster, 🎨 looks), keep the title to a few words
+  named as the UI names things, and say what changed for the user, not how. CI-only, test-only
+  and refactoring PRs add nothing. `WhatsNewTests` fails on a line the app can't read.
+  `app.sh` embeds only the build's section (`## <VERSION>` without any `-dev` suffix, else
+  `## Unreleased`) as the `PapertalkWhatsNew` Info.plist string. After an update the app shows
+  those entries once (`WhatsNew`, `AppStore.showWhatsNewIfUpdated`), never on a first launch.
+  When bumping `VERSION` to `X.Y.0`, rename `## Unreleased` to `## X.Y.0` and add a new empty
+  `## Unreleased` above it. Patch bumps leave it alone.
 - Bump by editing `VERSION` as part of a PR. Patch for fixes, minor for features, major for
   breaking changes (e.g. a library format that older builds can't read).
 - Stable releases are CI-driven: merge a `VERSION` bumped to `X.Y.0` to `main` and

@@ -86,6 +86,7 @@ struct ContentView: View {
             }
         }
         .sheet(item: $store.transcriptSheet) { TranscriptSheetView(item: $0) }
+        .sheet(item: $store.whatsNew) { WhatsNewSheet(whatsNew: $0) }
         .confirmationDialog(store.pendingConfirmation.map { ConfirmationText($0).title } ?? "",
                             isPresented: confirmationShown,
                             titleVisibility: .visible, presenting: store.pendingConfirmation) { pending in

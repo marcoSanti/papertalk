@@ -67,11 +67,14 @@ struct AppBuild: Equatable {
     var version: String?
     /// The short commit hash stamped as CFBundleVersion.
     var commit: String?
+    /// This build's CHANGELOG.md entries, stamped by `app.sh` as PapertalkWhatsNew.
+    var whatsNew: String? = nil
 
     /// Read from an Info.plist dictionary (ignores a build number that isn't a hash).
     static func from(info: [String: Any]?) -> AppBuild {
         let commit = (info?["CFBundleVersion"] as? String).flatMap { isCommitHash($0) ? $0 : nil }
-        return AppBuild(version: info?["CFBundleShortVersionString"] as? String, commit: commit)
+        return AppBuild(version: info?["CFBundleShortVersionString"] as? String, commit: commit,
+                        whatsNew: info?["PapertalkWhatsNew"] as? String)
     }
     /// This running copy.
     static var current: AppBuild { from(info: Bundle.main.infoDictionary) }

@@ -420,6 +420,21 @@ final class AppStore: ObservableObject {
         Self.migrateDefaults()
         refresh()
         showOnboarding = !Self.didOnboard()
+        showWhatsNewIfUpdated()
+    }
+
+    /// The "What's new" sheet, shown once per set of changelog entries; nil when closed.
+    @Published var whatsNew: WhatsNew?
+    /// User-defaults key of the changelog entries last shown (or skipped on a first launch).
+    static let whatsNewSeenKey = "papertalk.whatsNewSeen"
+
+    /// After an update, show what this build changed, once. The entries are remembered either
+    /// way, so a fresh install doesn't show them after setup.
+    func showWhatsNewIfUpdated(build: AppBuild = .current, defaults: UserDefaults = .standard) {
+        guard let notes = build.whatsNew else { return }
+        whatsNew = WhatsNew.toShow(for: build, seen: defaults.string(forKey: Self.whatsNewSeenKey),
+                                   onboarded: !showOnboarding)
+        defaults.set(notes, forKey: Self.whatsNewSeenKey)
     }
 
     /// The app's store, in the saved (or the system's) interface language.
@@ -2170,7 +2185,8 @@ final class AppStore: ObservableObject {
     func launchUpdateCheck(checker: UpdateChecker = UpdateChecker()) async {
         guard !showOnboarding else { return }
         switch checkUpdatesAtLaunch {
-        case nil: askAboutUpdateChecks = true
+        // Not over the What's new sheet: asked at the next start instead.
+        case nil: askAboutUpdateChecks = whatsNew == nil
         case true?: await checkForUpdates(.stable, checker: checker, quietly: true)
         case false?: break
         }

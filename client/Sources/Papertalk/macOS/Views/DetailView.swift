@@ -35,6 +35,7 @@ struct DetailView: View {
     @State private var showAllAuthors = false
     @State private var showLog = false
     @State private var showCitation = false
+    @State private var showCitedPapers = false
 
     var body: some View {
         Group {
@@ -65,6 +66,9 @@ struct DetailView: View {
         .sheet(item: $transcriptSheet) { TranscriptSheetView(item: $0) }
         .sheet(isPresented: $showCitation) {
             CitationView(bibtex: paper.bibtex ?? "")
+        }
+        .sheet(isPresented: $showCitedPapers) {
+            CitedPapersView(paper: paper, library: Array(store.papers.values)) { store.reveal($0) }
         }
         .onAppear { load(paper) }
         .onChange(of: paper.id) { _, _ in load(paper) }
@@ -240,6 +244,12 @@ struct DetailView: View {
                             }
                             .buttonStyle(.link)
                         }
+                    }
+                }
+                if let label = CitedPapersPresentation.showLabel(paper) {
+                    detailRow(L("Cites")) {
+                        Button { showCitedPapers = true } label: { Label(label, systemImage: "books.vertical") }
+                            .buttonStyle(.link)
                     }
                 }
                 detailRow(L("File")) {
@@ -846,6 +856,61 @@ private struct CitationView: View {
         }
         .padding(20)
         .frame(width: 540)
+    }
+}
+
+/// The papers a paper cites: each opens its DOI (or a Scholar search), copies, and jumps to the
+/// library copy when there is one.
+private struct CitedPapersView: View {
+    let paper: Paper
+    /// Every library paper, to mark the references already in it.
+    let library: [Paper]
+    /// Shows a library paper (the sheet closes first).
+    let onReveal: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Label(L("Cited papers"), systemImage: "books.vertical").font(.headline)
+                    Text(CitedPapersPresentation.subtitle(paper)).font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Button { dismiss() } label: { Label(L("Close"), systemImage: "xmark") }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.cancelAction)
+            }
+            List(Array((paper.references ?? []).enumerated()), id: \.offset) { _, ref in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(ref.title).textSelection(.enabled)
+                        if let byline = CitedPapersPresentation.byline(ref) {
+                            Text(byline).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    if let match = CitedPapersPresentation.match(ref, in: library, citing: paper.id) {
+                        Button {
+                            dismiss()
+                            onReveal(match.id)
+                        } label: { Label(L("In library"), systemImage: "checkmark.circle.fill") }
+                            .buttonStyle(.link)
+                            .help(L("Show “{0}”", match.displayTitle))
+                    }
+                    if let url = CitedPapersPresentation.link(ref) {
+                        Link(destination: url) { Image(systemName: "arrow.up.right.square") }
+                            .help(CitedPapersPresentation.linkHelp(ref))
+                    }
+                    CopyButton(value: CitedPapersPresentation.copyText(ref))
+                }
+                .padding(.vertical, 2)
+            }
+            .frame(minHeight: 320)
+        }
+        .padding(20)
+        .frame(width: 620)
     }
 }
 

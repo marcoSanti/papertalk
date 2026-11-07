@@ -174,6 +174,23 @@ struct LocalPipeline {
         return meta
     }
 
+    /// The papers listed in the text's References section, read by the LLM. Empty when the
+    /// text has no such section or the reply is unusable; throws only on LLM errors.
+    func citedPapers(text: String) async throws -> [CitedPaper] {
+        guard let section = CitedPaper.referencesSection(of: text) else { return [] }
+        let system = """
+        You read the reference list of a research paper, as raw PDF text, and list every cited work \
+        once, in order. Use the title as printed; authors as one line ("Smith, Lee and Chen"); the \
+        year; and the DOI only when it is printed. Leave a field empty when it isn't there. \
+        Return ONLY a JSON object, no markdown, exactly: \
+        {"references": [{"title": string, "authors": string, "year": string, "doi": string}]}
+        """
+        let raw = try await chat(system: system, user: String(section.prefix(40_000)), maxTokens: 8000)
+        guard let json = Self.extractJSON(raw),
+              let obj = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] else { return [] }
+        return CitedPaper.fromLLM(obj)
+    }
+
     /// Turn a paper into a podcast transcript.
     ///
     /// Faithful multi-stage port of the original Python ScriptGenerator:

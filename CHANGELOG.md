@@ -11,4 +11,5 @@ version has none) into the app.
 
 ## Unreleased
 
+- 📚 **Cited papers**: Details lists the papers a paper cites; open, copy or jump to each one in your library.
 - 🎉 **What's new**: after an update, Papertalk opens once with a short list of what changed.

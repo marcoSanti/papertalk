@@ -32,7 +32,9 @@ ideas. It's a native macOS app written in SwiftUI.
 - **Ask a paper.** **Ask AI** (in the paper's panel, beside **Details**, or **Ask…** in its
   context menu) opens a chat about it with your LLM. Every question is sent with the paper's text, read
   from its PDF, and its details (title, authors, affiliations, DOI, topics), so answers come from
-  the paper. The chat lasts while the app is open; **New chat** starts over. Scanned PDFs without a
+  the paper. The paper's pages show beside the chat, and answers cite pages (a page icon and **p. 3**): the
+  pages scroll to each new answer's first citation, and a click on any other moves there, with the
+  quoted words highlighted. The chat lasts while the app is open; **New chat** starts over. Scanned PDFs without a
   text layer can't be asked about, and very long papers are cut at about 30,000 tokens. The prompt
   is editable under Query Prompts.
 - **A mind map of every paper.** The key concepts as a graph around three branches: the problem,

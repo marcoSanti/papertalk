@@ -105,12 +105,13 @@ struct LocalPipeline {
 
     /// Extract text from a PDF via AppKit's PDFKit.
     static func extractText(_ pdf: Data) -> String {
-        guard let doc = PDFDocument(data: pdf) else { return "" }
-        var out = ""
-        for i in 0..<doc.pageCount {
-            if let text = doc.page(at: i)?.string { out += text + "\n" }
-        }
-        return out
+        extractPages(pdf).map { $0 + "\n" }.joined()
+    }
+
+    /// Each page's text, in order (a page without text is empty), so Ask can cite pages.
+    static func extractPages(_ pdf: Data) -> [String] {
+        guard let doc = PDFDocument(data: pdf) else { return [] }
+        return (0..<doc.pageCount).map { doc.page(at: $0)?.string ?? "" }
     }
 
     /// Direct-read transcript: chunk the extracted text into turns so it is
@@ -676,7 +677,7 @@ struct LocalPipeline {
     /// Answer the last question of a chat about a paper. `context` is the paper's details and
     /// text (`PaperChat.context`); `history` is the conversation so far, the question last.
     func ask(context: String, history: [ChatMessage]) async throws -> String {
-        let messages = [["role": "system", "content": prompts.ask + "\n\n" + context]]
+        let messages = [["role": "system", "content": prompts.ask + "\n\n" + PaperChat.citationRule + "\n\n" + context]]
             + history.map { ["role": $0.role.rawValue, "content": $0.text] }
         return try await chat(messages: messages, maxTokens: 2000).trimmingCharacters(in: .whitespacesAndNewlines)
     }

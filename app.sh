@@ -55,6 +55,18 @@ document_icon() {
     echo "$DOCUMENT_ICON"
 }
 
+# The CHANGELOG.md entries the "What's new" screen shows: the section of VERSION (without any
+# -dev suffix), else the Unreleased one. Only that section goes into the app.
+whats_new() {
+    local section
+    for section in "${VERSION%%-*}" Unreleased; do
+        awk -v want="## $section" '
+            /^## / { if (found) exit; line = $0; sub(/[ \t]+$/, "", line); found = (line == want); next }
+            found && /^- / { print }' "$ROOT/CHANGELOG.md" | grep . && return
+    done
+    return 0
+}
+
 # Copy the Help Book (Help → Papertalk Help) into $1 and index it for the Help menu's search.
 help_book() {
     local book="$1/Papertalk.help" pages
@@ -105,6 +117,8 @@ app() {
     cp Sources/Papertalk/macOS/Info.plist "$app/Contents/Info.plist"
     plutil -replace CFBundleShortVersionString -string "$VERSION" "$app/Contents/Info.plist"
     plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$app/Contents/Info.plist"
+    local notes; notes="$(whats_new)"
+    [ -n "$notes" ] && plutil -replace PapertalkWhatsNew -string "$notes" "$app/Contents/Info.plist"
     cp "$icon_file" "$app/Contents/Resources/Papertalk.icns"
     cp "$document_icon_file" "$app/Contents/Resources/PaperDocument.icns"
     plutil -replace CFBundleIconFile -string Papertalk "$app/Contents/Info.plist"

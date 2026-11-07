@@ -1260,4 +1260,42 @@ extension Notification.Name {
     /// "Restore prompt defaults" on the prompts page.
     static let papertalkRestorePrompts = Notification.Name("papertalkRestorePrompts")
 }
+/// What this build changed, shown once after an update.
+struct WhatsNewSheet: View {
+    let whatsNew: WhatsNew
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(whatsNew.title).font(.title2.weight(.semibold))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(whatsNew.items.enumerated()), id: \.offset) { _, item in
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(item.emoji).font(.system(size: 26))
+                                .frame(width: 36)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.title).font(.headline)
+                                Text(item.detail).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 360)
+            HStack {
+                Spacer()
+                Button(L("Continue")) { dismiss() }
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+    }
+}
+
 #endif

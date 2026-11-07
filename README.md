@@ -118,6 +118,8 @@ then quits, swaps the app in place and reopens it. Nothing is installed without 
 Papertalk can't write to its folder, it offers the release page instead.
 **Papertalk → Check for Updates…** (stable releases) and **Check for Dev Builds…** (the latest
 builds of `main`, which open their release page) check by hand.
+After an update, the first start shows **What's new**: a short list of what the new version
+changed (from `CHANGELOG.md`, built into the app, so nothing is downloaded).
 
 ## Using it
 

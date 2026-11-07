@@ -320,6 +320,7 @@ extension LanguagePacks {
         "No API-key environment variables are set. Add one (e.g. OPENWEBUI_API_KEY) and reopen this window.": "Aucune variable d’environnement de clé API n’est définie. Ajoutez-en une (p. ex. OPENWEBUI_API_KEY) et rouvrez cette fenêtre.",
         "Optional PapertalkServer for sharing the library. Leave empty to keep papers on {0}.": "PapertalkServer facultatif pour partager la bibliothèque. Laissez vide pour garder les articles sur {0}.",
         "Continue": "Continuer",
+        "What's new in Papertalk {0}": "Nouveautés de Papertalk {0}",
         "Review": "Récapitulatif",
         "Finish": "Terminer",
         "LLM endpoint": "Point d’accès LLM",

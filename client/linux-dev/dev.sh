@@ -13,8 +13,8 @@ case "${1:-}" in
     build) docker build -t "$IMAGE" -f "$ROOT/client/linux-dev/Dockerfile" "$ROOT" ;;
     shell) docker run --rm -it -v "$ROOT:/src" -v papertalk-linux-build:/src/client/.build-linux \
                -v papertalk-linux-cache:/root/.cache -w /src "$IMAGE" bash ;;
-    # The Swift suite and the Python services' tests, on Linux.
-    test)  "${RUN[@]}" bash -lc 'cd client && swift test --disable-swift-testing --scratch-path .build-linux/main && cd ../python && python3 -m pytest -q' ;;
+    # The Swift suite, on Linux.
+    test)  "${RUN[@]}" bash -lc 'cd client && swift test --disable-swift-testing --scratch-path .build-linux/main' ;;
     # The opt-in end-to-end import test: real PDF, Kokoro and WAVs, mocked LLM.
     e2e)   "${RUN[@]}" bash -lc 'cd client && PAPERTALK_E2E=1 LLM_BASE_URL=http://llm.mock/v1 PAPERTALK_MODEL=m swift test --disable-swift-testing --scratch-path .build-linux/main --filter EndToEndImportTests' ;;
     # Build the Linux app (client/.build-linux/main/debug/Papertalk).

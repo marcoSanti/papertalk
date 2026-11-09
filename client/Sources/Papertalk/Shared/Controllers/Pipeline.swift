@@ -529,8 +529,7 @@ struct LocalPipeline {
         /// The leading whole sentences of `text` within `maxWords` (nil if not even one fits).
         func leading(_ text: String, _ maxWords: Int) -> String? {
             var out = "", used = 0
-            text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { sentence, _, _, stop in
-                guard let sentence else { return }
+            Sentences.forEach(in: text) { sentence, stop in
                 let w = count(sentence)
                 if used + w > maxWords { stop = true; return }
                 out += sentence; used += w

@@ -7,7 +7,7 @@ import Foundation
 // The few AppKit pieces the shared code uses, with the same names and
 // signatures, so AppStore compiles unchanged on Linux (AGENTS.md, "Linux port").
 
-/// A cover image, kept as PNG bytes (rendered by python/papertalk_platform/pdf.py).
+/// A cover image, kept as PNG bytes (rendered by poppler, `Linux/PDFKitCompat.swift`).
 /// Stands in for NSImage in AppStore's thumbnail cache; the GTK UI decodes it.
 final class NSImage {
     /// The image as PNG bytes.

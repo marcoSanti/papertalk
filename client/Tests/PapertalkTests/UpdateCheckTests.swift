@@ -350,7 +350,11 @@ final class UpdateCheckStoreTests: PapertalkTestCase {
         let c = UpdateCheck.Candidate(release: r, version: ReleaseVersion("0.6.1")!)
         await store.acceptUpdate(UpdateAlert(.available(c), channel: .stable, build: store.build, installable: true))
         XCTAssertEqual(store.updateAlert?.title, "Couldn’t install Papertalk 0.6.1")
+        #if os(macOS)
         XCTAssertEqual(store.updateAlert?.message, UpdateInstall.Failure.notWritable("/System").message)
+        #else   // Linux can't install in place yet: it says so instead
+        XCTAssertEqual(store.updateAlert?.message, UpdateInstall.Failure.unsupported.message)
+        #endif
         XCTAssertEqual(store.updateAlert?.link, r.htmlURL)
         XCTAssertFalse(store.isInstallingUpdate)
     }

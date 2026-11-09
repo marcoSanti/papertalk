@@ -26,6 +26,18 @@ enum LLMKeySource: String, CaseIterable, Identifiable {
     }
 }
 
+/// The fields shown under a key-source picker (`KeySourceEditing.keyInput`).
+enum KeyInput: Equatable {
+    /// Pick one of the set environment variables.
+    case envPicker
+    /// "From environment" with no key variable set: say so.
+    case noEnvVars
+    /// Type the key.
+    case manualKey
+    /// No key, no fields.
+    case none
+}
+
 /// A form with an API key that is typed, read from an environment variable, or
 /// absent. `KeySourceFields` edits any of them the same way.
 protocol KeySourceEditing {
@@ -46,6 +58,15 @@ extension KeySourceEditing {
         var opts = setEnvVars
         if !selectedEnv.isEmpty && !opts.contains(selectedEnv) { opts.insert(selectedEnv, at: 0) }
         return opts
+    }
+
+    /// Which key fields go under the key-source picker.
+    var keyInput: KeyInput {
+        switch keySource {
+        case .env: return envOptions.isEmpty ? .noEnvVars : .envPicker
+        case .manual: return .manualKey
+        case .none: return .none
+        }
     }
 
     /// Call when the key source changes: picking "From environment" selects

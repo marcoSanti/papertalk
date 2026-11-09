@@ -57,6 +57,12 @@ struct ConfirmationText: Equatable {
     /// Title and message together, for alerts that only show a title (Linux).
     var combined: String { "\(title)\n\(message)" }
 
+    /// The title and message of a pending confirmation in one line pair, empty when none is
+    /// pending (for alerts that take a single text).
+    static func combinedTitle(_ pending: AppStore.PendingConfirmation?) -> String {
+        pending.map { ConfirmationText($0).combined } ?? ""
+    }
+
     /// The "already in your library" question during an import.
     static func duplicate(of existing: Paper) -> ConfirmationText {
         ConfirmationText(title: L("Already in library"), confirmLabel: L("Import anyway"),

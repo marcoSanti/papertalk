@@ -1,0 +1,5 @@
+// libsecret: the desktop keyring (Secret Service) on Linux.
+module CSecret [system] {
+    header "shim.h"
+    export *
+}

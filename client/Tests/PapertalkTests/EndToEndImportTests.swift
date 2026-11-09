@@ -55,7 +55,7 @@ final class EndToEndImportTests: PapertalkTestCase {
         XCTAssertEqual(paper.displayTitle, "Attention Mechanisms in Modern Models")
         XCTAssertEqual(castNames, ["Jordan", "Ada"])
 
-        let folder = root.appendingPathComponent("papers/\(paper.id)", isDirectory: true)
+        let folder = root.appendingPathComponent("papers/\(paper.id).papertalk", isDirectory: true)
         let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
         XCTAssertTrue(Set(["paper.json", "source.pdf", "transcript.json", "audio.json", "turns"]).isSubset(of: Set(files)))
         let turns = try FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent("turns").path)
@@ -107,7 +107,7 @@ final class EndToEndImportTests: PapertalkTestCase {
         XCTAssertEqual(saved.targetMinutes, 10)
         XCTAssertEqual(saved.speakers, cast)
         XCTAssertFalse(saved.hasAudio)
-        let files = try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("papers/\(paper.id)").path)
+        let files = try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("papers/\(paper.id).papertalk").path)
         XCTAssertTrue(files.contains("transcript.json"))
         XCTAssertFalse(files.contains("turns"))
         // The mind map is drawn even without audio.

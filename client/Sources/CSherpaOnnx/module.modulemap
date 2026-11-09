@@ -1,0 +1,5 @@
+// sherpa-onnx's C API (Kokoro text-to-speech on ONNX Runtime), Linux only.
+module CSherpaOnnx [system] {
+    header "sherpa-onnx-c-api.h"
+    export *
+}

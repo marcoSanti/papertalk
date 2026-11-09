@@ -6,9 +6,9 @@ import Foundation
 
 // AVAudioPlayer as far as PlayerController uses it, so the player is unchanged
 // on Linux. Playback streams the WAV's PCM to the desktop's sound server
-// through its command-line player (PipeWire, PulseAudio or ALSA). It stays in
-// Swift rather than Python: the Python thread can be busy synthesising for
-// seconds, and play/pause must not wait for it.
+// through its command-line player (PipeWire, PulseAudio or ALSA), on its own
+// process: Kokoro can keep the CPU busy synthesising for seconds, and play/pause
+// must not wait for it.
 
 /// Called on the main thread, as AVFoundation does.
 @MainActor

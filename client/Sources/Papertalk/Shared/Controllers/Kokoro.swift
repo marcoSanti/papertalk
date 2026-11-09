@@ -181,8 +181,9 @@ enum KokoroSpeech {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard clean.count > max else { return clean.isEmpty ? [] : [clean] }
         var sentences: [String] = []
-        clean.enumerateSubstrings(in: clean.startIndex..., options: .bySentences) { s, _, _, _ in
-            if let s = s?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty { sentences.append(s) }
+        Sentences.forEach(in: clean) { s, _ in
+            let s = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !s.isEmpty { sentences.append(s) }
         }
         let units = sentences.flatMap { sentence -> [String] in
             guard sentence.count > max else { return [sentence] }

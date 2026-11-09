@@ -31,7 +31,7 @@ struct CastSheet: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(row.role.uppercased()).font(.caption).foregroundColor(.gray)
                     HStack(spacing: 8) {
-                        TextField(form.authorPlaceholder(row) ?? L("Name"),
+                        TextField(form.namePlaceholder(row),
                                   text: Binding(get: { row.name }, set: { form.rename(row.id, to: $0) }))
                         Picker(of: PickerOption.genders, selection: Binding(
                             get: { PickerOption.genders.first { $0.value == row.gender } },

@@ -13,6 +13,8 @@ import SwiftCrossUI
 @MainActor
 final class StoreBridge: SwiftCrossUI.ObservableObject {
     let store: AppStore
+    /// The desktop's light or dark preference, read at launch (see `DesktopTheme`).
+    let colorScheme: ColorScheme = DesktopTheme.systemPrefersDark ? .dark : .light
     @SwiftCrossUI.Published private(set) var revision = 0
     /// True shortly after the window first appears. Sheets wanted at launch
     /// (first-run setup, a PDF from the command line) wait for it: SwiftCrossUI

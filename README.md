@@ -2,56 +2,142 @@
 
 ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-black?logo=apple)
 ![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)
+![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF)
 ![Voices: Kokoro](https://img.shields.io/badge/voices-Kokoro%20(on--device)-D07040)
 [![Release](https://github.com/marcoSanti/papertalk/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/marcoSanti/papertalk/actions/workflows/release.yml)
 
-**Turn a scientific paper into a podcast, on your Mac.** Drop in a PDF: an LLM writes a
-conversation between an interviewer and one of the paper's authors, and neural voices running
-on your machine read it aloud.
+Papertalk turns a scientific paper into a podcast episode, right on your Mac. You give it a
+PDF; it writes a conversation between an interviewer and one of the paper's authors, reads it
+aloud with neural voices that run on your own machine, and draws a mind map of the paper's key
+ideas. It's a native macOS app written in SwiftUI.
 
 > [!WARNING]
 > This app is vibecoded. I had the need not the time. Bugs are expected and help is appreciated
 
-![The Papertalk library, with a paper selected](docs/screenshots/paper.png)
+## Features
 
-## What it does
+- **A real conversation, not a read-out.** An LLM plans the episode and writes it section by
+  section: an interviewer asks, one of the paper's actual authors explains. Pick the depth:
+  - *In-depth* walks through the method faithfully, as long as the paper needs.
+  - *Summary* stays high-level and fits the length you set, from 5 to 60 minutes.
+  - *Custom* follows your own instructions, which you can save as presets.
+  - *Direct read* skips the LLM and reads the paper out as it is.
+- **Choose who speaks.** Before writing, Papertalk proposes the cast. Rename them, pick which
+  author is interviewed, give each a voice and hear a sample first, and set the speaking pace.
+  **Skip audio** writes the script now and leaves the voicing for later.
+- **Voices on your Mac, or on a server.** Every line is voiced with
+  [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) on the Neural Engine (through
+  [FluidAudio](https://github.com/FluidInference/FluidAudio)), or by a text-to-speech server of
+  your own. The audio is saved with the paper, so playback is instant.
+- **Ask a paper.** **Ask AI** (in the paper's panel, beside **Details**, or **Ask…** in its
+  context menu) opens a chat about it with your LLM. Every question is sent with the paper's text, read
+  from its PDF, and its details (title, authors, affiliations, DOI, topics), so answers come from
+  the paper. The paper's pages show beside the chat, and answers cite pages (a page icon and **p. 3**): the
+  pages scroll to each new answer's first citation, and a click on any other moves there, with the
+  quoted words highlighted. The chat lasts while the app is open; **New chat** starts over. Scanned PDFs without a
+  text layer can't be asked about, and very long papers are cut at about 30,000 tokens. The prompt
+  is editable under Query Prompts.
+- **A mind map of every paper.** The key concepts as a graph around three branches: the problem,
+  the approach and the demonstration, each broken into its parts, with links between them. It
+  opens on a plain-language summary of the paper; click a concept for its core idea and
+  description, or a connection to see the two concepts it joins. Drag a concept to move it, or a
+  connection's dot or label to bend it; the arrow by the zoom controls puts everything back (the
+  arrangement lasts while the window is open). **Edit** (by the zoom controls)
+  lets you rename, describe, add, move and delete concepts, and add, name and delete connections;
+  changes are saved as you make them. The three main concepts can be changed but not deleted.
+  When a map is drawn, Papertalk also looks for concepts it shares with your other papers' maps
+  (in the same library, unless the library is set to connect to other libraries)
+  and shows them as grey, dashed nodes around the edge; click one to see the other paper, and
+  **Open its mind map** to switch the window to that paper's map. A connection always shows on both papers' maps: deleting it (or its concept) on one
+  removes it from the other, and an open map window updates when the other side changes.
+- **Metadata and citations done for you.** Title, authors, affiliations, DOI and tags come from
+  the paper itself, and a DOI fetches a BibTeX citation. Everything can be edited.
+- **Cited papers.** The papers a paper cites are listed one by one (from Crossref, or read from
+  the PDF's References section): open each one's DOI or a Google Scholar search, copy it, or jump
+  to it when it's already in your library.
+- **A library you can find things in.** Covers in a grid or a list, favourites and tags in the
+  sidebar (the most-used tags first), and **Authors**: everyone in your library like a contact book, with their papers and
+  co-authors. Search titles, authors and DOIs, or start with `#` to search tags.
+- **Libraries.** Folders for your papers, each with a name and an icon, listed in the sidebar
+  above the tags. Make one with **+** beside **Libraries**, and file a paper with **Move to
+  Library** in its context menu. The import sheet asks which library a paper goes into (the one
+  open, to start with); the "already in your library" check still looks at every library.
+  Right-click a library to edit or delete it (its papers stay, in no library).
+  **Show Paper Connections** (right-click a library, or the button beside its name in the toolbar)
+  draws its papers as one graph: a line joins two papers whose mind maps connect, thicker for more
+  connections, each cluster of linked papers in its own colour. Drag a paper to move it, or the
+  background to pan; zoom with the controls or by pinching, as in the mind map. Click a paper or a line to see which concepts connect and open a mind map. In a
+  library that connects to other libraries, the papers elsewhere it connects to show in grey
+  around it.
+- **Made for listening.** Episodes remember where you stopped, show in Control Center's Now
+  Playing with their cover, and answer the media keys. Read along in the transcript.
+- **Works in the background.** Imports run while you listen to something else, with progress at
+  the bottom of the window and a notification when an episode is ready or needs you. Stop a
+  conversion and **Try again** carries on from where it was.
+- **Your setup, your data.** Any OpenAI-compatible LLM writes the episodes: LM Studio,
+  llama.cpp, Ollama behind Open WebUI, or a hosted API. With a local one, nothing about your
+  papers leaves your Mac. Every prompt it's sent can be edited. Keep the library on your Mac or
+  share it between Macs with a small storage server.
+- **In your language.** The app speaks English, Italian, Spanish, German and French: it follows
+  your Mac's language, or pick one in **Settings → General**. Episodes are written in English
+  unless you turn on **Write the episode in this language** when importing (experimental: the
+  Kokoro voices are English, so they read other languages with an English accent).
 
-- 🎙️ **Episodes, not read-outs**: *In-depth*, *Summary* (5–60 min), *Custom*, or *Direct read*.
-- 🗣️ **Pick the cast**: rename the speakers, choose voices, hear samples, set the pace.
-- 🧠 **Mind maps**: each paper's key ideas as an editable graph, linked across your library.
-- 💬 **Ask AI**: chat with a paper; answers cite and highlight its pages.
-- 🖼️ **Slide decks**: import a presentation as PDF, charts and diagrams included.
-- 📚 **A real library**: covers, favourites, tags, authors, libraries, search, citations.
-- 🔒 **Your setup**: any OpenAI-compatible LLM (local or hosted); voices on your Mac or on a server.
-- 🌍 **Five languages**: English, Italian, Spanish, German and French.
+**Help → Papertalk Help** opens a guide to every part of the app, searchable from the Help menu.
 
-Everything is explained in the app: **Help → Papertalk Help**.
+## Getting started
 
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/details.png" alt="A paper's own window, with its authors, details, tags and actions"><br><sub><b>Details</b>: a paper's authors, citation and tags, and every action on it.</sub></td>
-    <td width="50%"><img src="docs/screenshots/mindmap.png" alt="A paper's mind map, linked to other papers"><br><sub><b>Mind map</b>: the problem, the approach and the demonstration, with links to your other papers.</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/ask.png" alt="Ask AI answering with page citations"><br><sub><b>Ask AI</b>: answers cite pages, and the quoted words are highlighted.</sub></td>
-    <td width="50%"><img src="docs/screenshots/slides.png" alt="A slide deck linked to its paper"><br><sub><b>Slides</b>: a talk's deck, linked to the paper it presents.</sub></td>
-  </tr>
-</table>
+Ready-made builds are on the [Releases](https://github.com/marcoSanti/papertalk/releases) page.
+Unzip `Papertalk-<version>.zip` and move **Papertalk.app** to Applications. The app is only
+ad-hoc signed, so the first time macOS may refuse to open it: right-click it and choose **Open**.
 
-## Install
+To build it yourself you need macOS 26 or later (Apple silicon recommended) and Xcode with
+Swift 6.2:
 
-Download `Papertalk-<version>.zip` from [Releases](https://github.com/marcoSanti/papertalk/releases),
-unzip it and move **Papertalk.app** to Applications. It's ad-hoc signed, so the first time,
-right-click it and choose **Open**. After that it can update itself (Settings → General).
+```bash
+./app.sh run
+```
 
-On first launch a short setup asks where the library lives, which LLM to use (URL, key, model)
-and where voices are made. Everything can be changed later in **Settings** (⌘,). Voices on the
-Mac download about 120 MB of models with the first episode.
+That builds `client/dist/Papertalk.app` (a debug build) and opens it. `app.sh` lives at the repo
+root and runs from anywhere; `./app.sh release` makes an optimized build zipped to
+`client/dist/Papertalk-<version>.zip`, with the committed source beside it. Builds you make
+yourself show a yellow "DEV" stripe on the icon; only official releases use the plain one.
+
+On first launch a short setup asks:
+
+1. where your library lives: on this Mac, or on a [storage server](#sharing-a-library-between-macs);
+2. which LLM writes the episodes: its base URL, an optional API key and the model;
+3. where the voices are made: on this Mac, or on a [speech server](#voices-on-a-server).
+
+**Test connection** checks that the storage server and the LLM answer. You can skip the setup
+and change all of it later in **Settings** (⌘,). With voices on this Mac, the first episode
+takes a little longer because it downloads the voice models (about 120 MB).
+
+**Updates.** Papertalk can check GitHub for a new stable release each time it starts (setup asks;
+change it in **Settings → General**, and if you never chose, it asks once at startup). When there is
+one, **Install and Relaunch** downloads the release zip, checks it against its published SHA-256,
+then quits, swaps the app in place and reopens it. Nothing is installed without asking. If
+Papertalk can't write to its folder, it offers the release page instead.
+**Papertalk → Check for Updates…** (stable releases) and **Check for Dev Builds…** (the latest
+builds of `main`, which open their release page) check by hand.
+After an update, the first start shows **What's new**: a short list of what the new version
+changed (from `CHANGELOG.md`, built into the app, so nothing is downloaded).
 
 ## Using it
 
-Import with **File → Import PDF…** (⌘O), the **+** button, or by dropping a PDF on the library.
-Pick a depth, confirm the voices, and keep working: it converts in the background and notifies you when the episode is ready.
+Import a paper with **File → Import PDF…** (⌘O), the **+** button, or by dropping a PDF onto the
+library. Choose the depth (and, for a summary, its length), then the voices when Papertalk asks.
+
+A converted paper can also travel as a **Papertalk paper** (a `.papertalk` file): its record,
+script, mind map and voiced audio. Before saving, Papertalk asks whether to include the PDF, with a
+warning that most papers' PDFs are under copyright; **Export Without PDF** is the default. Make one with **Export paper…** in the
+paper's details; bring one in with **File → Import Paper…** (⇧⌘O), by dropping it on the library,
+or by double-clicking it in Finder. A paper whose id is already in the library comes in as a copy.
+
+Select a paper to see it on the right, with its tags: play it, read the transcript, open the PDF
+or the mind map, favourite it, or fix its metadata. **Details** (under those buttons),
+a double-click on the paper, or **Open** in its context menu opens the paper in a wide window of its
+own, with its authors, details, tag editing, activity log and every action below.
 
 | Key | In the library |
 | --- | --- |
@@ -59,69 +145,163 @@ Pick a depth, confirm the voices, and keep working: it converts in the backgroun
 | Arrow keys | Move around the grid |
 | Delete | Delete the selected paper (after asking) |
 | ⌘O | Import a PDF |
-| ⇧⌘O | Import a Papertalk paper (`.papertalk`) |
+| ⇧⌘O | Import a Papertalk paper |
 | ⌘, | Settings |
+
+A paper's window groups the rest by what they work on: **Audio** (regenerate, export, delete),
+**PDF management** (rerun, mind map, metadata) and **Library** (mark as listened, Show in Finder,
+Export paper, Delete paper). Right-clicking a paper in the library offers all of them too:
+
+- **Regenerate audio** re-voices the existing script; **Rerun episode** writes a new one, asking
+  for the depth (and, for a summary, its length) again first.
+- **Create mind map** draws one for papers imported before mind maps existed, and **Redraw mind
+  map** draws it again. **File → Redraw All Mind Maps…** redraws every paper's map, one after
+  another, after asking (edits made to the current maps are lost).
+- **Export audio…** saves the voiced episode as one M4A (AAC) file, named after the paper. Its
+  tags carry the title, the authors (as artist), the publication year, the first page as cover
+  art, and the affiliations, DOI and tags in the comment.
+- **Delete audio** frees the disk space and keeps the script and PDF. The paper still plays, with
+  voices made live; the app says so, since that audio isn't saved and each listen voices it again. When you listen to an episode to the end, Papertalk offers to delete its audio;
+  **Keep, and don't ask again** turns that off, and **Settings → Clear Data** turns it back on.
+- **Stop conversion** stops an import; the script and any sections already voiced are kept.
+
+To change how the LLM writes, edit any of the prompts in **Settings → Query Prompts**. The reply
+formats are added automatically, so an edit can't break an import.
 
 ## Voices on a server
 
-Voicing on the Mac needs about 0.5 GB of memory. To spare an 8 GB Mac, **Settings → Voices** can
-use an OpenAI-compatible text-to-speech server running Kokoro instead, such as
-[Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) (`http://<host>:8880/v1`) or
-[Open WebUI](https://docs.openwebui.com/) (`http://<host>:3000/api/v1`).
+Voicing an episode on the Mac takes about half a gigabyte of memory while it runs, which is a
+lot on an 8 GB machine. **Settings → Voices** (also in the first-run setup) can send the speech
+to an OpenAI-compatible text-to-speech server instead, such as
+[Open WebUI](https://docs.openwebui.com/) or [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI).
+Then nothing is loaded on the Mac.
+
+- **Server URL**: Papertalk calls `/audio/speech` under it. For Open WebUI that's its address
+  followed by `/api/v1` (e.g. `http://localhost:3000/api/v1`; the `/api` URL from the LLM
+  settings works too); for Kokoro-FastAPI, `http://<host>:8880/v1`.
+- **API key**: none, typed, or read from an environment variable (`OPENWEBUI_API_KEY`,
+  `LLM_API_KEY` or `PAPERTALK_API_KEY`), the same choices as for the LLM. Open WebUI needs one
+  (Settings → Account → API keys).
+- **Model**: Papertalk asks the server what it offers (`/audio/models` or `/models`) and fills
+  the picker. If it lists nothing, type the model name.
+- **Requests at a time**: how many sections are voiced at once (1 to 16, default 4). More is
+  faster if the server keeps up. Voices on the Mac are always made one section at a time.
+
+The server should run Kokoro: each paper's cast is sent by voice name (`af_heart`,
+`am_michael`, …), and Papertalk warns if the server's `/audio/voices` doesn't list them. It asks
+for WAV; MP3 and other formats are converted on the Mac. Every synthesis path uses the setting:
+importing, **Regenerate audio**, playing a paper that has no audio yet, and the voice samples.
 
 ## Sharing a library between Macs
 
-Run the bundled storage server on any Mac or Linux machine with Swift 6.2, then set
-**Settings → Server Settings** to `http://<host>:9170`:
+Papers normally live in `~/Library/Application Support/papertalk/papers/`, one `.papertalk`
+package each (Finder shows each as a single item). **Settings → General → Library folder** moves
+the library to another folder; papers already in that folder join it. To use one library from
+several Macs, run the small storage server that comes with the project on any Mac or Linux
+machine with Swift 6.2. It only stores files; conversion still happens in the app.
 
 ```bash
-./app.sh server
+./app.sh server      # or, from client/: swift run -c release PapertalkServer
 ```
+
+It listens on port 9170 and needs nothing beyond Swift's standard libraries. Set
+`PAPER2POD_STORAGE_TOKEN` to require a token. Then point the app at it in **Settings → Server
+Settings** (`http://<host>:9170`, plus the token). Clearing the URL switches back to the local
+library.
 
 <details>
 <summary>Server options and API</summary>
 
-Environment: `PAPER2POD_STORAGE_PORT` (default `9170`), `PAPER2POD_STORAGE_HOST` (default
+The server reads `PAPER2POD_STORAGE_PORT` (default `9170`), `PAPER2POD_STORAGE_HOST` (default
 `0.0.0.0`), `PAPER2POD_STORAGE_ROOT` (default `~/.paper2pod/storage`) and
-`PAPER2POD_STORAGE_TOKEN` (optional bearer token, entered in the app too).
+`PAPER2POD_STORAGE_TOKEN` (optional bearer token).
 
-It's a flat key/value store: `GET /` lists keys; `GET`, `PUT`, `DELETE` and `HEAD` on `/<key>`
-work on one file (`papers/<id>/paper.json`, `papers/<id>/turns/<n>.wav`, …). It only stores
-files; conversion happens in the app.
+It's a flat key/value store over HTTP: `GET /` lists the keys, and `GET`, `PUT`, `DELETE` and
+`HEAD` on `/<key>` read, write, delete and check a file. Keys look like
+`papers/<id>/paper.json`, `papers/<id>/source.pdf` or `papers/<id>/turns/<n>.wav`. On disk the
+root is laid out like the app's own library (one `.papertalk` package per paper), and a root
+written by the older Python server (`storage_server.py`) is converted when the server starts.
 
 </details>
 
-## Your data
+## Settings, keys and data
 
-- Library: `~/Library/Application Support/papertalk/papers/`, one `.papertalk` package per paper
-  (movable in **Settings → General → Library folder**).
-- Voice models: `~/.cache/fluidaudio/`.
-- API keys: the macOS Keychain only.
-- Optional defaults from the environment: `LLM_BASE_URL` (or `OPENWEBUI_BASE_URL`),
-  `PAPERTALK_MODEL`, `LLM_API_KEY` (or `OPENWEBUI_API_KEY`, `PAPERTALK_API_KEY`),
-  `PAPERTALK_SERVER_URL`, `PAPERTALK_API_TOKEN`.
+Everything is configured inside the app. If you'd rather set defaults from the environment, the
+app picks up `OPENWEBUI_BASE_URL` or `LLM_BASE_URL`, `PAPERTALK_MODEL`, and an API key from
+`OPENWEBUI_API_KEY`, `LLM_API_KEY` or `PAPERTALK_API_KEY`. `PAPERTALK_SERVER_URL` and
+`PAPERTALK_API_TOKEN` set a default storage server.
 
-**Settings → Clear Data** erases the library or the voice models.
+API keys (the LLM's and the speech server's) are kept in the macOS Keychain, never in the
+preferences file. Each paper is a folder with its PDF, script, mind map and audio, and the
+libraries are listed in `libraries.json` beside them. The voice
+models live in `~/.cache/fluidaudio/`. **Settings → Clear Data** can erase the library and reset
+everything, or separately delete the voice models to get the disk space back.
+
+## Linux (preview)
+
+A Linux version is in progress, on the same library format, so a library folder can move between
+the two. It has the library, the player, importing, the cast and settings; the authors and
+transcript views, metadata editing and the mind map aren't there yet. Each release has a
+`Papertalk-<version>-x86_64.AppImage`; to build one yourself, use Docker (the build runs in a
+container):
+
+```bash
+client/linux-dev/dev.sh build
+client/linux-dev/dev.sh appimage
+```
+
+That writes `client/dist/Papertalk-<version>-<arch>.AppImage`. It needs a desktop with GTK 4
+(Ubuntu 22.04+, Fedora 36+ and alike) and brings everything else. Voices are made on the CPU
+with the same Kokoro voices as on the Mac; the model (about 350 MB) is downloaded to
+`~/.cache/papertalk/` the first time something is voiced. The API key is kept in the desktop's
+keyring (GNOME Keyring, KWallet).
 
 ## Known issues
 
 > [!WARNING]
-> **macOS may close Papertalk while it makes voices on the Mac.** A bug in the speech library
-> (FluidAudio 0.17.7, upstream #817, #844) can make one call eat tens of gigabytes of memory.
-> Papertalk reloads the model every 25 pieces, which has avoided it in every test so far.
-> Nothing is lost: voicing resumes where it stopped. [Voices on a server](#voices-on-a-server)
-> avoid it entirely.
+> **Papertalk can be closed by macOS while making voices on the Mac.** Now and then, one Kokoro
+> call in the speech library (FluidAudio 0.17.7) keeps taking memory, tens of gigabytes in a
+> minute and a half, until macOS stops the app for running out of memory. It happens while
+> playing a paper that has no audio yet, and can happen during an import too. Nothing is lost:
+> the script is saved, and voicing picks up where it stopped. It's an upstream bug (similar
+> reports: FluidAudio #817, #844), not a leak in Papertalk; it is checked again with each
+> FluidAudio update. Until it's fixed, [voices on a server](#voices-on-a-server) avoid it.
 
-## Building and contributing
+## Contributing
 
-Needs macOS 26 and Xcode with Swift 6.2.
+As the note at the top says, there are rough edges, and help is very welcome. The app is the
+Swift package in `client/` (the storage server is its `PapertalkServer` target), and
+[AGENTS.md](AGENTS.md) explains how the code is laid out and the rules it follows. If you report
+a bug, the **Activity** log in the paper's details is the most useful thing to include.
+
+### Tests
 
 ```bash
-./app.sh run        # debug build of client/dist/Papertalk.app, then open it
-./app.sh test       # the test suite, about ten seconds, no network needed
-./app.sh release    # optimized build, zipped
+./app.sh test        # about ten seconds
+./app.sh coverage    # the same with code coverage, written to coverage/
 ```
 
-Read [AGENTS.md](AGENTS.md) first: it explains the code layout, the rules, and how releases are
-cut from `VERSION`. A Linux build (GTK 4 AppImage) is in progress under `client/linux-dev/`.
-When reporting a bug, include the **Activity** log from the paper's details.
+The suite needs nothing external: no LLM, no network, no Keychain, no voice models, and it never
+touches your real library. LLM replies come from an in-process mock, the storage and speech
+servers are faked, and a guard fails any test that tries to reach a real server. The SwiftUI views
+contain only layout; every rule they show lives in plain Swift types under
+`client/Sources/Papertalk/Shared/Presentation/`, so it's tested without running the UI. When you
+fix a bug, add a test that fails without the fix.
+
+### Pull requests, versions and releases
+
+Work lands on `main` through pull requests. Each pull request runs the tests with coverage
+(`.github/workflows/tests.yml`); the coverage table is on the run's summary page. Changes to
+Markdown files alone skip it.
+
+The version follows [semantic versioning](https://semver.org) and lives only in the `VERSION`
+file; to release, change it by hand in a pull request. Every merge to `main` (except
+Markdown-only ones) runs `.github/workflows/release.yml`, which tests `main` again and then:
+
+- if `VERSION` is an `X.Y.0` with no release yet, publishes it as a **stable release** tagged
+  `v<VERSION>`, marked Latest, with the official icon;
+- otherwise (patch versions such as `X.Y.1` included) publishes a **development build**, a pre-release tagged `v<VERSION>-dev.<commit>`
+  with the "DEV" icon. Only the ten newest are kept.
+
+Each release has `Papertalk-<version>.zip`, the source it was built from
+(`Papertalk-<version>-source.tar.gz`) and a SHA-256 checksum for each.

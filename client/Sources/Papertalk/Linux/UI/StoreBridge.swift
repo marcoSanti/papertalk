@@ -21,6 +21,10 @@ final class StoreBridge: SwiftCrossUI.ObservableObject {
     /// drops presentations asked for before then or during the first layout.
     @SwiftCrossUI.Published private(set) var windowReady = false
     private var subscriptions: Set<OpenCombine.AnyCancellable> = []
+    /// A re-render is already queued: further changes before it runs ride along with it.
+    private var bumpPending = false
+    /// The scrubber's latest position, applied once dragging pauses (see `scrub(to:)`).
+    private var pendingSeek: DispatchWorkItem?
 
     /// Decoded covers by paper id, kept per artwork revision.
     private var covers: [String: (revision: Int, image: ImageFormats.Image<RGBA>?)] = [:]
@@ -29,9 +33,23 @@ final class StoreBridge: SwiftCrossUI.ObservableObject {
     /// Starts forwarding the store's and the player's changes.
     init(_ store: AppStore) {
         self.store = store
-        // objectWillChange fires before the change lands: re-render on the next turn.
-        let bump: () -> Void = { [weak self] in
-            DispatchQueue.main.async { MainActor.assumeIsolated { self?.revision += 1 } }
+        // objectWillChange fires before the change lands: re-render on the next turn. Every
+        // re-render redraws the whole window, so a burst of changes (a player tick, an import
+        // step) is coalesced into one.
+        let schedule: () -> Void = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, !self.bumpPending else { return }
+                self.bumpPending = true
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        self.bumpPending = false
+                        self.revision += 1
+                    }
+                }
+            }
+        }
+        let bump: () -> Void = {
+            if Thread.isMainThread { schedule() } else { DispatchQueue.main.async(execute: schedule) }
         }
         store.objectWillChange.sink { _ in bump() }.store(in: &subscriptions)
         store.player.objectWillChange.sink { _ in bump() }.store(in: &subscriptions)
@@ -43,6 +61,7 @@ final class StoreBridge: SwiftCrossUI.ObservableObject {
     /// file manager) opens the import sheet with that PDF.
     func windowAppeared() {
         guard !windowReady else { return }
+        GtkStyles.install(colorScheme)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             MainActor.assumeIsolated {
                 self.windowReady = true
@@ -50,6 +69,18 @@ final class StoreBridge: SwiftCrossUI.ObservableObject {
                 if let pdf = ImportPresentation.firstPDF(in: arguments) { self.store.beginImport(pdf) }
             }
         }
+    }
+
+    /// The scrubber moved to `time`. GTK reports the slider's own updates during playback too,
+    /// and every seek restarts the sound process, so positions within a second of the playhead
+    /// are ignored and a drag seeks once it pauses.
+    func scrub(to time: Double) {
+        let player = store.player
+        guard abs(time - player.currentTime) > 1 else { return }
+        pendingSeek?.cancel()
+        let seek = DispatchWorkItem { MainActor.assumeIsolated { player.seek(toTime: time) } }
+        pendingSeek = seek
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: seek)
     }
 
     /// Two-way binding to a store property.

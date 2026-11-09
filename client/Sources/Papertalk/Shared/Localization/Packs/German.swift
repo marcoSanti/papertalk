@@ -26,7 +26,6 @@ extension LanguagePacks {
         "Female": "Weiblich",
         "Male": "Männlich",
         "Back": "Zurück",
-        "Next": "Weiter",
         "Importing “{0}”": "„{0}“ wird importiert",
         "LLM": "LLM",
         "LLM base URL, e.g. http://localhost:3000/api": "Basis-URL des LLM, z. B. http://localhost:3000/api",

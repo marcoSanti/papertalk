@@ -35,7 +35,9 @@ struct PlayerBar: View {
     }
 }
 
-/// Transport for one paper, or how to start it.
+/// Transport for one paper, or how to start it: laid out like the macOS player bar, with the
+/// transport on the left, then the cover, the title, where it is ("3 of 40") and the time, and
+/// the scrubber under them.
 struct PlayPane: View {
     var bridge: StoreBridge
     var paper: Paper
@@ -43,39 +45,82 @@ struct PlayPane: View {
     var body: some View {
         let store = bridge.store
         let player = store.player
-        VStack(alignment: .leading, spacing: 6) {
-            Text(paper.displayTitle).font(.headline).lineLimit(1)
+        HStack(alignment: .center, spacing: 14) {
             switch PlayerPane(paper: paper, playerHasAudio: player.hasAudio) {
             case .loaded:
-                switch PlayerBarPresentation.line(isRendering: player.isRendering, error: player.renderError,
-                                                  renderedCount: player.renderedCount) {
-                case .preparing(let label):
-                    Text(label).foregroundColor(.gray)
-                case .failed(let message):
-                    Text(message).foregroundColor(.red)
-                case .scrubber:
-                    HStack(spacing: 8) {
-                        Button(L("Back")) { player.skip(by: -1) }
-                            .disabled(!PlayerBarPresentation.canSkipBack(activeTurn: player.activeTurn))
-                        Button(PlayerBarPresentation.playButton(isPlaying: player.isPlaying).help) { player.playPause() }
-                            .disabled(!PlayerBarPresentation.canPlay(isRendering: player.isRendering, turnCount: player.turnCount))
-                        Button(L("Next")) { player.skip(by: 1) }
-                            .disabled(!PlayerBarPresentation.canSkipForward(activeTurn: player.activeTurn, turnCount: player.turnCount))
-                        Slider(value: Binding(get: { player.currentTime }, set: { player.seek(toTime: $0) }),
-                               in: 0...max(player.duration, 1))
-                        Text(PlayerBarPresentation.timeLabel(player.currentTime, of: player.duration)).font(.caption)
-                    }
-                }
-            case .ready(let playTitle, let detail):
+                Transport(player: player)
+            case .ready(let playTitle, _):
+                Button(playTitle) { store.togglePlayback(paper.id) }
+            case .unavailable:
+                EmptyView()
+            }
+            CoverView(bridge: bridge, paperId: paper.id, width: 34, height: 44)
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Button(playTitle) { store.togglePlayback(paper.id) }
-                    Text(detail).foregroundColor(.gray)
+                    Text(paper.displayTitle).font(.headline).lineLimit(1)
+                    Text(turnLabel(player)).font(.caption).foregroundColor(.gray).lineLimit(1)
+                    Spacer()
+                    Text(PlayerBarPresentation.timeLabel(player.currentTime, of: player.duration))
+                        .font(.caption).foregroundColor(.gray)
                 }
-            case .unavailable(let reason):
-                Text(reason).foregroundColor(.gray)
+                switch PlayerPane(paper: paper, playerHasAudio: player.hasAudio) {
+                case .loaded:
+                    switch PlayerBarPresentation.line(isRendering: player.isRendering, error: player.renderError,
+                                                      renderedCount: player.renderedCount) {
+                    case .preparing(let label):
+                        Text(label).font(.caption).foregroundColor(.gray)
+                    case .failed(let message):
+                        Text(message).font(.caption).foregroundColor(.red)
+                    case .scrubber:
+                        Slider(value: Binding(get: { player.currentTime }, set: { bridge.scrub(to: $0) }),
+                               in: 0...max(player.duration, 1))
+                    }
+                case .ready(_, let detail):
+                    Text(detail).font(.caption).foregroundColor(.gray)
+                case .unavailable(let reason):
+                    Text(reason).font(.caption).foregroundColor(.gray)
+                }
             }
         }
     }
+
+    /// "· 3 of 40", as on macOS.
+    private func turnLabel(_ player: PlayerController) -> String {
+        PlayerBarPresentation.turnLabel(activeTurn: player.activeTurn, turnCount: player.turnCount,
+                                        renderedCount: player.renderedCount,
+                                        isBuffering: player.isBuffering, hasError: player.renderError != nil)
+    }
+}
+
+/// Previous turn, play/pause and next turn, as icon buttons.
+struct Transport: View {
+    var player: PlayerController
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: { player.skip(by: -1) }) { Text(PlayerGlyph.previous).font(.system(size: 13)).frame(width: 34) }
+                .disabled(!PlayerBarPresentation.canSkipBack(activeTurn: player.activeTurn))
+            Button(action: { player.playPause() }) {
+                Text(PlayerGlyph.playPause(isPlaying: player.isPlaying)).font(.system(size: 20))
+                    .frame(width: 40, height: 30)
+            }
+            .disabled(!PlayerBarPresentation.canPlay(isRendering: player.isRendering, turnCount: player.turnCount))
+            Button(action: { player.skip(by: 1) }) { Text(PlayerGlyph.next).font(.system(size: 13)).frame(width: 34) }
+                .disabled(!PlayerBarPresentation.canSkipForward(activeTurn: player.activeTurn, turnCount: player.turnCount))
+        }
+    }
+}
+
+/// The transport's symbols (macOS uses SF Symbols, which GTK doesn't have). Geometric shapes
+/// every common desktop font has: the media-control block (⏮ ⏸ ⏭) is missing from DejaVu
+/// and Cantarell and showed as empty boxes.
+enum PlayerGlyph {
+    /// Previous turn.
+    static let previous = "◀◀"
+    /// Next turn.
+    static let next = "▶▶"
+    /// Pause while playing, play otherwise.
+    static func playPause(isPlaying: Bool) -> String { isPlaying ? "‖" : "▶" }
 }
 
 /// The running import's stage and progress.

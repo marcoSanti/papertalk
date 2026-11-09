@@ -59,17 +59,17 @@ struct SettingsSheet: View {
                     get: { keySources.first { $0.value == llm.keySource } },
                     set: { if let k = $0 { llm.keySource = k.value; llm.keySourceChanged() } }))
             }
-            if llm.keySource == .env {
-                if envOptions.isEmpty {
-                    Text(SettingsSheetPresentation.noEnvVars).foregroundColor(.orange)
-                } else {
-                    Picker(of: envOptions, selection: Binding(
-                        get: { envOptions.first { $0.value == llm.selectedEnv } },
-                        set: { if let e = $0 { llm.selectedEnv = e.value } }))
-                }
-            }
-            if llm.keySource == .manual {
+            switch llm.keyInput {
+            case .noEnvVars:
+                Text(SettingsSheetPresentation.noEnvVars).foregroundColor(.orange)
+            case .envPicker:
+                Picker(of: envOptions, selection: Binding(
+                    get: { envOptions.first { $0.value == llm.selectedEnv } },
+                    set: { if let e = $0 { llm.selectedEnv = e.value } }))
+            case .manualKey:
                 SecureField("sk-…", text: $llm.manualKey)
+            case .none:
+                EmptyView()
             }
 
             Text(L("Storage server")).font(.headline)

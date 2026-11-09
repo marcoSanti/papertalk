@@ -241,8 +241,9 @@ everything, or separately delete the voice models to get the disk space back.
 
 A Linux version is in progress, on the same library format, so a library folder can move between
 the two. It has the library, the player, importing, the cast and settings; the authors and
-transcript views, metadata editing and the mind map aren't there yet. Its builds are paused in
-CI for now, so build it yourself with Docker (the build runs in a container):
+transcript views, metadata editing and the mind map aren't there yet. Each release has a
+`Papertalk-<version>-x86_64.AppImage`; to build one yourself, use Docker (the build runs in a
+container):
 
 ```bash
 client/linux-dev/dev.sh build
@@ -250,8 +251,10 @@ client/linux-dev/dev.sh appimage
 ```
 
 That writes `client/dist/Papertalk-<version>-<arch>.AppImage`. It needs a desktop with GTK 4
-(Ubuntu 22.04+, Fedora 36+ and alike) and brings everything else, Python included. Voices are
-made on the CPU with the same Kokoro voices as on the Mac.
+(Ubuntu 22.04+, Fedora 36+ and alike) and brings everything else. Voices are made on the CPU
+with the same Kokoro voices as on the Mac; the model (about 350 MB) is downloaded to
+`~/.cache/papertalk/` the first time something is voiced. The API key is kept in the desktop's
+keyring (GNOME Keyring, KWallet).
 
 ## Known issues
 

@@ -17,7 +17,9 @@ final class MockLLM {
     private(set) static var seen: Set<String> = []
 
     private final class StubURLProtocol: URLProtocol {
-        override class func canInit(with request: URLRequest) -> Bool { true }
+        /// Only while a handler is installed: on Linux an unregistered protocol can still be
+        /// consulted, and it would then fail requests meant for a test's own local server.
+        override class func canInit(with request: URLRequest) -> Bool { MockLLM.onRequest != nil }
         override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
         override func startLoading() {
             defer { client?.urlProtocolDidFinishLoading(self) }

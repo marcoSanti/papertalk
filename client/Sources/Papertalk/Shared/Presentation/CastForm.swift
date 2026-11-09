@@ -68,6 +68,9 @@ struct CastForm: Equatable {
         return row.name.isEmpty ? L("Choose an author…") : row.name
     }
 
+    /// The name field's placeholder: the author-menu placeholder, else "Name".
+    func namePlaceholder(_ row: Row) -> String { authorPlaceholder(row) ?? L("Name") }
+
     /// Initials come from the name, or the role until one is typed.
     static func avatarName(_ row: Row) -> String { row.name.isEmpty ? row.role : row.name }
 

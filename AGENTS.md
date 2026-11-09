@@ -41,9 +41,10 @@ this file (for Claude Code), so keep the guidance here.
 - `.github/workflows/`: `tests.yml` (pull requests) and `release.yml` (`main`: dev + stable releases).
 - `shared/`: app icon (`icon.icns`, drawn by `scripts/app_icon.swift`), and `Papertalk.help/`, the
   user guide (macOS Help Book, see "User guide").
-- Linux port pieces: `client/Sources/Papertalk/Linux/` (compat shims, `#if os(Linux)`),
-  `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
-  `client/linux-dev/` (dev container `Dockerfile`, `dev.sh`).
+- Linux port pieces: `client/Sources/Papertalk/Linux/` (compat shims, `#if os(Linux)`), the C
+  modules behind them (`client/Sources/CSherpaOnnx`, `CPoppler`, `CSecret`, declared in
+  `Package.swift` only on Linux), and `client/linux-dev/` (dev container `Dockerfile`, `dev.sh`,
+  `install_sherpa.sh`).
 - `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
 - `todo.md`: the backlog. Remove an item in the PR that completes it.
 
@@ -84,7 +85,9 @@ release stays), so Finder, "Open With" and Help open the build just made.
   - `release.yml`, on every push to `main` (Markdown-only pushes skip it): `app.sh test`, then the
     release build and the GitHub release (see below). It's the only run on `main`, so it's what
     tests `main`. It can be started by hand to retry a release, from `main` only.
-  - The Linux jobs in both are paused (`if: false`); see "Linux port".
+  - Both also run a Linux job in the dev container (`ubuntu-24.04`): `tests.yml` builds, runs
+    the suite, packs the AppImage and smoke-tests it; `release.yml` does the same and uploads
+    the AppImage to the release. See "Linux port".
   Keep it green: a change that needs new tooling must update the workflows too.
 - The version lives only in `VERSION` (semver, `MAJOR.MINOR.PATCH`). `app.sh` stamps it into
   the built app's `Info.plist`, with the short commit hash as the build number (shown as
@@ -145,20 +148,40 @@ release stays), so Finder, "Open With" and Help open the build just made.
   and `Linux/` keep their whole-file `#if os(...)` guard (one target compiles every folder;
   SwiftPM can't exclude files per platform).
 - Build and test Linux with Docker (OrbStack here): `client/linux-dev/dev.sh build` once, then
-  `client/linux-dev/dev.sh test` (Swift suite + pytest) and `client/linux-dev/dev.sh e2e` (the opt-in
-  `EndToEndImportTests`: a real import with Kokoro, LLM mocked). Run `swift build` and
-  `app.sh test` on macOS too, after every change to shared code.
-- Python is called only through `PythonRuntime` (one thread). Nothing time-critical goes through
-  it (playback stays in Swift), because it can be busy with Kokoro for seconds.
+  `client/linux-dev/dev.sh test` (the Swift suite) and `client/linux-dev/dev.sh e2e` (the opt-in
+  `EndToEndImportTests`: a real import with Kokoro, LLM mocked; it needs the model in the
+  container's cache, so voice something once first). Run `swift build` and `app.sh test` on
+  macOS too, after every change to shared code.
+- The Linux shims run on compiled C libraries, no Python: **Kokoro** on sherpa-onnx (ONNX Runtime,
+  CPU) through its C API (`Linux/KokoroCompat.swift`; model package `kokoro-multi-lang-v1_0`,
+  downloaded to `~/.cache/papertalk/` on first use), **PDFs** on poppler-glib + cairo
+  (`Linux/PDFKitCompat.swift`), the **keyring** on libsecret (`Linux/SecurityCompat.swift`), and
+  playback through the sound server's player (`Linux/AVFoundationCompat.swift`).
+  - sherpa-onnx comes from its release tarball (`client/linux-dev/install_sherpa.sh`, pinned with
+    checksums; it writes the `sherpa-onnx.pc` SwiftPM links through). Its header is vendored in
+    `client/Sources/CSherpaOnnx/`: bump both together, the struct layouts must match.
+  - The model's speaker ids aren't our voice list's order (`em_santa` was appended last):
+    always map with `KokoroAneConstants.speakerId`.
+  - Kokoro calls are blocking C calls: they run on the engine's own serial queue, never the
+    cooperative pool. Poppler isn't safe to call from two threads at once (covers crashed):
+    every call goes through `Poppler.withDocument`, which holds one lock.
+  - Without a D-Bus session bus the keyring is skipped (reads find nothing) rather than letting
+    libsecret try to autolaunch one.
 - Linux traps: `Timer.scheduledTimer` is unavailable in async code; `URLProtocol`s are consulted
-  in registration order; sync test methods in `@MainActor` test classes crash test discovery
-  (make them `async`); files using URLSession types need `FoundationNetworking`.
+  in registration order, and one may still answer after `unregisterClass` (so a stub's `canInit`
+  must check it's active); sync test methods in `@MainActor` test classes crash test discovery
+  (make them `async`); files using URLSession types need `FoundationNetworking`;
+  `enumerateSubstrings(options: .bySentences)` doesn't exist (use `Sentences.forEach`); string
+  `contains` with a very long needle is quadratic; long arithmetic expressions can time out
+  the type checker (name the parts).
 - The Linux UI (`Linux/UI/`) is SwiftCrossUI 0.9.0 on GTK 4 (`GtkBackend`; `DefaultBackend`
   fails to build on Linux) over the shared `AppStore`. `StoreBridge` forwards `AppStore`'s and
   `PlayerController`'s `objectWillChange` to SwiftCrossUI's own `ObservableObject` and is the
   only UI file that imports OpenCombine. Views follow the same "no logic" rule as macOS:
   wording and decisions come from `Shared/Presentation/` (with tests); Linux-only store
-  helpers go in `Linux/UI/AppStore+Linux.swift`.
+  helpers go in `Linux/AppStore+Linux.swift` (controller code, not in `UI/`). SwiftCrossUI's GTK
+  backend doesn't follow the desktop's dark theme: `DesktopTheme` reads it at launch and the
+  `WindowGroup` sets `\.colorScheme` (a view's `preferredColorScheme` is ignored by this backend).
 - SwiftCrossUI 0.9 traps (each one cost a debugging session):
   - Write every `body` in view-builder style. `let` is fine; an explicit `return` skips the
     builder's tuple wrapping, and views inserted later (a selected paper) never appear.
@@ -182,13 +205,13 @@ prompts, delete/rerun confirmation, settings and first-run setup.
 
 Packaging: `client/linux-dev/dev.sh appimage` (with `VERSION`, `CHANNEL`) builds
 `client/dist/Papertalk-<version>-<arch>.AppImage`: release binary with the Swift runtime
-static, a bundled Python 3.12 with the packages (so nothing is installed at first launch), every
-other library except the GTK / graphics / glibc stack, and a `.desktop` file with `%f`.
-`client/linux-dev/appimage_smoke.sh` checks it on plain Ubuntu. CI used to pack and smoke-test it
-on every PR and upload it to each release (x86_64); those jobs are paused (`if: false` in both
-workflows, plus the `LINUX_BUILDS` guard in the release notes) until the Linux work resumes.
-If you add a Python package or a native dependency, run the smoke test: a library missing from
-the bundle only shows up on a clean system.
+static, sherpa-onnx and ONNX Runtime, poppler, libsecret and every other library except the
+GTK / graphics / glibc stack (so nothing is installed at first launch), and a `.desktop` file
+with `%f`.
+`client/linux-dev/appimage_smoke.sh` checks it on plain Ubuntu. CI packs and smoke-tests it on
+every PR (`tests.yml`) and uploads it to each release (x86_64, `release.yml`).
+If you add a native dependency, run the smoke test: a library missing from the bundle only
+shows up on a clean system.
 
 Still to do, in order:
 1. **Rest of the Linux UI:** authors view, transcript view, metadata editing, tag editing,
@@ -197,8 +220,10 @@ Still to do, in order:
 2. **Updates on Linux:** the update check (menu on macOS) and `UpdateCheck` picking the
    AppImage asset, and installing in place (`Linux/UpdateInstallerCompat.swift` only refuses);
    the Linux build has no version stamped in yet (macOS uses Info.plist).
-3. Later: an arm64 AppImage (an `ubuntu-24.04-arm` runner), an in-app PDF viewer from
-   pypdfium2 renders, and a re-check of OpenSwiftUI for a Linux renderer.
+3. Later: an arm64 AppImage (an `ubuntu-24.04-arm` runner; `install_sherpa.sh` already has the
+   aarch64 library), an in-app PDF viewer from poppler renders (`Poppler.png(of:width:)`), British
+   voices with the British lexicon (all voices use `lexicon-us-en.txt` now), and a re-check of
+   OpenSwiftUI for a Linux renderer.
 
 ## Tests (`client/Tests/PapertalkTests`)
 
@@ -322,6 +347,16 @@ Still to do, in order:
 
 ## Views hold no logic
 
+The layers, on both platforms, and what each may touch:
+- **Model**: `PapertalkStore` (the `Storage` protocol, `K`, `LocalStorage`, the server) and
+  `Shared/Models/` (plain values). No UI, no app state.
+- **Controller**: `AppStore` (state and every mutation; the only code that reads or writes
+  `Storage`), `Pipeline`, the speech backends and the platform shims (`Linux/*Compat.swift`,
+  `macOS/Controllers/`).
+- **Presentation**: `Shared/Presentation/`, pure and tested; no storage, network or UI framework.
+- **View**: `macOS/Views`, `macOS/Components`, `Linux/UI`; layout over Presentation values and
+  calls into `AppStore`. Never storage, files, network or the pipeline.
+
 - A view lays out what it's given and forwards user actions. Anything that decides, computes,
   formats, validates, filters, sorts or picks wording goes in `Presentation/` (pure functions or
   value types, unit-tested) or, if it changes app state, in a method on `AppStore`.
@@ -394,7 +429,7 @@ Still to do, in order:
 
 ## Style
 
-- Every source file (Swift, Python, shell) opens with a short comment saying what the file does,
+- Every source file (Swift, Python, shell, C header) opens with a short comment saying what the file does,
   above its imports and `#if os(...)` guard. Every type, and every function or property whose
   name doesn't say it all, gets a short `///` doc comment (a docstring in Python).
 - Match the surrounding code: comments explain *why*, not what, and stay short. Keep the existing

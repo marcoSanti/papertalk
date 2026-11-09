@@ -103,9 +103,12 @@ struct MindMapLayout: Equatable, ZoomableLayout {
     /// and earlier `labels` its label covers: 0 is a clean link.
     private func collisions(_ e: Edge, labels: [Point]) -> Int {
         guard let a = positions[e.from], let b = positions[e.to], let k = control(e), let h = handle(e) else { return 0 }
-        let curve = stride(from: 0.0, through: 1.0, by: 0.025).map { t in
-            Point(x: (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * k.x + t * t * b.x,
-                  y: (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * k.y + t * t * b.y)
+        let curve = stride(from: 0.0, through: 1.0, by: 0.025).map { (t: Double) -> Point in
+            // Quadratic Bézier weights, named so the type checker stays fast.
+            let wa: Double = (1 - t) * (1 - t), wk: Double = 2 * (1 - t) * t, wb: Double = t * t
+            let x: Double = wa * a.x + wk * k.x + wb * b.x
+            let y: Double = wa * a.y + wk * k.y + wb * b.y
+            return Point(x: x, y: y)
         }
         let crossed = positions.filter { id, c in
             id != e.from && id != e.to
@@ -262,10 +265,11 @@ struct MindMapLayout: Equatable, ZoomableLayout {
             if let h = handle(e) { labels.append(h) }
         }
         let handles = edges.filter { $0.label != nil }.compactMap { handle($0) }
-        let xs = raw.values.map { [$0.x - Self.nodeWidth / 2, $0.x + Self.nodeWidth / 2] }.flatMap { $0 }
-            + handles.map { [$0.x - Self.linkLabelWidth / 2, $0.x + Self.linkLabelWidth / 2] }.flatMap { $0 }
-        let ys = raw.values.map { [$0.y - Self.nodeHeight / 2, $0.y + Self.nodeHeight / 2] }.flatMap { $0 }
-            + handles.map { [$0.y - Self.linkLabelHeight / 2, $0.y + Self.linkLabelHeight / 2] }.flatMap { $0 }
+        let nodeXs: [Double] = raw.values.flatMap { [$0.x - Self.nodeWidth / 2, $0.x + Self.nodeWidth / 2] }
+        let labelXs: [Double] = handles.flatMap { [$0.x - Self.linkLabelWidth / 2, $0.x + Self.linkLabelWidth / 2] }
+        let nodeYs: [Double] = raw.values.flatMap { [$0.y - Self.nodeHeight / 2, $0.y + Self.nodeHeight / 2] }
+        let labelYs: [Double] = handles.flatMap { [$0.y - Self.linkLabelHeight / 2, $0.y + Self.linkLabelHeight / 2] }
+        let xs = nodeXs + labelXs, ys = nodeYs + labelYs
         let left = (xs.min() ?? 0) - Self.margin, top = (ys.min() ?? 0) - Self.margin
         positions = raw.mapValues { Point(x: $0.x - left, y: $0.y - top) }
         width = (xs.max() ?? 0) + Self.margin - left

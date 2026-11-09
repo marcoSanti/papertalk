@@ -119,7 +119,7 @@ struct UploadSheet: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
-                if form.depth == .custom {
+                if form.showsDepthNote {
                     TextField(L("Describe the depth you want…"), text: $form.depthNote, axis: .vertical)
                         .lineLimit(3, reservesSpace: true)
                         .textFieldStyle(.roundedBorder)
@@ -638,18 +638,16 @@ struct KeySourceFields<Form: KeySourceEditing>: View {
     @Binding var form: Form
 
     var body: some View {
-        switch form.keySource {
-        case .env:
-            if form.envOptions.isEmpty {
-                Text(L("No API-key env vars are set. Add one (e.g. OPENWEBUI_API_KEY) and reopen this window."))
-                    .font(.caption).foregroundStyle(.secondary)
-            } else {
-                Picker(L("Environment var"), selection: $form.selectedEnv) {
-                    ForEach(form.envOptions, id: \.self) { v in Text(v).tag(v) }
-                }
-                .pickerStyle(.menu)
+        switch form.keyInput {
+        case .noEnvVars:
+            Text(L("No API-key env vars are set. Add one (e.g. OPENWEBUI_API_KEY) and reopen this window."))
+                .font(.caption).foregroundStyle(.secondary)
+        case .envPicker:
+            Picker(L("Environment var"), selection: $form.selectedEnv) {
+                ForEach(form.envOptions, id: \.self) { v in Text(v).tag(v) }
             }
-        case .manual:
+            .pickerStyle(.menu)
+        case .manualKey:
             SecureField("sk-…", text: $form.manualKey).textFieldStyle(.roundedBorder)
         case .none:
             EmptyView()

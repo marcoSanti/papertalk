@@ -604,10 +604,36 @@ final class FormTests: PapertalkTestCase {
         XCTAssertEqual(f.applyModels([]), "No models returned by /models")
     }
 
+    func testKeyInputFollowsTheKeySource() {
+        var f = LLMSettingsForm(LLMSettings(baseUrl: "u", apiKey: "", model: "m", keyEnv: ""), setEnvVars: [])
+        f.keySource = .none
+        XCTAssertEqual(f.keyInput, KeyInput.none)
+        f.keySource = .manual
+        XCTAssertEqual(f.keyInput, .manualKey)
+        f.keySource = .env
+        XCTAssertEqual(f.keyInput, .noEnvVars)
+        let withVars = LLMSettingsForm(LLMSettings(baseUrl: "u", apiKey: "", model: "m", keyEnv: "MY_KEY"), setEnvVars: ["MY_KEY"])
+        XCTAssertEqual(withVars.keyInput, .envPicker)
+    }
+
+    func testDepthNoteOnlyForCustomDepth() {
+        var f = ImportForm()
+        f.depth = .custom
+        XCTAssertTrue(f.showsDepthNote)
+        f.depth = .summary
+        XCTAssertFalse(f.showsDepthNote)
+    }
+
+    func testCombinedConfirmationTitle() {
+        let p = Fixtures.paper(title: "T")
+        XCTAssertEqual(ConfirmationText.combinedTitle(nil), "")
+        XCTAssertEqual(ConfirmationText.combinedTitle(.delete(p)), ConfirmationText(.delete(p)).combined)
+    }
+
     func testServerSettingsForm() {
         var f = ServerSettingsForm(ServerConfig(apiBase: "", token: ""))
         XCTAssertEqual(f.mode, .local)
-        XCTAssertEqual(f.summary, "This Mac")
+        XCTAssertEqual(f.summary, Device.thisTitle)   // "This Mac", "This computer" on Linux
         f.apiBase = " http://host:9170/// "
         XCTAssertEqual(f.config.apiBase, "")            // still local until switched
         XCTAssertEqual(f.configFromURL.apiBase, "http://host:9170")
@@ -886,6 +912,14 @@ final class CastFormTests: PapertalkTestCase {
         XCTAssertEqual(CastForm.genderHelp(CastForm.Row(role: "x", name: "", voice: "af_heart", gender: nil)),
                        "Gender unknown — pick one so the voice fits")
         XCTAssertEqual(CastForm.voiceHelp("bm_george"), "British · male")
+    }
+
+    func testNamePlaceholderFallsBackToName() throws {
+        var f = form()
+        XCTAssertEqual(f.namePlaceholder(f.rows[1]), "Ada")   // the author-menu placeholder
+        let author = try XCTUnwrap(f.authors.first)
+        f.rename(f.rows[1].id, to: author)
+        XCTAssertEqual(f.namePlaceholder(f.rows[1]), "Name")  // an author's name: no menu placeholder
     }
 }
 

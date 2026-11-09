@@ -19,6 +19,9 @@ struct PapertalkGTK: App {
             RootView(bridge: bridge)
         }
         .defaultSize(width: 1180, height: 740)
+        // The GTK backend always draws its light scheme and ignores `preferredColorScheme`,
+        // so the desktop's preference is set on the scene: every pane and sheet follows it.
+        .environment(\.colorScheme, bridge.colorScheme)
         .commands {
             CommandMenu(L("File")) {
                 Button(L("Import PDF…")) { bridge.store.beginImport() }
@@ -47,10 +50,15 @@ struct RootView: View {
                 Spacer()
                 PlayerBar(bridge: bridge)
                     .alert(confirmationTitle, isPresented: confirmationShown) {
+                        // As on macOS: confirm, an optional third choice, and the cancel wording.
                         if let pending = bridge.store.pendingConfirmation {
-                            Button(ConfirmationText(pending).confirmLabel) { bridge.store.confirmPending(pending) }
+                            let text = ConfirmationText(pending)
+                            Button(text.confirmLabel) { bridge.store.confirmPending(pending) }
+                            if let secondary = text.secondaryLabel {
+                                Button(secondary) { bridge.store.confirmSecondary(pending) }
+                            }
+                            Button(text.cancelLabel) { bridge.store.pendingConfirmation = nil }
                         }
-                        Button(L("Cancel")) { bridge.store.pendingConfirmation = nil }
                     }
                     .alert(duplicateTitle, isPresented: duplicateShown) {
                         Button(duplicateText?.confirmLabel ?? "") { bridge.store.resolveDuplicate(true) }
@@ -71,9 +79,7 @@ struct RootView: View {
         }
     }
 
-    private var confirmationTitle: String {
-        bridge.store.pendingConfirmation.map { ConfirmationText($0).combined } ?? ""
-    }
+    private var confirmationTitle: String { ConfirmationText.combinedTitle(bridge.store.pendingConfirmation) }
 
     private var duplicateText: ConfirmationText? {
         bridge.store.pendingDuplicate.map { ConfirmationText.duplicate(of: $0.duplicateOf) }

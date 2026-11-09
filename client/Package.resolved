@@ -1,5 +1,5 @@
 {
-  "originHash" : "4bfad922ca6b22f245508b2e4d42548e7d248f3317ccc498ad1a02b16c713f15",
+  "originHash" : "3b68841402bca1f16454a1f84a1d7512034872605ea2b231f97df2eda909856d",
   "pins" : [
     {
       "identity" : "androidkit",
@@ -53,14 +53,6 @@
       "state" : {
         "revision" : "8576f0d579b27020beccbccc3ea6844f3ddfc2c2",
         "version" : "0.14.0"
-      }
-    },
-    {
-      "identity" : "pythonkit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/pvieito/PythonKit",
-      "state" : {
-        "revision" : "e1d34f95c58189b771bfc8423b9b2cf8fc651664"
       }
     },
     {

@@ -31,6 +31,8 @@ struct ImportForm {
         writeInAppLanguage = p.episodeLanguage != .english && p.episodeLanguage == appLanguage
     }
 
+    /// Only a custom depth takes a description of what the user wants.
+    var showsDepthNote: Bool { depth == .custom }
     /// Only a summary has a length to choose; the other depths run as long as the paper needs.
     var showsLengthSlider: Bool { depth == .summary }
     /// "Up to 35 minutes", beside the slider.

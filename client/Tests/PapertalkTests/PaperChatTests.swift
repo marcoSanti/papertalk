@@ -19,7 +19,9 @@ final class PaperChatPresentationTests: PapertalkTestCase {
     func testContextCutsLongText() {
         let c = PaperChat.context(for: Fixtures.paper(), text: String(repeating: "a", count: PaperChat.maxTextCharacters + 10))
         XCTAssertTrue(c.hasSuffix(String(repeating: "a", count: 5) + "\n[The text is cut here.]"))
-        XCTAssertFalse(c.contains(String(repeating: "a", count: PaperChat.maxTextCharacters + 1)))
+        // The longest run of "a", rather than `contains` with a 120k needle (minutes on Linux).
+        let longestRun = c.split(whereSeparator: { $0 != "a" }).map(\.count).max() ?? 0
+        XCTAssertEqual(longestRun, PaperChat.maxTextCharacters)
     }
 
     func testQuestionAndSend() {
@@ -51,6 +53,7 @@ final class PaperChatPresentationTests: PapertalkTestCase {
         XCTAssertTrue(text.hasPrefix("It wins [p. 3](papertalk-source:3?"))
         XCTAssertTrue(text.contains("[p. 12](papertalk-source:12?"))
         XCTAssertEqual(PaperChat.linkingCitations("no [[cites]] here"), "no [[cites]] here")
+        #if os(macOS)   // `formatted` (AttributedString Markdown) is macOS only
         let accented = PaperChat.formatted(PaperChat.linkingCitations(#"x [[p. 2: "café señal über"]]"#)).runs.compactMap(\.link)
         XCTAssertEqual(accented.compactMap(PaperChat.citation(from:)), [.init(page: 2, quote: "café señal über")],
                        "accented quotes still make a link")
@@ -58,6 +61,7 @@ final class PaperChatPresentationTests: PapertalkTestCase {
         let links = PaperChat.formatted(text).runs.compactMap(\.link)
         XCTAssertEqual(links.compactMap(PaperChat.citation(from:)),
                        [.init(page: 3, quote: "beats the baseline (by 2%)"), .init(page: 12, quote: "we use attention")])
+        #endif
         XCTAssertNil(PaperChat.citation(from: try XCTUnwrap(URL(string: "https://example.com"))))
         XCTAssertNil(PaperChat.citation(from: try XCTUnwrap(URL(string: "papertalk-source:0?x"))))
     }

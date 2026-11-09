@@ -124,25 +124,61 @@ final class AVAudioPlayer {
 
     // MARK: - Sound server
 
-    /// The first available player reading raw s16le PCM from stdin.
-    /// PAPERTALK_AUDIO_SINK overrides it (a shell command, used by tests).
+    /// The players that can read raw s16le PCM from stdin, best first. `pw-cat` needs `--raw`:
+    /// without it, PipeWire 1.x reads stdin through libsndfile, rejects headerless PCM and exits
+    /// at once (no sound, no error).
+    static func sinkCandidates(rate: Int, channels: Int) -> [[String]] {
+        [
+            ["pw-cat", "--playback", "--raw", "--rate", "\(rate)", "--channels", "\(channels)", "--format", "s16", "-"],
+            ["paplay", "--raw", "--rate=\(rate)", "--channels=\(channels)", "--format=s16le"],
+            ["aplay", "-q", "-t", "raw", "-f", "S16_LE", "-r", "\(rate)", "-c", "\(channels)"],
+        ]
+    }
+
+    /// Working players found so far, by rate and channels.
+    private static var verifiedSinks: [String: [String]] = [:]
+    private static let sinkLock = NSLock()
+
+    /// The first player that is installed and actually plays (it's tried once with a few
+    /// milliseconds of silence, then remembered). PAPERTALK_AUDIO_SINK overrides it (a shell
+    /// command, used by tests).
     static func sinkCommand(rate: Int, channels: Int) -> [String]? {
         Self.ignoreSIGPIPE
         if let custom = ProcessInfo.processInfo.environment["PAPERTALK_AUDIO_SINK"] {
             return ["sh", "-c", custom]
         }
-        let candidates: [(String, [String])] = [
-            ("pw-cat", ["--playback", "--rate", "\(rate)", "--channels", "\(channels)", "--format", "s16", "-"]),
-            ("paplay", ["--raw", "--rate=\(rate)", "--channels=\(channels)", "--format=s16le"]),
-            ("aplay", ["-q", "-t", "raw", "-f", "S16_LE", "-r", "\(rate)", "-c", "\(channels)"]),
-        ]
+        let key = "\(rate)x\(channels)"
+        sinkLock.lock()
+        defer { sinkLock.unlock() }
+        if let known = verifiedSinks[key] { return known }
         let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-        for (tool, args) in candidates {
-            if path.split(separator: ":").contains(where: { FileManager.default.isExecutableFile(atPath: "\($0)/\(tool)") }) {
-                return [tool] + args
-            }
+        let dirs = path.split(separator: ":")
+        let installed = sinkCandidates(rate: rate, channels: channels).filter { command in
+            dirs.contains { FileManager.default.isExecutableFile(atPath: "\($0)/\(command[0])") }
         }
-        return nil
+        let silence = Data(count: rate * channels * 2 / 100)   // 10 ms
+        guard let working = installed.first(where: { plays($0, silence) }) else {
+            FileHandle.standardError.write(Data("Papertalk: no working audio player (tried \(installed.map { $0[0] })); install pipewire-bin, pulseaudio-utils or alsa-utils.\n".utf8))
+            return nil
+        }
+        verifiedSinks[key] = working
+        return working
+    }
+
+    /// Whether `command` accepts `pcm` on stdin and exits cleanly.
+    private static func plays(_ command: [String], _ pcm: Data) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = command
+        let input = Pipe()
+        process.standardInput = input
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return false }
+        try? input.fileHandleForWriting.write(contentsOf: pcm)
+        try? input.fileHandleForWriting.close()
+        process.waitUntilExit()
+        return process.terminationStatus == 0
     }
 
     /// Writing to a player that was just stopped must not kill the app.

@@ -131,3 +131,21 @@ final class DesktopThemeTests: PapertalkTestCase {
     }
 }
 #endif
+
+#if os(Linux)
+/// Choosing the sound server's player.
+final class AudioSinkTests: PapertalkTestCase {
+    /// Regression: without `--raw`, PipeWire's pw-cat rejected the PCM and nothing played.
+    func testPipeWireIsAskedForRawPCM() {
+        let pwCat = AVAudioPlayer.sinkCandidates(rate: 24_000, channels: 1).first { $0.first == "pw-cat" }
+        XCTAssertEqual(pwCat?.contains("--raw"), true)
+        XCTAssertEqual(pwCat?.contains("24000"), true)
+    }
+
+    func testEveryCandidateReadsRawPCM() {
+        for command in AVAudioPlayer.sinkCandidates(rate: 24_000, channels: 1) {
+            XCTAssertTrue(command.contains { $0.contains("raw") }, command.joined(separator: " "))
+        }
+    }
+}
+#endif

@@ -1,4 +1,5 @@
-"""Writes a small demo library for looking at the Linux UI (screenshot.sh).
+"""Writes a small demo library for looking at the Linux UI (screenshot.sh), with a short baked
+episode (tones) for each finished paper so the player can be tried.
 Only finished papers: anything mid-conversion would resume and call the LLM."""
 import json
 import os
@@ -36,6 +37,16 @@ PAPERS = [
     ("broken", "A Paper That Failed to Convert", ["Ada Lovelace"], [], False, "error"),
 ]
 
+def tone_wav(freq, seconds, rate=24000):
+    """A quiet sine tone as 24 kHz mono 16-bit WAV with a 44-byte header (the stored turn layout)."""
+    import math
+    import struct
+    n = int(rate * seconds)
+    pcm = b"".join(struct.pack("<h", int(3000 * math.sin(2 * math.pi * freq * i / rate))) for i in range(n))
+    header = b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+    return header + b"data" + struct.pack("<I", len(pcm)) + pcm
+
+
 root = os.path.join(sys.argv[1], "papers")
 for day, (pid, title, authors, tags, fav, state) in enumerate(PAPERS, 1):
     folder = os.path.join(root, pid)
@@ -51,5 +62,20 @@ for day, (pid, title, authors, tags, fav, state) in enumerate(PAPERS, 1):
         "message": "Done" if state == "done" else None,
         "status_error": None if state == "done" else "The LLM didn't answer (timeout).",
     }
+    if state == "done":
+        # A short baked episode (soft tones as stand-in voices), so the player has something to play.
+        turns = [("Jordan", f"Today we talk about {title}."), ("Ada", "Thanks for having me."),
+                 ("Jordan", "Let's start with the main idea.")]
+        transcript = {"paper_title": title, "speakers": [{"name": "Jordan"}, {"name": "Ada"}],
+                      "segments": [{"title": "Introduction", "turns": [{"speaker": s, "text": t} for s, t in turns]}]}
+        json.dump(transcript, open(os.path.join(folder, "transcript.json"), "w"))
+        os.makedirs(os.path.join(folder, "turns"), exist_ok=True)
+        durations = []
+        for i, _ in enumerate(turns):
+            open(os.path.join(folder, "turns", f"{i}.wav"), "wb").write(tone_wav(330 + 110 * i, 4.0))
+            durations.append(4.0)
+        json.dump({"durations": durations}, open(os.path.join(folder, "audio.json"), "w"))
+        record["has_audio"] = True
+        record["duration"] = sum(durations)
     json.dump(record, open(os.path.join(folder, "paper.json"), "w"))
 print(f"Demo library with {len(PAPERS)} papers in {root}")

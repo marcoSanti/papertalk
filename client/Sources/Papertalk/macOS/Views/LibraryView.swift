@@ -201,7 +201,19 @@ struct LibraryView: View {
 
     /// An empty library, a search with no results, or filters that hide everything.
     @ViewBuilder private var emptyState: some View {
-        switch LibraryPresentation.emptyState(libraryIsEmpty: store.papers.isEmpty, search: store.search) {
+        switch LibraryPresentation.emptyState(libraryIsEmpty: store.papers.isEmpty, search: store.search,
+                                              noSlides: store.showsNoSlides) {
+        case .noSlides:
+            let text = LibraryPresentation.emptyStateText(.noSlides)
+            ContentUnavailableView {
+                Label(text.title, systemImage: "rectangle.on.rectangle")
+            } description: {
+                Text(text.message)
+            } actions: {
+                Button(LibraryPresentation.importSlides, action: onImport)
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.large)
+            }
         case .emptyLibrary:
             ContentUnavailableView {
                 Label(L("Your library is empty"), systemImage: "doc.badge.plus")

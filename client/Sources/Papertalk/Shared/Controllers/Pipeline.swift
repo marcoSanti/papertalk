@@ -677,13 +677,14 @@ struct LocalPipeline {
     /// Answer the last question of a chat about a paper. `context` is the paper's details and
     /// text (`PaperChat.context`); `history` is the conversation so far, the question last.
     func ask(context: String, history: [ChatMessage]) async throws -> String {
-        let messages = [["role": "system", "content": prompts.ask + "\n\n" + PaperChat.citationRule + "\n\n" + context]]
+        let messages: [[String: Any]] = [["role": "system", "content": prompts.ask + "\n\n" + PaperChat.citationRule + "\n\n" + context]]
             + history.map { ["role": $0.role.rawValue, "content": $0.text] }
         return try await chat(messages: messages, maxTokens: 2000).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// One chat completion over `messages` (each a `role` and `content`).
-    private func chat(messages: [[String: String]], maxTokens: Int) async throws -> String {
+    /// One chat completion over `messages` (each a `role` and `content`: text, or an array of
+    /// text and image parts for a vision model).
+    func chat(messages: [[String: Any]], maxTokens: Int) async throws -> String {
         let body: [String: Any] = [
             "model": model,
             "messages": messages,

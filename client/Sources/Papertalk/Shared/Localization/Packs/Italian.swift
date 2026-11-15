@@ -712,5 +712,17 @@ extension LanguagePacks {
         "The downloaded file isn’t the expected version of Papertalk, so it wasn’t installed.": "Il file scaricato non è la versione attesa di Papertalk, quindi non è stato installato.",
         "Papertalk can’t replace itself in {0}. Install the update from its release page instead.": "Papertalk non può sostituirsi in {0}. Installa l’aggiornamento dalla sua pagina di rilascio.",
         "Installing updates isn’t supported on this system yet. Use the release page instead.": "L’installazione degli aggiornamenti non è ancora supportata su questo sistema. Usa la pagina di rilascio.",
+        "Describe a slide": "Descrivi una slide",
+        "Describing slide {0} of {1}…": "Descrizione slide {0} di {1}…",
+        "Import a presentation as a PDF: Papertalk reads each slide, describes the pictures, and turns it into an episode.": "Importa una presentazione in PDF: Papertalk legge ogni slide, descrive le immagini e ne fa un episodio.",
+        "Import slides…": "Importa slide…",
+        "Kept in Slides, apart from the papers. Slides with little text are shown to the LLM as images, so pick a model that reads images.": "Tenuta in Slide, separata dagli articoli. Le slide con poco testo vengono mostrate all'LLM come immagini, quindi scegli un modello che legge le immagini.",
+        "No slide decks yet": "Ancora nessuna presentazione",
+        "Slide deck note": "Nota sulla presentazione",
+        "Slide decks only: for each slide with little text, the LLM is shown the slide as an image and describes what it shows.": "Solo presentazioni: per ogni slide con poco testo, l'LLM vede la slide come immagine e descrive cosa mostra.",
+        "Slide decks only: put before the slides' text in every step (metadata, cast, script, mind map, Ask), so prompts written for papers read it as a presentation.": "Solo presentazioni: messa prima del testo delle slide in ogni passaggio (metadati, voci, copione, mappa mentale, Chiedi), così i prompt scritti per gli articoli la leggono come una presentazione.",
+        "Slide decks, kept apart from the papers": "Presentazioni, tenute separate dagli articoli",
+        "Slides": "Slide",
+        "This is a slide deck": "È una presentazione",
     ]
 }

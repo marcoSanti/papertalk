@@ -69,6 +69,12 @@ ideas. It's a native macOS app written in SwiftUI.
   background to pan; zoom with the controls or by pinching, as in the mind map. Click a paper or a line to see which concepts connect and open a mind map. In a
   library that connects to other libraries, the papers elsewhere it connects to show in grey
   around it.
+- **Slide decks.** Turn on **This is a slide deck** in the import sheet (it starts on from
+  **Slides** in the sidebar) to import a presentation exported as PDF. Decks live in **Slides**,
+  apart from the papers. Each slide with little text is shown to the LLM as an image and
+  described, so charts and diagrams make it into the episode (this needs a model that reads
+  images); the descriptions are saved in the deck's `slides.json`. Both prompts are editable
+  under **Slides** in Query Prompts. macOS only for now.
 - **Made for listening.** Episodes remember where you stopped, show in Control Center's Now
   Playing with their cover, and answer the media keys. Read along in the transcript.
 - **Works in the background.** Imports run while you listen to something else, with progress at

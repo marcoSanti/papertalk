@@ -181,7 +181,20 @@ struct UploadSheet: View {
                 .padding(.horizontal, 4)
             }
 
-            if form.rerunning == nil, !store.libraries.isEmpty {
+            if form.showsSlidesToggle {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(ImportForm.slidesToggleTitle, isOn: $form.isSlides)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .font(.callout.weight(.medium))
+                    Text(ImportForm.slidesToggleHelp)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 4)
+            }
+
+            if form.showsLibraryChoice, !store.libraries.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionLabel(title: L("Add to library"), systemImage: "books.vertical")
                     FlowLayout(spacing: 8, lineSpacing: 8) {

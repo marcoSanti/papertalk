@@ -64,7 +64,7 @@ final class PromptCatalogTests: PapertalkTestCase {
         XCTAssertEqual(Set(PromptCatalog.entries.map(\.id)).count, fields)
         XCTAssertEqual(Set(PromptCatalog.entries.map(\.keyPath)).count, fields)
         XCTAssertEqual(PromptCatalog.groups.flatMap(\.entries).map(\.id), PromptCatalog.entries.map(\.id))
-        XCTAssertEqual(PromptCatalog.groups.map(\.name), ["Paper details", "Planning", "Depth", "Dialogue", "Monologue", "Mind map", "Language", "Ask"])
+        XCTAssertEqual(PromptCatalog.groups.map(\.name), ["Paper details", "Planning", "Depth", "Dialogue", "Monologue", "Mind map", "Language", "Ask", "Slides"])
     }
 
     func testEachDefaultUsesOnlyTheTokensItLists() throws {

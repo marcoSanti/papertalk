@@ -712,5 +712,17 @@ extension LanguagePacks {
         "The downloaded file isn’t the expected version of Papertalk, so it wasn’t installed.": "Die geladene Datei ist nicht die erwartete Version von Papertalk und wurde nicht installiert.",
         "Papertalk can’t replace itself in {0}. Install the update from its release page instead.": "Papertalk kann sich in {0} nicht selbst ersetzen. Installiere das Update stattdessen über seine Release-Seite.",
         "Installing updates isn’t supported on this system yet. Use the release page instead.": "Updates zu installieren wird auf diesem System noch nicht unterstützt. Nutze stattdessen die Release-Seite.",
+        "Describe a slide": "Folie beschreiben",
+        "Describing slide {0} of {1}…": "Beschreibe Folie {0} von {1}…",
+        "Import a presentation as a PDF: Papertalk reads each slide, describes the pictures, and turns it into an episode.": "Importiere eine Präsentation als PDF: Papertalk liest jede Folie, beschreibt die Bilder und macht daraus eine Episode.",
+        "Import slides…": "Folien importieren…",
+        "Kept in Slides, apart from the papers. Slides with little text are shown to the LLM as images, so pick a model that reads images.": "Liegt unter Folien, getrennt von den Artikeln. Folien mit wenig Text werden dem LLM als Bild gezeigt, wähle also ein Modell, das Bilder liest.",
+        "No slide decks yet": "Noch keine Präsentationen",
+        "Slide deck note": "Hinweis zur Präsentation",
+        "Slide decks only: for each slide with little text, the LLM is shown the slide as an image and describes what it shows.": "Nur Präsentationen: Für jede Folie mit wenig Text sieht das LLM die Folie als Bild und beschreibt, was sie zeigt.",
+        "Slide decks only: put before the slides' text in every step (metadata, cast, script, mind map, Ask), so prompts written for papers read it as a presentation.": "Nur Präsentationen: Steht in jedem Schritt (Metadaten, Stimmen, Skript, Mindmap, Fragen) vor dem Text der Folien, damit für Artikel geschriebene Prompts sie als Präsentation lesen.",
+        "Slide decks, kept apart from the papers": "Präsentationen, getrennt von den Artikeln",
+        "Slides": "Folien",
+        "This is a slide deck": "Das ist eine Präsentation",
     ]
 }

@@ -5,7 +5,7 @@ import Foundation
 
 /// What the sidebar can point the library at.
 enum SidebarItem: Hashable {
-    case all, favorites, authors, tag(String), library(String)
+    case all, favorites, authors, slides, tag(String), library(String)
 }
 
 /// Library wording and keyboard navigation. Pure functions: the library and
@@ -20,6 +20,7 @@ enum LibraryPresentation {
         case .tag: return tag.map { "#\($0)" } ?? L("Tag")
         case .author: return author ?? L("Author")
         case .library: return library ?? L("Library")
+        case .slides: return L("Slides")
         }
     }
 
@@ -31,6 +32,7 @@ enum LibraryPresentation {
         case .authors: return L("Authors")
         case .tag(let tag): return tag
         case .library(let id): return libraries.first { $0.id == id }?.name ?? L("Library")
+        case .slides: return L("Slides")
         }
     }
 
@@ -76,6 +78,8 @@ enum LibraryPresentation {
     /// What the library shows when no paper matches.
     enum EmptyState: Equatable {
         case emptyLibrary
+        /// The Slides library has no decks yet.
+        case noSlides
         case noSearchResults(String)
         case filteredOut
     }
@@ -85,6 +89,9 @@ enum LibraryPresentation {
         case .emptyLibrary:
             return (L("Your library is empty"),
                     L("Import a PDF and Papertalk will turn it into a podcast episode, right on {0}.", Device.this))
+        case .noSlides:
+            return (L("No slide decks yet"),
+                    L("Import a presentation as a PDF: Papertalk reads each slide, describes the pictures, and turns it into an episode."))
         case .noSearchResults(let text):
             return (L("No results for “{0}”", text.trimmingCharacters(in: .whitespaces)), L("Check the spelling or try a new search."))
         case .filteredOut:
@@ -92,13 +99,17 @@ enum LibraryPresentation {
         }
     }
 
+    /// The empty Slides library's import button.
+    static var importSlides: String { L("Import slides…") }
+
     /// The details pane with nothing selected.
     static var noSelection: (title: String, message: String) {
         (L("No paper selected"), L("Select a paper to see its details and episode."))
     }
 
     /// Which empty state applies: an empty library, a search with no hits, or filters that hide everything.
-    static func emptyState(libraryIsEmpty: Bool, search: String) -> EmptyState {
+    static func emptyState(libraryIsEmpty: Bool, search: String, noSlides: Bool = false) -> EmptyState {
+        if noSlides { return .noSlides }
         if libraryIsEmpty { return .emptyLibrary }
         if !search.trimmingCharacters(in: .whitespaces).isEmpty { return .noSearchResults(search) }
         return .filteredOut

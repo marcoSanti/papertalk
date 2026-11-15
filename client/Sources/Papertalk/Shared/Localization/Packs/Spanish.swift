@@ -712,5 +712,17 @@ extension LanguagePacks {
         "The downloaded file isn’t the expected version of Papertalk, so it wasn’t installed.": "El archivo descargado no es la versión esperada de Papertalk, así que no se instaló.",
         "Papertalk can’t replace itself in {0}. Install the update from its release page instead.": "Papertalk no puede reemplazarse en {0}. Instala la actualización desde su página de la versión.",
         "Installing updates isn’t supported on this system yet. Use the release page instead.": "Instalar actualizaciones aún no es compatible con este sistema. Usa la página de la versión.",
+        "Describe a slide": "Describir una diapositiva",
+        "Describing slide {0} of {1}…": "Describiendo la diapositiva {0} de {1}…",
+        "Import a presentation as a PDF: Papertalk reads each slide, describes the pictures, and turns it into an episode.": "Importa una presentación en PDF: Papertalk lee cada diapositiva, describe las imágenes y la convierte en un episodio.",
+        "Import slides…": "Importar diapositivas…",
+        "Kept in Slides, apart from the papers. Slides with little text are shown to the LLM as images, so pick a model that reads images.": "Se guarda en Diapositivas, aparte de los artículos. Las diapositivas con poco texto se muestran al LLM como imágenes, así que elige un modelo que lea imágenes.",
+        "No slide decks yet": "Aún no hay presentaciones",
+        "Slide deck note": "Nota de presentación",
+        "Slide decks only: for each slide with little text, the LLM is shown the slide as an image and describes what it shows.": "Solo presentaciones: para cada diapositiva con poco texto, el LLM ve la diapositiva como imagen y describe lo que muestra.",
+        "Slide decks only: put before the slides' text in every step (metadata, cast, script, mind map, Ask), so prompts written for papers read it as a presentation.": "Solo presentaciones: va antes del texto de las diapositivas en cada paso (metadatos, voces, guion, mapa mental, Preguntar), para que los prompts escritos para artículos la lean como una presentación.",
+        "Slide decks, kept apart from the papers": "Presentaciones, guardadas aparte de los artículos",
+        "Slides": "Diapositivas",
+        "This is a slide deck": "Es una presentación",
     ]
 }

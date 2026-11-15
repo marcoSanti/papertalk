@@ -577,8 +577,8 @@ final class AppStoreTests: PapertalkTestCase {
             Fixtures.paper(id: "a", tags: ["nlp", "vision"], favorite: true, authors: ["Ada Lovelace"]),
             Fixtures.paper(id: "b", tags: ["nlp"], authors: ["Ada Lovelace", "Grace Hopper"]),
         ])
-        XCTAssertEqual(store.sidebarItems, [.all, .favorites, .authors, .tag("nlp"), .tag("vision")])
-        XCTAssertEqual(store.sidebarItems.map(store.sidebarCount), [2, 1, 2, 2, 1])
+        XCTAssertEqual(store.sidebarItems, [.all, .favorites, .authors, .slides, .tag("nlp"), .tag("vision")])
+        XCTAssertEqual(store.sidebarItems.map(store.sidebarCount), [2, 1, 2, 0, 2, 1])
         XCTAssertEqual(store.sidebarCount(.tag("missing")), 0)
     }
 
@@ -590,7 +590,7 @@ final class AppStoreTests: PapertalkTestCase {
         store.saveLibrary(form)
         let lib = try XCTUnwrap(store.libraries.first)
         XCTAssertEqual(lib.name, "Neuro science")
-        XCTAssertEqual(store.sidebarItems, [.all, .favorites, .authors, .library(lib.id)])
+        XCTAssertEqual(store.sidebarItems, [.all, .favorites, .authors, .slides, .library(lib.id)])
 
         store.moveToLibrary("a", lib.id)
         store.selectSidebar(.library(lib.id))

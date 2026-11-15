@@ -232,7 +232,7 @@ Still to do, in order:
 
 - Local library: `~/Library/Application Support/papertalk/papers/<id>.papertalk/` (or the folder
   picked in Settings, `LocalStorage.folderDefaultsKey`), containing
-  `paper.json`, `source.pdf`, `transcript.json`, `mindmap.json`, `audio.json` (manifest) and
+  `paper.json`, `source.pdf`, `transcript.json`, `mindmap.json`, `slides.json` (decks only), `audio.json` (manifest) and
   `turns/<n>.wav`.
   Kokoro models: `~/.cache/fluidaudio/Models/kokoro*`.
 - Keys stay `papers/<id>/…` on every backend; only `LocalStorage.path(_:)` adds the `.papertalk`

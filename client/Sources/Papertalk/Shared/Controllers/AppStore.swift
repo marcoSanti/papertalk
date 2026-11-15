@@ -111,6 +111,7 @@ final class AppStore: ObservableObject {
     /// dropped PDF to load into it, once.
     func prepareImport(_ form: inout ImportForm) -> URL? {
         form.library = shownLibrary
+        form.isSlides = view == .slides
         if let p = rerunning { form.rerun(p) }
         defer { pendingUploadURL = nil }
         return pendingUploadURL
@@ -125,7 +126,8 @@ final class AppStore: ObservableObject {
                   targetMinutes: form.targetMinutes, scriptLanguage: form.scriptLanguage)
         } else if let s = form.submission {
             upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
-                   targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage, library: s.library)
+                   targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage, library: s.library,
+                   slides: s.slides)
         } else {
             return false
         }
@@ -404,8 +406,9 @@ final class AppStore: ObservableObject {
     private var toastTask: Task<Void, Never>?
     private var playbackCancelables: Set<AnyCancellable> = []
 
-    /// What the library shows: everything, favourites, the Authors screen, one tag, one author or one library.
-    enum ViewMode { case all, fav, authors, tag, author, library }
+    /// What the library shows: every paper, favourites, the Authors screen, one tag, one author,
+    /// one library, or the slide decks (kept apart: no other view shows them).
+    enum ViewMode { case all, fav, authors, tag, author, library, slides }
 
     /// `storage` pins the backend (tests pass a temp-folder `LocalStorage`);
     /// the app passes nothing and follows the configured server. `speech`
@@ -488,20 +491,9 @@ final class AppStore: ObservableObject {
         #if os(Linux)
         return PDFDocument.coverPNG(of: data, width: width * 2).map(NSImage.init(png:))
         #else
-        guard let doc = PDFDocument(data: data), let page = doc.page(at: 0) else { return nil }
-        let bounds = page.bounds(for: .mediaBox)
-        guard bounds.width > 0, bounds.height > 0 else { return nil }
-        let scale: CGFloat = 2
-        let w = Int(width * scale), h = Int(width * scale * bounds.height / bounds.width)
-        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8,
-                                  bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.setFillColor(CGColor.white)
-        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
-        ctx.scaleBy(x: CGFloat(w) / bounds.width, y: CGFloat(h) / bounds.height)
-        page.draw(with: .mediaBox, to: ctx)
-        guard let cg = ctx.makeImage() else { return nil }
-        return NSImage(cgImage: cg, size: NSSize(width: width, height: width * bounds.height / bounds.width))
+        guard let page = PDFDocument(data: data)?.page(at: 0),
+              let cg = LocalPipeline.renderPage(page, pixelWidth: Int(width * 2)) else { return nil }
+        return NSImage(cgImage: cg, size: NSSize(width: width, height: width * CGFloat(cg.height) / CGFloat(cg.width)))
         #endif
     }
 
@@ -516,12 +508,15 @@ final class AppStore: ObservableObject {
     /// Whether a paper belongs to the current sidebar scope (all, favorites,
     /// a tag, an author), before the status filter and search apply.
     private func inScope(_ p: Paper) -> Bool {
+        if view == .slides { return p.isSlides }
+        guard !p.isSlides else { return false }
         switch view {
         case .all, .authors: return true
         case .fav: return p.favorite
         case .tag: return activeTag.map { p.tags.contains($0) } ?? true
         case .author: return activeAuthor.map { p.authors.map(AuthorName.clean).contains($0) } ?? true
         case .library: return p.library == activeLibrary
+        case .slides: return true
         }
     }
 
@@ -533,7 +528,7 @@ final class AppStore: ObservableObject {
     }
 
     /// The Favorites row's count.
-    var favoritesCount: Int { papers.values.filter(\.favorite).count }
+    var favoritesCount: Int { papers.values.filter { $0.favorite && !$0.isSlides }.count }
 
     /// The papers the library shows: the sidebar scope, then the status filter and the search
     /// ("#…" searches tags only), sorted by the chosen order.
@@ -574,6 +569,9 @@ final class AppStore: ObservableObject {
         status == "running" ? p.isActive : p.state == status
     }
 
+    /// The Slides library is on screen and holds no decks (its own empty state).
+    var showsNoSlides: Bool { view == .slides && !papers.values.contains(where: \.isSlides) }
+
     /// The selected paper's current record.
     func selectedPaper() -> Paper? { selectedId.flatMap { papers[$0] } }
 
@@ -588,6 +586,7 @@ final class AppStore: ObservableObject {
         case .authors, .author: return .authors
         case .tag: return activeTag.map { .tag($0) } ?? .all
         case .library: return activeLibrary.map { .library($0) } ?? .all
+        case .slides: return .slides
         }
     }
 
@@ -602,6 +601,7 @@ final class AppStore: ObservableObject {
         case .authors: view = .authors
         case .tag(let t): view = .tag; activeTag = t
         case .library(let id): view = .library; activeLibrary = id
+        case .slides: view = .slides
         }
         if let id = selectedId, !filteredPapers().contains(where: { $0.id == id }) {
             selectedId = nil
@@ -610,17 +610,18 @@ final class AppStore: ObservableObject {
 
     /// The sidebar's rows in order: the library sections, each library, then each tag.
     var sidebarItems: [SidebarItem] {
-        [.all, .favorites, .authors] + libraries.map { .library($0.id) } + tagCounts.map { .tag($0.0) }
+        [.all, .favorites, .authors, .slides] + libraries.map { .library($0.id) } + tagCounts.map { .tag($0.0) }
     }
 
     /// The count shown beside a sidebar row.
     func sidebarCount(_ item: SidebarItem) -> Int {
         switch item {
-        case .all: return papers.count
+        case .all: return papers.values.filter { !$0.isSlides }.count
         case .favorites: return favoritesCount
         case .authors: return authorCounts.count
         case .tag(let tag): return tagCounts.first { $0.0 == tag }?.1 ?? 0
         case .library(let id): return papers.values.filter { $0.library == id }.count
+        case .slides: return papers.values.filter(\.isSlides).count
         }
     }
 
@@ -698,7 +699,7 @@ final class AppStore: ObservableObject {
     /// Every tag with how many papers have it, most papers first, ties A–Z.
     var tagCounts: [(String, Int)] {
         var counts: [String: Int] = [:]
-        for p in papers.values {
+        for p in papers.values where !p.isSlides {
             for t in Set(p.tags) { counts[t, default: 0] += 1 }
         }
         return counts.sorted { $0.value != $1.value ? $0.value > $1.value
@@ -716,7 +717,7 @@ final class AppStore: ObservableObject {
         // Views ask for it once per author row on every redraw: build it once per library change.
         if let cached = authorIndex { return cached }
         var out: [String: [Paper]] = [:]
-        for p in papers.values {
+        for p in papers.values where !p.isSlides {
             for a in Set(p.authors.map(AuthorName.clean)) where !a.isEmpty {
                 out[a, default: []].append(p)
             }
@@ -1081,14 +1082,15 @@ final class AppStore: ObservableObject {
     }
 
     /// First existing paper (other than `p`) that shares its title or DOI, in any library: a paper
-    /// already filed elsewhere still counts.
+    /// already filed elsewhere still counts. Decks are only compared with decks.
     func findDuplicate(of p: Paper?) -> Paper? {
         guard let p else { return nil }
         func norm(_ s: String?) -> String { (s ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
         let title = norm(p.title), doi = norm(p.doi)
         guard !title.isEmpty || !doi.isEmpty else { return nil }
         return papers.values.first { q in
-            guard q.id != p.id else { return false }
+            // A deck and the paper it presents share a title and are both wanted.
+            guard q.id != p.id, q.isSlides == p.isSlides else { return false }
             let qTitle = norm(q.title), qDoi = norm(q.doi)
             return (!doi.isEmpty && !qDoi.isEmpty && qDoi == doi) ||
                    (!title.isEmpty && !qTitle.isEmpty && qTitle == title)
@@ -1413,8 +1415,9 @@ final class AppStore: ObservableObject {
             return .failure(L("This paper has no PDF to read."))
         }
         // shortcut: text layer only (PDFKit), no OCR; a scanned PDF without one gets the message below.
-        let pages = await Task.detached { LocalPipeline.extractPages(pdf) }.value
-        let text = PaperChat.pagedText(pages)
+        // A deck's pages are its slides, with the descriptions of its pictures.
+        let pages = await sourcePages(paper, pdf: pdf)
+        let text = (paper.isSlides ? prompts.slidesSource + "\n\n" : "") + PaperChat.pagedText(pages)
         guard !pages.joined().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .failure(L("Couldn't read any text in this paper's PDF. A scanned PDF needs a text layer first."))
         }
@@ -1500,7 +1503,7 @@ final class AppStore: ObservableObject {
         defer { endMindMapJob(id) }
         guard papers[id] != nil else { return false }   // deleted while queued
         guard let pdfData = try? await storage.read(K.pdf(id)) else { show(L("No PDF to read")); return false }
-        let text = await Task.detached { LocalPipeline.extractText(pdfData) }.value
+        let text = await sourceText(p, pdf: pdfData)
         guard !text.isEmpty else { show(L("Could not read PDF text")); return false }
         updateMindMapJob(id, progress: 0.08, message: L("Asking the LLM for the paper's key concepts…"))
         // Cancelled when the drawing ends (below), so holding the store is fine.
@@ -1575,7 +1578,8 @@ final class AppStore: ObservableObject {
             guard let pdfData = try? await storage.read(K.pdf(id)) else {
                 appendLog("ERROR: no PDF on disk to extract metadata from", paper: id); show(L("No PDF to read")); return
             }
-            let text = await Task.detached { LocalPipeline.extractText(pdfData) }.value
+            guard let p = papers[id] else { return }
+            let text = await sourceText(p, pdf: pdfData)
             guard !text.isEmpty else { show(L("Could not read PDF text")); return }
             _ = await extractMetaLLM(id, text: text, fallback: papers[id]?.displayTitle ?? "Untitled")
         }
@@ -1637,14 +1641,43 @@ final class AppStore: ObservableObject {
 
     /// Run the in-process pipeline on a PDF (or an existing stored paper).
     /// `targetMinutes` is a summary's length (nil: the default); `scriptLanguage`
-    /// the language the episode is written in (nil: English); `library` the `Library` it's filed in.
+    /// the language the episode is written in (nil: English); `library` the `Library` it's filed in;
+    /// `slides` imports a slide deck into the Slides library instead of a paper.
     func upload(_ pdf: Data, filename: String, depth: Depth, depthNote: String, targetMinutes: Int? = nil,
-                scriptLanguage: AppLanguage? = nil, library: String? = nil) {
+                scriptLanguage: AppLanguage? = nil, library: String? = nil, slides: Bool = false) {
         let id = UUID().uuidString
         startRun(id) {
             await self.runPipeline(nil, id: id, pdf: pdf, filename: filename, depth: depth, depthNote: depthNote,
-                                   targetMinutes: targetMinutes, scriptLanguage: scriptLanguage, library: library)
+                                   targetMinutes: targetMinutes, scriptLanguage: scriptLanguage, library: library,
+                                   slides: slides)
         }
+    }
+
+    /// A source's text by page: a paper's PDF pages, or a deck's slides with the LLM's
+    /// descriptions of its picture slides (described once, then read back from `K.slides`).
+    private func sourcePages(_ p: Paper, pdf: Data) async -> [String] {
+        guard p.isSlides else { return await Task.detached { LocalPipeline.extractPages(pdf) }.value }
+        let id = p.id
+        if let cached = await storage.exists([String].self, K.slides(id)), !cached.isEmpty { return cached }
+        var pipeline = LocalPipeline(baseUrl: llm.baseUrl, apiKey: llm.resolvedKey(),
+                                     model: llm.model.isEmpty ? "llama3.1:70b" : llm.model)
+        pipeline.prompts = prompts
+        pipeline.log = { [weak self] line in Task { @MainActor in self?.appendLog(line, paper: id) } }
+        // Describing spans the extraction band (0.02 → 0.08) of the import bar.
+        pipeline.onProgress = { [weak self] frac, label in
+            Task { @MainActor in self?.updateRec(id) { if $0.isActive { $0.progress = 0.02 + 0.06 * frac; $0.message = label } } }
+        }
+        appendLog("Reading \(p.displayTitle) as a slide deck…", paper: id)
+        let pages = await pipeline.slidePages(pdf)
+        // A stopped run leaves no partial cache: the next run describes the rest.
+        if !Task.isCancelled, !pages.isEmpty { await storage.save(pages, K.slides(id)) }
+        return pages
+    }
+
+    /// The source's text as the LLM steps read it (a deck's after the slide deck note).
+    private func sourceText(_ p: Paper, pdf: Data) async -> String {
+        let pages = await sourcePages(p, pdf: pdf)
+        return p.isSlides ? LocalPipeline.slidesText(pages, note: prompts.slidesSource) : pages.map { $0 + "\n" }.joined()
     }
 
     // MARK: Audio baking
@@ -1863,7 +1896,7 @@ final class AppStore: ObservableObject {
     /// Each step's result is saved as it lands, so a stopped or quit run resumes from there.
     private func runPipeline(_ existing: Paper?, id newId: String? = nil, pdf: Data? = nil, filename: String = "",
                              depth: Depth = .inDepth, depthNote: String = "", targetMinutes: Int? = nil,
-                             scriptLanguage: AppLanguage? = nil, library: String? = nil) async {
+                             scriptLanguage: AppLanguage? = nil, library: String? = nil, slides: Bool = false) async {
         let id = existing?.id ?? newId ?? UUID().uuidString
         // First conversion is when notifications start to matter: ask then.
         notifier.requestPermissionIfNeeded()
@@ -1875,7 +1908,11 @@ final class AppStore: ObservableObject {
                                      depth: existing?.depth ?? depth.rawValue, bibtex: nil, targetMinutes: targetMinutes, progress: 0, duration: 0, progressTs: nil,
                                      stage: "extract", message: L("Queued"), statusError: nil)
         if existing == nil, let scriptLanguage, scriptLanguage != .english { rec.scriptLanguage = scriptLanguage.rawValue }
-        if existing == nil { rec.library = library }
+        if existing == nil {
+            // Decks live only in the Slides library, never in a user library.
+            rec.library = slides ? nil : library
+            rec.kind = slides ? Paper.slidesKind : nil
+        }
         papers[id] = rec
         selectedId = id
         // Store the PDF right away: the record already says hasPdf, and the
@@ -1922,7 +1959,8 @@ final class AppStore: ObservableObject {
 
         updateRec(id) { $0.state = "running"; $0.stage = "extract"; $0.progress = 0.02; $0.message = L("Extracting text…") }
         appendLog("Extracting PDF text…", paper: id)
-        let text = await Task.detached { LocalPipeline.extractText(pdfData) }.value
+        let text = await sourceText(papers[id] ?? rec, pdf: pdfData)
+        if Task.isCancelled { return }
         guard !text.isEmpty else {
             updateRec(id) { $0.state = "error"; $0.statusError = L("Could not read PDF text") }; appendLog("ERROR: Could not read PDF text", paper: id); return
         }

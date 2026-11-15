@@ -712,5 +712,17 @@ extension LanguagePacks {
         "The downloaded file isn’t the expected version of Papertalk, so it wasn’t installed.": "Le fichier téléchargé n’est pas la version attendue de Papertalk ; il n’a pas été installé.",
         "Papertalk can’t replace itself in {0}. Install the update from its release page instead.": "Papertalk ne peut pas se remplacer dans {0}. Installez plutôt la mise à jour depuis sa page de version.",
         "Installing updates isn’t supported on this system yet. Use the release page instead.": "L’installation des mises à jour n’est pas encore prise en charge sur ce système. Utilisez plutôt la page de version.",
+        "Describe a slide": "Décrire une diapositive",
+        "Describing slide {0} of {1}…": "Description de la diapositive {0} sur {1}…",
+        "Import a presentation as a PDF: Papertalk reads each slide, describes the pictures, and turns it into an episode.": "Importez une présentation en PDF : Papertalk lit chaque diapositive, décrit les images et en fait un épisode.",
+        "Import slides…": "Importer des diapositives…",
+        "Kept in Slides, apart from the papers. Slides with little text are shown to the LLM as images, so pick a model that reads images.": "Rangée dans Diapositives, à part des articles. Les diapositives avec peu de texte sont montrées au LLM comme images : choisissez un modèle qui lit les images.",
+        "No slide decks yet": "Aucune présentation pour l'instant",
+        "Slide deck note": "Note sur la présentation",
+        "Slide decks only: for each slide with little text, the LLM is shown the slide as an image and describes what it shows.": "Présentations uniquement : pour chaque diapositive avec peu de texte, le LLM voit la diapositive comme image et décrit ce qu'elle montre.",
+        "Slide decks only: put before the slides' text in every step (metadata, cast, script, mind map, Ask), so prompts written for papers read it as a presentation.": "Présentations uniquement : placée avant le texte des diapositives à chaque étape (métadonnées, voix, script, carte mentale, Demander), pour que les prompts écrits pour des articles la lisent comme une présentation.",
+        "Slide decks, kept apart from the papers": "Présentations, rangées à part des articles",
+        "Slides": "Diapositives",
+        "This is a slide deck": "C'est une présentation",
     ]
 }

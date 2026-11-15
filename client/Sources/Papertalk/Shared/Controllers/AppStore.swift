@@ -1679,9 +1679,10 @@ final class AppStore: ObservableObject {
             let voiceMap = castVoices(for: id, speakers: flat.map { $0.speaker })
             let speed = Float(player.voiceSpeed)
             // Resume: reuse every turn already baked on disk instead of voicing it again.
-            var wavs: [Data?] = []
-            for i in 0..<total { wavs.append(try? await storage.read(K.turn(id, i))) }
-            let todo = (0..<total).filter { wavs[$0] == nil }
+            // Only durations are kept: holding every turn's audio until the end ran memory up.
+            var durations: [Double?] = []
+            for i in 0..<total { durations.append((try? await storage.read(K.turn(id, i))).map(KokoroSpeech.wavDuration)) }
+            let todo = (0..<total).filter { durations[$0] == nil }
             var done = total - todo.count
             func report() {
                 let frac = share + (1 - share) * Double(done) / Double(total)
@@ -1705,14 +1706,13 @@ final class AppStore: ObservableObject {
                 var queued = min(width, todo.count)
                 while let (i, wav) = try await group.next() {
                     do { try await storage.write(K.turn(id, i), wav) } catch { throw TurnFailure(index: i, underlying: error) }
-                    wavs[i] = wav
+                    durations[i] = KokoroSpeech.wavDuration(wav)
                     done += 1
                     report()
                     if queued < todo.count { group.addTask(operation: job(todo[queued])); queued += 1 }
                 }
             }
-            let durations = wavs.map { KokoroSpeech.wavDuration($0 ?? Data()) }
-            await storage.save(AudioManifest(durations: durations), K.audioManifest(id))
+            await storage.save(AudioManifest(durations: durations.map { $0 ?? 0 }), K.audioManifest(id))
             return nil
         } catch {
             let failure = error as? TurnFailure

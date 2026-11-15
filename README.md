@@ -262,7 +262,8 @@ made on the CPU with the same Kokoro voices as on the Mac.
 > playing a paper that has no audio yet, and can happen during an import too. Nothing is lost:
 > the script is saved, and voicing picks up where it stopped. It's an upstream bug (similar
 > reports: FluidAudio #817, #844), not a leak in Papertalk; it is checked again with each
-> FluidAudio update. Until it's fixed, [voices on a server](#voices-on-a-server) avoid it.
+> FluidAudio update. Papertalk now reloads the model every 25 pieces, which avoided it in every
+> test so far; if it still happens, [voices on a server](#voices-on-a-server) avoid it.
 
 ## Contributing
 

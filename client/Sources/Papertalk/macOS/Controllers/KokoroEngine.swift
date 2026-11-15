@@ -14,6 +14,11 @@ import FluidAudio
 /// the model twice onto the Neural Engine. Both have been seen to fail with
 /// "unable to compute the asynchronous prediction". A failed prediction is
 /// retried, the last attempt on a freshly loaded model.
+///
+/// The model is also dropped and loaded again every `callsPerModel` calls: on
+/// FluidAudio 0.17.7, the 81st call on one loaded model ran away inside Core ML
+/// to tens of GB and macOS killed the app (see AGENTS.md, FluidAudio #817), while
+/// the same call on a fresh model was fine. A reload takes about a second.
 actor KokoroEngine {
     /// The only instance: a second model copy fails on the Neural Engine.
     static let shared = KokoroEngine()
@@ -21,6 +26,10 @@ actor KokoroEngine {
     /// The English model; replaced by a fresh one after a failed prediction.
     private var manager = KokoroAneManager(variant: .english)
     private var initialized = false
+    /// Calls on one loaded model before it's dropped and loaded again.
+    static let callsPerModel = 25
+    /// Calls made on the current model.
+    private var callsOnModel = 0
     /// Tail of the queue: each call waits for the previous one to finish.
     private var tail: Task<Void, Never>?
 
@@ -61,6 +70,8 @@ actor KokoroEngine {
     private func synthesizeWithRetry(text: String, voice: String, speed: Float) async throws -> Data {
         let attempts = 3
         var lastError: Error?
+        if callsOnModel >= Self.callsPerModel { await reloadModel() }
+        callsOnModel += 1
         for attempt in 1...attempts {
             do {
                 try await ensureInitialized()
@@ -71,13 +82,18 @@ actor KokoroEngine {
                 // Give the Neural Engine a moment; before the final attempt,
                 // drop the model and load it again from scratch.
                 try? await Task.sleep(nanoseconds: UInt64(attempt) * 400_000_000)
-                if attempt == attempts - 1 {
-                    manager = KokoroAneManager(variant: .english)
-                    initialized = false
-                }
+                if attempt == attempts - 1 { await reloadModel() }
             }
         }
         throw lastError ?? CancellationError()
+    }
+
+    /// Free the loaded model and everything Core ML holds for it; the next call loads a fresh one.
+    private func reloadModel() async {
+        await manager.cleanup()
+        manager = KokoroAneManager(variant: .english)
+        initialized = false
+        callsOnModel = 0
     }
 }
 

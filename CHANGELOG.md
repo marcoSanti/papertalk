@@ -11,6 +11,7 @@ version has none) into the app.
 
 ## Unreleased
 
+- 🐛 **Voicing crashes**: making audio for several papers in a row, or playing one while another is voiced, no longer runs the Mac out of memory.
 - 🔎 **Ask cites the paper**: answers link each fact to its page, and the paper beside the chat jumps there with the quote highlighted.
 - 📚 **Cited papers**: Details lists the papers a paper cites; open, copy or jump to each one in your library.
 - 🎉 **What's new**: after an update, Papertalk opens once with a short list of what changed.

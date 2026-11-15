@@ -98,6 +98,7 @@ struct DetailView: View {
                        onPDF: openPDF, onTranscript: openTranscript, onMindMap: openMindMap, onEdit: onEdit,
                        onAsk: { PaperChatWindow.present(paperId: paper.id, store: store) },
                        onDetails: inWindow ? nil : { PaperWindow.present(paperId: paper.id, store: store) })
+        if SlideLinkPresentation.showsCard(paper, linkedDecks: store.decks(linkedTo: paper.id)) { linkCard }
         if PaperPresentation.showsConversionCard(paper) {
             ConversionStatusCard(paper: paper)
                 .transition(.blurReplace)
@@ -127,7 +128,7 @@ struct DetailView: View {
     private var hero: some View {
         VStack(spacing: 14) {
             PaperArtwork(paper: paper)
-                .frame(width: 128)
+                .frame(width: PaperPresentation.heroCoverWidth(paper))
                 .clipShape(RoundedRectangle(cornerRadius: Theme.thumbRadius, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: Theme.thumbRadius, style: .continuous)
@@ -181,6 +182,52 @@ struct DetailView: View {
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .glassEffect(.regular, in: Capsule())
+    }
+
+    // MARK: - Deck ↔ paper
+
+    /// A deck's paper (pick, open, unlink), or a paper's linked decks.
+    private var linkCard: some View {
+        let linked = store.linkedPaper(of: paper)
+        let candidates = store.linkablePapers
+        return VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(title: SlideLinkPresentation.cardTitle(paper), systemImage: SlideLinkPresentation.cardIcon(paper))
+            if paper.isSlides {
+                if let linked { linkRow(linked) }
+                if let status = SlideLinkPresentation.status(linked: linked) {
+                    Text(status).font(.caption).foregroundStyle(.secondary)
+                }
+                Menu(SlideLinkPresentation.menuTitle(linked: linked)) {
+                    ForEach(candidates) { p in
+                        Button(p.displayTitle) { store.linkDeck(paper.id, to: p.id) }
+                    }
+                    if SlideLinkPresentation.showsUnlink(linked: linked) {
+                        Divider()
+                        Button(SlideLinkPresentation.unlink, role: .destructive) { store.linkDeck(paper.id, to: nil) }
+                    }
+                }
+                .menuStyle(.button)
+                .controlSize(.small)
+                .fixedSize()
+                .disabled(candidates.isEmpty)
+                .help(SlideLinkPresentation.menuHelp(hasPapers: !candidates.isEmpty))
+            } else {
+                ForEach(store.decks(linkedTo: paper.id)) { linkRow($0) }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard()
+    }
+
+    /// A linked deck or paper; clicking shows it in its library.
+    private func linkRow(_ p: Paper) -> some View {
+        Button { store.reveal(p.id) } label: {
+            Label(p.displayTitle, systemImage: SlideLinkPresentation.rowIcon(p))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
+        .buttonStyle(.link)
+        .help(SlideLinkPresentation.openHelp(p))
     }
 
     // MARK: - Authors
@@ -408,13 +455,13 @@ struct DetailView: View {
                     store.revealInFinder(paper.id)
                 }
             }
-            ManageRow(title: L("Export paper…"), subtitle: L("Save it as a Papertalk file to share or keep"),
+            ManageRow(title: PaperPresentation.exportTitle(paper), subtitle: L("Save it as a Papertalk file to share or keep"),
                       icon: "shippingbox", tint: .brown) {
                 PaperPanels.exportPaper(paper, from: store)
             }
             .disabled(!PaperPresentation.canExportPaper(paper))
             Divider().padding(.vertical, 4)
-            ManageRow(title: L("Delete paper"), subtitle: nil, icon: "trash", tint: .red, destructive: true) {
+            ManageRow(title: PaperPresentation.deleteTitle(paper), subtitle: nil, icon: "trash", tint: .red, destructive: true) {
                 store.pendingConfirmation = .delete(paper)
             }
         }
@@ -569,7 +616,7 @@ private struct QuickActionBar: View {
         .buttonStyle(.plain)
         .disabled(!paper.hasPdf)
         .opacity(paper.hasPdf ? 1 : 0.4)
-        .help(L("Chat with the LLM about this paper"))
+        .help(PaperPresentation.askHelp(paper))
     }
 
     /// The button to the paper window: as tall as Play but lightly tinted, so it stands out

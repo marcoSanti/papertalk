@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Slide decks</title>
+<meta name="description" content="Import presentations, kept in their own Slides library, with picture slides described by the LLM.">
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<nav><a href="index.html">Papertalk Help</a></nav>
+<h1>Slide decks</h1>
+<p>Papertalk can turn a presentation into an episode, like a paper. Export the deck as a PDF first (Keynote, PowerPoint and Google Slides all can).</p>
+<h2>Import a deck</h2>
+<ul>
+<li>Open the import sheet and turn on <b>This is a slide deck</b>. Opened from <b>Slides</b> in the sidebar, it starts on.</li>
+<li>Pick the depth, length and language as for a paper (see <a href="import.html">Import a paper</a>).</li>
+</ul>
+<p>Slides are often mostly pictures. For each slide with little text, Papertalk shows the slide to your LLM as an image and asks what it shows: charts, diagrams, tables and photos. The descriptions are saved with the deck, so a rerun, a mind map or <a href="ask.html">Ask</a> doesn't describe the slides again.</p>
+<p>This needs a model that reads images. If the model turns the first image down, the rest of the deck is read from its text only, and the paper's log says so.</p>
+<h2>The Slides library</h2>
+<p>Decks are kept in <b>Slides</b> in the sidebar, apart from your papers: they don't show in <b>All Papers</b>, <b>Favorites</b>, <b>Authors</b>, the tags or your libraries, and a deck with the same title as a paper isn't treated as a duplicate.</p>
+<h2>Link a deck to its paper</h2>
+<p>A deck's details show a <b>Paper</b> card. Choose <b>Link to a paper…</b> and pick the paper the deck presents; it has to be imported first. Click the linked paper to open it, or use <b>Change paper…</b> and <b>Unlink paper</b> in the same menu.</p>
+<p>When a new deck has the same title or DOI as a paper, it's linked on import. A paper with linked decks shows a <b>Slides</b> card that opens each of them.</p>
+<p>Wherever a deck is shown, it's named as one: <b>Export deck…</b>, <b>Delete deck</b>, and in Ask, citations point to slides.</p>
+<h2>Prompts</h2>
+<p>Two prompts in <a href="settings.html">Settings → Query Prompts</a>, under <b>Slides</b>, shape decks: <b>Describe a slide</b> (what the LLM is asked about each picture slide) and <b>Slide deck note</b> (put before the slides' text in every step, so prompts written for papers read it as a presentation).</p>
+</body>
+</html>

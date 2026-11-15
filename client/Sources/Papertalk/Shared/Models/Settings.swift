@@ -330,6 +330,10 @@ struct PromptSettings: Codable, Equatable {
     var outputLanguage: String
     /// System prompt for Ask: chatting about one paper (its details and text appended).
     var ask: String
+    /// Slide decks only: describing a slide that is mostly pictures, shown to the LLM as an image.
+    var slideDescription: String
+    /// Slide decks only: put before the deck's slides, so the prompts written for papers read them as slides.
+    var slidesSource: String
 
     /// Replace each `{token}` in `template`; unknown tokens are left as typed.
     static func fill(_ template: String, _ values: [String: String]) -> String {
@@ -442,6 +446,16 @@ struct PromptSettings: Codable, Equatable {
         - When the paper doesn't say, say so plainly, then add general background only if it helps, marked as not from the paper.
         - The text comes from PDF extraction and may have broken words and mangled equations: read through them, and write equations in plain notation.
         - Be concise and specific. Answer in the language of the question.
+        """,
+        slideDescription: """
+        You are shown one slide of a presentation, as an image, with any text extracted from it.
+        Describe what the slide shows so that someone who can't see it learns everything it conveys: diagrams, charts (axes, trends, the numbers that matter), tables, photos, equations and how the parts relate.
+        - Say what the slide means, not how it looks: skip colours, fonts and layout unless they carry meaning.
+        - Don't repeat the extracted text word for word; use it to read the picture.
+        - Plain prose, no headings or lists, at most 150 words. If the slide shows nothing of substance (a title or a logo), say so in one sentence.
+        """,
+        slidesSource: """
+        This source is a slide deck (a presentation), not a paper: wherever the instructions say "paper", read "presentation". Each slide's text follows, numbered, with a description of what its pictures show in brackets. Slides are terse: explain the ideas they point to, but don't invent results the slides don't show.
         """
     )
 }
@@ -471,7 +485,9 @@ extension PromptSettings {
                   monologueRules: try v(.monologueRules, d.monologueRules),
                   blockOnly: try v(.blockOnly, d.blockOnly), blockFirst: try v(.blockFirst, d.blockFirst),
                   blockMiddle: try v(.blockMiddle, d.blockMiddle), blockLast: try v(.blockLast, d.blockLast),
-                  outputLanguage: try v(.outputLanguage, d.outputLanguage), ask: try v(.ask, d.ask))
+                  outputLanguage: try v(.outputLanguage, d.outputLanguage), ask: try v(.ask, d.ask),
+                  slideDescription: try v(.slideDescription, d.slideDescription),
+                  slidesSource: try v(.slidesSource, d.slidesSource))
     }
     /// The saved prompts, else the defaults.
     static func load() -> PromptSettings {

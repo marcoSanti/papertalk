@@ -4,7 +4,7 @@
 #if os(macOS)
 import SwiftUI
 
-/// All Papers, Favorites, Authors, one row per library and one per tag, with counts; a native `List(selection:)`
+/// All Papers, Favorites, Authors, Slides, one row per library and one per tag, with counts; a native `List(selection:)`
 /// (its highlight follows the system accent on purpose).
 struct SidebarView: View {
     @EnvironmentObject private var store: AppStore
@@ -13,7 +13,7 @@ struct SidebarView: View {
         List(selection: selection) {
             Section(L("Library")) {
                 Label(L("All Papers"), systemImage: "books.vertical")
-                    .badge(store.papers.count)
+                    .badge(store.sidebarCount(.all))
                     .tag(SidebarItem.all)
                 Label(L("Favorites"), systemImage: "star")
                     .badge(store.favoritesCount)
@@ -22,6 +22,10 @@ struct SidebarView: View {
                     .badge(store.authorCounts.count)
                     .help(L("Browse papers by author — like a contact book"))
                     .tag(SidebarItem.authors)
+                Label(L("Slides"), systemImage: "rectangle.on.rectangle")
+                    .badge(store.sidebarCount(.slides))
+                    .help(L("Slide decks, kept apart from the papers"))
+                    .tag(SidebarItem.slides)
             }
 
             Section {

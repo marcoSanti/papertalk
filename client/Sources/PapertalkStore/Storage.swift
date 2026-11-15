@@ -49,6 +49,9 @@ public enum K {
     public static func audio(_ id: String) -> String { "papers/\(id)/podcast.m4a" }
     /// The imported PDF.
     public static func pdf(_ id: String) -> String { "papers/\(id)/source.pdf" }
+    /// A slide deck's text per slide, with the LLM's descriptions of picture slides (`[String]`),
+    /// so reruns, Ask and mind maps don't pay for the descriptions again.
+    public static func slides(_ id: String) -> String { "papers/\(id)/slides.json" }
     /// Baked per-turn WAVs. `i` is the 0-based turn index.
     public static func turn(_ id: String, _ i: Int) -> String { "papers/\(id)/turns/\(i).wav" }
     /// The durations of the baked turns (`AudioManifest`); written last, so its presence means the audio is complete.

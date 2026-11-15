@@ -20,6 +20,9 @@ struct ImportForm {
     var writeInAppLanguage = false
     /// The `Library` the paper is filed in (nil: none); starts as the one on screen.
     var library: String?
+    /// A slide deck: kept in the Slides library, its picture slides described by the LLM.
+    /// Starts on when the sheet opens over Slides.
+    var isSlides = false
     /// Rerun only: the paper converted again from its stored PDF, so no file is chosen.
     private(set) var rerunning: Paper?
 
@@ -45,6 +48,17 @@ struct ImportForm {
     static var lengthMaxLabel: String { L("{0} min", SummaryLength.range.upperBound) }
     /// The length slider's tooltip.
     static var lengthHelp: String { L("The episode is written to fit in this time at the default speaking pace.") }
+
+    /// Only a new import chooses whether it's a deck; a rerun stays what it was.
+    var showsSlidesToggle: Bool { rerunning == nil }
+    /// Decks live only in Slides, so they aren't filed in a library.
+    var showsLibraryChoice: Bool { rerunning == nil && !isSlides }
+    /// The deck toggle's label.
+    static var slidesToggleTitle: String { L("This is a slide deck") }
+    /// Under the deck toggle.
+    static var slidesToggleHelp: String {
+        L("Kept in Slides, apart from the papers. Slides with little text are shown to the LLM as images, so pick a model that reads images.")
+    }
 
     /// A PDF has been chosen or dropped.
     var hasFile: Bool { fileData != nil }
@@ -99,9 +113,9 @@ struct ImportForm {
 
     /// What `AppStore.upload` needs, once the form is complete.
     var submission: (data: Data, filename: String, depth: Depth, depthNote: String, targetMinutes: Int?,
-                     scriptLanguage: AppLanguage, library: String?)? {
+                     scriptLanguage: AppLanguage, library: String?, slides: Bool)? {
         guard canStart, let fileData, let fileName else { return nil }
-        return (fileData, fileName, depth, depthNote, targetMinutes, scriptLanguage, library)
+        return (fileData, fileName, depth, depthNote, targetMinutes, scriptLanguage, isSlides ? nil : library, isSlides)
     }
 
     /// The file button and the label beside it.
@@ -112,9 +126,15 @@ struct ImportForm {
     /// The sheet's title.
     var heading: String { rerunning == nil ? L("New episode") : L("Rerun episode") }
     /// Under the title: what a new episode is, or which paper is rerun.
-    var subheading: String { rerunning?.displayTitle ?? L("Turn a paper into a podcast, converted on {0}.", Device.this) }
+    var subheading: String {
+        rerunning?.displayTitle ?? (isSlides ? L("Turn a slide deck into a podcast, converted on {0}.", Device.this)
+                                              : L("Turn a paper into a podcast, converted on {0}.", Device.this))
+    }
     /// Shown when `showsNoLLMWarning` is true.
-    static var noLLMWarning: String { L("No LLM is configured, so this paper will be read out as-is instead of as a discussion.") }
+    var noLLMWarning: String {
+        isSlides ? L("No LLM is configured, so this deck will be read out as-is instead of as a discussion.")
+            : L("No LLM is configured, so this paper will be read out as-is instead of as a discussion.")
+    }
 
     /// SF Symbol beside each depth choice.
     static func icon(for depth: Depth) -> String {

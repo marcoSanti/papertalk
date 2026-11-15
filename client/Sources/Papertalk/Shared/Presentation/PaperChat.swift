@@ -161,7 +161,11 @@ enum PaperChat {
     }
 
     /// The source pane's title: the page shown, or "The paper" before any citation is opened.
-    static func sourceTitle(page: Int?) -> String { page.map { L("Page {0}", $0) } ?? L("The paper") }
+    /// A deck's pages are its slides.
+    static func sourceTitle(page: Int?, slides: Bool = false) -> String {
+        if slides { return page.map { L("Slide {0}", $0) } ?? L("The deck") }
+        return page.map { L("Page {0}", $0) } ?? L("The paper")
+    }
     static var sourceLoading: String { L("Rendering pages…") }
     /// When the quote couldn't be found on its page: the page is still shown.
     static var sourceNotFound: String { L("The quoted words weren't found near this page.") }
@@ -183,16 +187,19 @@ enum PaperChat {
     /// "Ask — Title", the window's title.
     static func windowTitle(_ p: Paper) -> String { L("Ask — {0}", p.displayTitle) }
 
-    static var placeholder: String { L("Ask about this paper…") }
-    static var emptyTitle: String { L("Ask about this paper") }
-    static var emptyHint: String { L("Answers come from the paper's text and details. Try one of these, or type your own.") }
+    static func placeholder(slides: Bool = false) -> String { slides ? L("Ask about this deck…") : L("Ask about this paper…") }
+    static func emptyTitle(slides: Bool = false) -> String { slides ? L("Ask about this deck") : L("Ask about this paper") }
+    static func emptyHint(slides: Bool = false) -> String {
+        slides ? L("Answers come from the slides and the deck's details. Try one of these, or type your own.")
+            : L("Answers come from the paper's text and details. Try one of these, or type your own.")
+    }
     static var sendHelp: String { L("Send (Return)") }
     static var clearTitle: String { L("New chat") }
-    static var thinking: String { L("Reading the paper…") }
+    static func thinking(slides: Bool = false) -> String { slides ? L("Reading the slides…") : L("Reading the paper…") }
 
     /// Starter questions shown in an empty chat.
-    static var suggestions: [String] {
-        [L("Summarize this paper in three sentences."),
+    static func suggestions(slides: Bool = false) -> [String] {
+        [slides ? L("Summarize this deck in three sentences.") : L("Summarize this paper in three sentences."),
          L("What is the main contribution?"),
          L("How does the method work, step by step?"),
          L("What are the limitations?")]

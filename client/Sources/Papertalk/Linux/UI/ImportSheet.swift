@@ -46,7 +46,7 @@ struct ImportSheet: View {
                 Text(ImportForm.languageToggleHelp).font(.caption).foregroundColor(.gray)
             }
             if form.showsNoLLMWarning(llmBaseURL: store.llm.baseUrl) {
-                Text(ImportForm.noLLMWarning).foregroundColor(.orange)
+                Text(form.noLLMWarning).foregroundColor(.orange)
             }
             HStack(spacing: 8) {
                 Spacer()

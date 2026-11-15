@@ -181,7 +181,20 @@ struct UploadSheet: View {
                 .padding(.horizontal, 4)
             }
 
-            if form.rerunning == nil, !store.libraries.isEmpty {
+            if form.showsSlidesToggle {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(ImportForm.slidesToggleTitle, isOn: $form.isSlides)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .font(.callout.weight(.medium))
+                    Text(ImportForm.slidesToggleHelp)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 4)
+            }
+
+            if form.showsLibraryChoice, !store.libraries.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionLabel(title: L("Add to library"), systemImage: "books.vertical")
                     FlowLayout(spacing: 8, lineSpacing: 8) {
@@ -195,7 +208,7 @@ struct UploadSheet: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(ImportForm.noLLMWarning)
+                        Text(form.noLLMWarning)
                             .font(.callout)
                             .fixedSize(horizontal: false, vertical: true)
                         Button(L("Open LLM Settings…")) {
@@ -378,7 +391,7 @@ struct EditMetaSheet: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 PaperArtwork(paper: paper)
-                    .frame(width: 36)
+                    .frame(width: PaperPresentation.coverWidth(paper, paperWidth: 36))
                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                     .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
                 VStack(alignment: .leading, spacing: 2) {

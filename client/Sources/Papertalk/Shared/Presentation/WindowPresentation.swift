@@ -21,7 +21,7 @@ struct ConfirmationText: Equatable {
         switch pending {
         case .delete(let p):
             title = L("Delete “{0}”?", p.displayTitle)
-            confirmLabel = L("Delete paper")
+            confirmLabel = PaperPresentation.deleteTitle(p)
             message = (p.isActive ? L("Its conversion is stopped first.") + " " : "")
                 + L("The PDF, transcript and generated audio are removed from the library. This can’t be undone.")
         case .rerun(let p):

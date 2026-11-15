@@ -11,6 +11,8 @@ version has none) into the app.
 
 ## Unreleased
 
+- 📽️ **Slide decks**: import a presentation as a PDF into its own Slides library; slides that are mostly pictures are described by your LLM.
+- 🔗 **Link a deck to its paper**: a deck's Paper card links it to the paper it presents, and the paper lists its decks.
 - 🐛 **Voicing crashes**: making audio for several papers in a row, or playing one while another is voiced, no longer runs the Mac out of memory.
 - 🔎 **Ask cites the paper**: answers link each fact to its page, and the paper beside the chat jumps there with the quote highlighted.
 - 📚 **Cited papers**: Details lists the papers a paper cites; open, copy or jump to each one in your library.

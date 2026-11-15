@@ -129,6 +129,12 @@ enum PromptCatalog {
         PromptEntry(id: "ask", group: L("Ask"), title: L("Ask about a paper"),
                     usedWhen: L("When you ask a question in a paper's Ask window: the paper's details and text are added after it, then the chat so far."),
                     tokens: [], keyPath: \.ask),
+        PromptEntry(id: "slideDescription", group: L("Slides"), title: L("Describe a slide"),
+                    usedWhen: L("Slide decks only: for each slide with little text, the LLM is shown the slide as an image and describes what it shows."),
+                    tokens: [], keyPath: \.slideDescription),
+        PromptEntry(id: "slidesSource", group: L("Slides"), title: L("Slide deck note"),
+                    usedWhen: L("Slide decks only: put before the slides' text in every step (metadata, cast, script, mind map, Ask), so prompts written for papers read it as a presentation."),
+                    tokens: [], keyPath: \.slidesSource),
     ] }
 
     /// The entries by group, in order, for the page's list.

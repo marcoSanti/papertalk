@@ -307,7 +307,7 @@ struct PaperListRow: View {
     var body: some View {
         HStack(spacing: 12) {
             PaperArtwork(paper: paper)
-                .frame(width: 34)
+                .frame(width: PaperPresentation.coverWidth(paper, paperWidth: 34))
                 .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 5, style: .continuous)

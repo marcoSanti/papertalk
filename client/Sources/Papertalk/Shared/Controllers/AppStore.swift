@@ -482,7 +482,8 @@ final class AppStore: ObservableObject {
         if let cached = thumbCache[id] { return cached }
         // Rendered off the main thread: a big library drawing its covers froze scrolling.
         guard let data = try? await storage.read(K.pdf(id)),
-              let image = await Task.detached(operation: { Self.thumbnail(of: data) }).value else { return nil }
+              let image = await Task.detached(operation: { [width = PaperPresentation.coverRenderWidth(papers[id])] in
+                  Self.thumbnail(of: data, width: width) }).value else { return nil }
         thumbCache[id] = image
         return image
     }
@@ -568,6 +569,9 @@ final class AppStore: ObservableObject {
     static func matches(_ p: Paper, status: String) -> Bool {
         status == "running" ? p.isActive : p.state == status
     }
+
+    /// The Slides library is on screen (its grid has wider tiles).
+    var showsSlides: Bool { view == .slides }
 
     /// The Slides library is on screen and holds no decks (its own empty state).
     var showsNoSlides: Bool { view == .slides && !papers.values.contains(where: \.isSlides) }

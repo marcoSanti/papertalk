@@ -121,11 +121,18 @@ enum LibraryPresentation {
     /// keyboard's idea of a row matches what's on screen.
     enum Grid {
         static let minTile = 150.0, maxTile = 210.0, spacing = 22.0, sidePadding = 22.0
+        /// Slide tiles are wider: a 16:9 cover at paper width is too small to read.
+        static let minSlideTile = 260.0, maxSlideTile = 360.0
+
+        /// A tile's width bounds, for the papers or the Slides library.
+        static func tile(slides: Bool) -> (min: Double, max: Double) {
+            slides ? (minSlideTile, maxSlideTile) : (minTile, maxTile)
+        }
     }
 
-    /// Columns the adaptive grid fits into `width`.
-    static func gridColumns(width: Double) -> Int {
-        max(1, Int((width - 2 * Grid.sidePadding + Grid.spacing) / (Grid.minTile + Grid.spacing)))
+    /// Columns the adaptive grid fits into `width` (wider tiles in Slides).
+    static func gridColumns(width: Double, slides: Bool = false) -> Int {
+        max(1, Int((width - 2 * Grid.sidePadding + Grid.spacing) / (Grid.tile(slides: slides).min + Grid.spacing)))
     }
 
     /// An arrow key.

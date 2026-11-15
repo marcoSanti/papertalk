@@ -391,7 +391,7 @@ struct EditMetaSheet: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 PaperArtwork(paper: paper)
-                    .frame(width: 36)
+                    .frame(width: PaperPresentation.coverWidth(paper, paperWidth: 36))
                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                     .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
                 VStack(alignment: .leading, spacing: 2) {

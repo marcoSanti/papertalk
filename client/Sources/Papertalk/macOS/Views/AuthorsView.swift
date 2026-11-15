@@ -138,7 +138,7 @@ private struct AuthorCard: View {
         return HStack(spacing: -12) {
             ForEach(Array(shown.enumerated()), id: \.element.id) { i, p in
                 PaperArtwork(paper: p)
-                    .frame(width: 30)
+                    .frame(width: PaperPresentation.coverWidth(p, paperWidth: 30))
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))

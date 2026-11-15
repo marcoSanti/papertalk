@@ -20,7 +20,7 @@ struct PlayerBar: View {
         HStack(spacing: 14) {
             transport
             PaperArtwork(paper: paper)
-                .frame(width: 34)
+                .frame(width: PaperPresentation.coverWidth(paper, paperWidth: 34))
                 .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
             VStack(alignment: .leading, spacing: 5) {

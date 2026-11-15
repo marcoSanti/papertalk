@@ -44,7 +44,7 @@ struct LibraryView: View {
             case .upArrow: .up
             default: .down
             }
-            let columns = LibraryPresentation.gridColumns(width: gridWidth)
+            let columns = LibraryPresentation.gridColumns(width: gridWidth, slides: store.showsSlides)
             return store.moveSelection(move, in: papers, columns: columns) ? .handled : .ignored
         }
         .onChange(of: store.selectedId) { _, id in
@@ -172,7 +172,8 @@ struct LibraryView: View {
     /// Cover cards on an adaptive grid (its columns match `LibraryPresentation.gridColumns`).
     private func grid(_ papers: [Paper]) -> some View {
         typealias G = LibraryPresentation.Grid
-        let columns = [GridItem(.adaptive(minimum: G.minTile, maximum: G.maxTile), spacing: G.spacing, alignment: .top)]
+        let tile = G.tile(slides: store.showsSlides)
+        let columns = [GridItem(.adaptive(minimum: tile.min, maximum: tile.max), spacing: G.spacing, alignment: .top)]
         return ScrollView {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 26) {
                 ForEach(papers) { paper in

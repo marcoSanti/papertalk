@@ -128,7 +128,7 @@ struct DetailView: View {
     private var hero: some View {
         VStack(spacing: 14) {
             PaperArtwork(paper: paper)
-                .frame(width: 128)
+                .frame(width: PaperPresentation.heroCoverWidth(paper))
                 .clipShape(RoundedRectangle(cornerRadius: Theme.thumbRadius, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: Theme.thumbRadius, style: .continuous)

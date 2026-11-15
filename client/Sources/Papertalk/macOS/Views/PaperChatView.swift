@@ -91,7 +91,7 @@ struct PaperChatView: View {
     private func header(_ paper: Paper) -> some View {
         HStack(spacing: 12) {
             PaperArtwork(paper: paper)
-                .frame(width: 30)
+                .frame(width: PaperPresentation.coverWidth(paper, paperWidth: 30))
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(paper.displayTitle).font(.headline).lineLimit(1)

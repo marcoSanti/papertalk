@@ -167,6 +167,13 @@ enum PaperPresentation {
 
     /// The cover's width over height: a portrait page for a paper, a 16:9 slide for a deck.
     static func coverAspect(_ p: Paper) -> Double { p.isSlides ? 16.0 / 9.0 : 0.75 }
+    /// How wide a cover is drawn (points) for `paperWidth`: a deck's is wider, as a landscape
+    /// slide at paper width is too small to read.
+    static func coverWidth(_ p: Paper, paperWidth: Double) -> Double { p.isSlides ? paperWidth * 1.6 : paperWidth }
+    /// The detail pane's cover width.
+    static func heroCoverWidth(_ p: Paper) -> Double { p.isSlides ? 240 : 128 }
+    /// The width covers are rendered at (points, drawn at 2×): wider for a deck's big tiles.
+    static func coverRenderWidth(_ p: Paper?) -> Double { p?.isSlides == true ? 400 : 280 }
 
     /// The Export row and menu item: a deck is named a deck.
     static func exportTitle(_ p: Paper) -> String { p.isSlides ? L("Export deck…") : L("Export paper…") }

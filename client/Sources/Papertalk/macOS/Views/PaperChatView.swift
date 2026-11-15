@@ -21,6 +21,8 @@ struct PaperChatView: View {
 
     private var messages: [ChatMessage] { store.chats[paperId] ?? [] }
     private var isAnswering: Bool { store.answering.contains(paperId) }
+    /// A deck: the wording says deck and slides.
+    private var isSlides: Bool { store.papers[paperId]?.isSlides ?? false }
 
     var body: some View {
         Group {
@@ -118,7 +120,7 @@ struct PaperChatView: View {
                 // space where messages should be and cutting answers off. A chat is short.
                 VStack(spacing: 14) {
                     ForEach(messages) { MessageRow(message: $0).id($0.id) }
-                    if isAnswering { TypingBubble().id("typing") }
+                    if isAnswering { TypingBubble(text: PaperChat.thinking(slides: isSlides)).id("typing") }
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
@@ -153,13 +155,13 @@ struct PaperChatView: View {
                     Circle().fill(Theme.aiGradient).frame(width: 90, height: 90).blur(radius: 30).opacity(0.35)
                 }
                 .padding(.bottom, 4)
-            Text(PaperChat.emptyTitle).font(.title2.weight(.semibold)).foregroundStyle(Theme.aiGradient)
-            Text(PaperChat.emptyHint)
+            Text(PaperChat.emptyTitle(slides: isSlides)).font(.title2.weight(.semibold)).foregroundStyle(Theme.aiGradient)
+            Text(PaperChat.emptyHint(slides: isSlides))
                 .font(.callout).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
             VStack(spacing: 8) {
-                ForEach(PaperChat.suggestions, id: \.self) { suggestion in
+                ForEach(PaperChat.suggestions(slides: isSlides), id: \.self) { suggestion in
                     SuggestionChip(text: suggestion) { send(suggestion) }
                 }
             }
@@ -176,7 +178,7 @@ struct PaperChatView: View {
     /// The question field and Send. Return sends; Option-Return starts a new line.
     private var composer: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            TextField(PaperChat.placeholder, text: $draft, axis: .vertical)
+            TextField(PaperChat.placeholder(slides: isSlides), text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...6)
                 .focused($composerFocused)
@@ -234,7 +236,8 @@ private struct SourcePane: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(PaperChat.sourceTitle(page: found?.page ?? citation?.page)).font(.headline)
+                Text(PaperChat.sourceTitle(page: found?.page ?? citation?.page,
+                                          slides: store.papers[paperId]?.isSlides ?? false)).font(.headline)
                 if let note = PaperChat.sourceNote(highlights: found?.rects) {
                     Text(note).font(.caption).foregroundStyle(.secondary)
                 }
@@ -356,6 +359,9 @@ private struct Avatar: View {
 
 /// Three pulsing dots in an LLM bubble while the answer is written.
 private struct TypingBubble: View {
+    /// What the LLM is doing ("Reading the paper…").
+    let text: String
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Avatar()
@@ -367,7 +373,7 @@ private struct TypingBubble: View {
                         }
                     }
                 } animation: { _ in .easeInOut(duration: 0.35) }
-                Text(PaperChat.thinking).font(.callout)
+                Text(text).font(.callout)
             }
             .foregroundStyle(.secondary)
             .padding(.horizontal, 14)

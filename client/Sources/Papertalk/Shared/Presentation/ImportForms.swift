@@ -126,9 +126,15 @@ struct ImportForm {
     /// The sheet's title.
     var heading: String { rerunning == nil ? L("New episode") : L("Rerun episode") }
     /// Under the title: what a new episode is, or which paper is rerun.
-    var subheading: String { rerunning?.displayTitle ?? L("Turn a paper into a podcast, converted on {0}.", Device.this) }
+    var subheading: String {
+        rerunning?.displayTitle ?? (isSlides ? L("Turn a slide deck into a podcast, converted on {0}.", Device.this)
+                                              : L("Turn a paper into a podcast, converted on {0}.", Device.this))
+    }
     /// Shown when `showsNoLLMWarning` is true.
-    static var noLLMWarning: String { L("No LLM is configured, so this paper will be read out as-is instead of as a discussion.") }
+    var noLLMWarning: String {
+        isSlides ? L("No LLM is configured, so this deck will be read out as-is instead of as a discussion.")
+            : L("No LLM is configured, so this paper will be read out as-is instead of as a discussion.")
+    }
 
     /// SF Symbol beside each depth choice.
     static func icon(for depth: Depth) -> String {

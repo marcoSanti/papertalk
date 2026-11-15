@@ -155,9 +155,23 @@ enum PaperPresentation {
 
     /// The Manage row that creates or redraws the mind map.
     static func mindMapRow(_ p: Paper, drawing: Bool) -> (title: String, subtitle: String) {
+        if p.isSlides {
+            if drawing { return (L("Drawing mind map…"), L("Asking the LLM for the deck's key concepts")) }
+            return hasMindMap(p) ? (L("Redraw mind map"), L("Map the deck's key concepts again"))
+                : (L("Create mind map"), L("Map the deck's key concepts and how they connect"))
+        }
         if drawing { return (L("Drawing mind map…"), L("Asking the LLM for the paper's key concepts")) }
         return hasMindMap(p) ? (L("Redraw mind map"), L("Map the paper's key concepts again"))
             : (L("Create mind map"), L("Map the paper's key concepts and how they connect"))
+    }
+
+    /// The Export row and menu item: a deck is named a deck.
+    static func exportTitle(_ p: Paper) -> String { p.isSlides ? L("Export deck…") : L("Export paper…") }
+    /// The Delete row and the delete confirmation's button.
+    static func deleteTitle(_ p: Paper) -> String { p.isSlides ? L("Delete deck") : L("Delete paper") }
+    /// The Ask button's tooltip.
+    static func askHelp(_ p: Paper) -> String {
+        p.isSlides ? L("Chat with the LLM about this deck") : L("Chat with the LLM about this paper")
     }
 
     /// The paper's title as a file name: path separators replaced, kept to a sane length.

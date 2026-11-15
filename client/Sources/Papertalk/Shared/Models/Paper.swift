@@ -100,6 +100,8 @@ struct Paper: Identifiable, Codable, Equatable {
     /// `Paper.slidesKind` for a slide deck (kept in the Slides library, apart from the papers);
     /// nil for a paper.
     var kind: String? = nil
+    /// Decks only: the id of the paper the deck presents, when linked; nil otherwise.
+    var linkedPaper: String? = nil
     /// While converting, the progress bar's fraction (0…1); once done, the playback position in seconds.
     var progress: Double
     /// The episode's length in seconds, once it has been played or baked.
@@ -125,6 +127,7 @@ struct Paper: Identifiable, Codable, Equatable {
         case hasMindMap = "has_mind_map"
         case scriptLanguage = "script_language"
         case library, references, kind
+        case linkedPaper = "linked_paper"
     }
 
     /// The `kind` of a slide deck.

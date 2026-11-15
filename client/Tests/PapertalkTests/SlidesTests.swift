@@ -117,6 +117,46 @@ final class SlidesStoreTests: PapertalkTestCase {
         XCTAssertEqual(LibraryPresentation.title(view: store.view, tag: nil, author: nil), "Slides")
     }
 
+    func testDecksLinkToThePaperTheyPresent() async throws {
+        var paper = Fixtures.paper(id: "a", doi: "10.1/x")
+        paper.title = "Attention"
+        var other = Fixtures.paper(id: "b")
+        other.title = "Beta"
+        var talk = deck("d", title: "A talk")
+        talk.doi = "10.1/X"
+        let store = await makeStore([paper, other, talk, deck("e")])
+        XCTAssertEqual(store.paperPresented(by: store.papers["d"])?.id, "a", "matched by DOI, decks left out")
+        XCTAssertEqual(store.linkablePapers.map(\.id), ["a", "b"])
+
+        store.linkDeck("d", to: "a")
+        store.linkDeck("e", to: "a")
+        XCTAssertEqual(store.linkedPaper(of: store.papers["d"]!)?.id, "a")
+        XCTAssertEqual(store.decks(linkedTo: "a").map(\.id), ["d", "e"])
+        await waitUntil { (try? JSONDecoder().decode(Paper.self, from: (try? await self.storage.read(K.paper("d"))) ?? Data()))?.linkedPaper == "a" }
+
+        store.linkDeck("a", to: "b")
+        XCTAssertNil(store.papers["a"]?.linkedPaper, "only decks link")
+        store.linkDeck("d", to: "e")
+        XCTAssertEqual(store.papers["d"]?.linkedPaper, "a", "and only to papers")
+
+        store.linkDeck("d", to: nil)
+        XCTAssertNil(store.linkedPaper(of: store.papers["d"]!))
+        XCTAssertEqual(store.decks(linkedTo: "a").map(\.id), ["e"])
+
+        store.papers["a"] = nil
+        XCTAssertNil(store.linkedPaper(of: store.papers["e"]!), "a deleted paper isn't shown as linked")
+    }
+
+    func testRevealingADeckOpensSlides() async {
+        let store = await makeStore([Fixtures.paper(id: "a"), deck("d")])
+        store.reveal("d")
+        XCTAssertEqual(store.view, .slides)
+        XCTAssertEqual(store.selectedId, "d")
+        store.reveal("a")
+        XCTAssertEqual(store.view, .all)
+        XCTAssertEqual(store.selectedId, "a")
+    }
+
     func testImportSheetStartsAsADeckOverSlides() async {
         let store = await makeStore([])
         XCTAssertTrue(store.sidebarItems.contains(.slides))
@@ -146,6 +186,57 @@ final class SlidesStoreTests: PapertalkTestCase {
         XCTAssertEqual(systems.count, 1, "no slide is described again")
         XCTAssertTrue(systems[0].contains(PromptSettings.defaults.slidesSource))
         XCTAssertTrue(systems[0].contains("SAVED CHART"))
+    }
+}
+
+/// A deck is named a deck wherever the interface names the item.
+final class SlidesWordingTests: PapertalkTestCase {
+    func testDeckWording() {
+        let paper = Fixtures.paper(id: "p")
+        var deck = paper
+        deck.kind = Paper.slidesKind
+        XCTAssertEqual(PaperPresentation.exportTitle(paper), "Export paper…")
+        XCTAssertEqual(PaperPresentation.exportTitle(deck), "Export deck…")
+        XCTAssertEqual(PaperPresentation.deleteTitle(deck), "Delete deck")
+        XCTAssertEqual(PaperPresentation.askHelp(deck), "Chat with the LLM about this deck")
+        XCTAssertEqual(PaperPresentation.mindMapRow(deck, drawing: false).subtitle, "Map the deck's key concepts and how they connect")
+        XCTAssertEqual(PaperPresentation.mindMapRow(deck, drawing: true).subtitle, "Asking the LLM for the deck's key concepts")
+        XCTAssertEqual(ConfirmationText(.delete(deck)).confirmLabel, "Delete deck")
+        XCTAssertEqual(ConfirmationText(.delete(paper)).confirmLabel, "Delete paper")
+
+        var form = ImportForm()
+        XCTAssertTrue(form.subheading.hasPrefix("Turn a paper"))
+        XCTAssertTrue(form.noLLMWarning.contains("this paper"))
+        form.isSlides = true
+        XCTAssertTrue(form.subheading.hasPrefix("Turn a slide deck"))
+        XCTAssertTrue(form.noLLMWarning.contains("this deck"))
+    }
+}
+
+/// The link card's wording and rules.
+final class SlideLinkPresentationTests: PapertalkTestCase {
+    func testLinkCard() {
+        let paper = Fixtures.paper(id: "p")
+        var deck = paper
+        deck.kind = Paper.slidesKind
+        XCTAssertTrue(SlideLinkPresentation.showsCard(deck, linkedDecks: []))
+        XCTAssertFalse(SlideLinkPresentation.showsCard(paper, linkedDecks: []))
+        XCTAssertTrue(SlideLinkPresentation.showsCard(paper, linkedDecks: [deck]))
+        XCTAssertEqual(SlideLinkPresentation.cardTitle(deck), "Paper")
+        XCTAssertEqual(SlideLinkPresentation.cardTitle(paper), "Slides")
+        XCTAssertEqual(SlideLinkPresentation.cardIcon(deck), "doc.text")
+        XCTAssertEqual(SlideLinkPresentation.cardIcon(paper), "rectangle.on.rectangle")
+        XCTAssertEqual(SlideLinkPresentation.openHelp(deck), "Show this deck in Slides")
+        XCTAssertEqual(SlideLinkPresentation.openHelp(paper), "Show this paper")
+        XCTAssertEqual(SlideLinkPresentation.status(linked: nil), "Not linked to a paper yet.")
+        XCTAssertNil(SlideLinkPresentation.status(linked: paper))
+        XCTAssertEqual(SlideLinkPresentation.menuTitle(linked: nil), "Link to a paper…")
+        XCTAssertEqual(SlideLinkPresentation.menuTitle(linked: paper), "Change paper…")
+        XCTAssertEqual(SlideLinkPresentation.menuHelp(hasPapers: false), "Import the paper first to link it")
+        XCTAssertEqual(SlideLinkPresentation.menuHelp(hasPapers: true), "Pick the paper this deck presents")
+        XCTAssertFalse(SlideLinkPresentation.showsUnlink(linked: nil))
+        XCTAssertTrue(SlideLinkPresentation.showsUnlink(linked: paper))
+        XCTAssertEqual(SlideLinkPresentation.unlink, "Unlink paper")
     }
 }
 

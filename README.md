@@ -74,7 +74,9 @@ ideas. It's a native macOS app written in SwiftUI.
   apart from the papers. Each slide with little text is shown to the LLM as an image and
   described, so charts and diagrams make it into the episode (this needs a model that reads
   images); the descriptions are saved in the deck's `slides.json`. Both prompts are editable
-  under **Slides** in Query Prompts. macOS only for now.
+  under **Slides** in Query Prompts. A deck's **Paper** card links it to the paper it presents
+  (linked on import when the title or DOI matches), and that paper's **Slides** card opens it.
+  macOS only for now.
 - **Made for listening.** Episodes remember where you stopped, show in Control Center's Now
   Playing with their cover, and answer the media keys. Read along in the transcript.
 - **Works in the background.** Imports run while you listen to something else, with progress at

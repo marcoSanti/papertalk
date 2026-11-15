@@ -868,6 +868,30 @@ final class AppStore: ObservableObject {
         papers[id] = p
         persist(id)
     }
+    /// The paper a deck is linked to, while it's still in the library.
+    func linkedPaper(of deck: Paper) -> Paper? {
+        deck.linkedPaper.flatMap { papers[$0] }.flatMap { $0.isSlides ? nil : $0 }
+    }
+
+    /// The decks linked to a paper, A–Z.
+    func decks(linkedTo id: String) -> [Paper] {
+        papers.values.filter { $0.isSlides && $0.linkedPaper == id }
+            .sorted { $0.displayTitle.localizedCompare($1.displayTitle) == .orderedAscending }
+    }
+
+    /// The papers a deck can be linked to, A–Z (decks left out).
+    var linkablePapers: [Paper] {
+        papers.values.filter { !$0.isSlides }
+            .sorted { $0.displayTitle.localizedCompare($1.displayTitle) == .orderedAscending }
+    }
+
+    /// Link a deck to the paper it presents, or unlink it with nil. Only decks link, and only to papers.
+    func linkDeck(_ deckId: String, to paperId: String?) {
+        guard papers[deckId]?.isSlides == true else { return }
+        if let paperId, papers[paperId]?.isSlides != false { return }
+        optimistic(deckId) { $0.linkedPaper = paperId }
+    }
+
     /// Star or unstar a paper.
     func toggleFavorite(_ id: String) {
         optimistic(id, { $0.favorite.toggle() })
@@ -1083,14 +1107,19 @@ final class AppStore: ObservableObject {
 
     /// First existing paper (other than `p`) that shares its title or DOI, in any library: a paper
     /// already filed elsewhere still counts. Decks are only compared with decks.
-    func findDuplicate(of p: Paper?) -> Paper? {
+    func findDuplicate(of p: Paper?) -> Paper? { findMatch(of: p, slides: p?.isSlides ?? false) }
+
+    /// The paper a deck presents, found by the same title or DOI (decks are left out).
+    func paperPresented(by deck: Paper?) -> Paper? { findMatch(of: deck, slides: false) }
+
+    /// First item other than `p` that shares its title or DOI, among the decks or the papers.
+    private func findMatch(of p: Paper?, slides: Bool) -> Paper? {
         guard let p else { return nil }
         func norm(_ s: String?) -> String { (s ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
         let title = norm(p.title), doi = norm(p.doi)
         guard !title.isEmpty || !doi.isEmpty else { return nil }
         return papers.values.first { q in
-            // A deck and the paper it presents share a title and are both wanted.
-            guard q.id != p.id, q.isSlides == p.isSlides else { return false }
+            guard q.id != p.id, q.isSlides == slides else { return false }
             let qTitle = norm(q.title), qDoi = norm(q.doi)
             return (!doi.isEmpty && !qDoi.isEmpty && qDoi == doi) ||
                    (!title.isEmpty && !qTitle.isEmpty && qTitle == title)
@@ -1994,6 +2023,12 @@ final class AppStore: ObservableObject {
         // so the detail view shows real metadata even while the episode is being written.
         if !base.isEmpty {
             _ = await extractMetaLLM(id, text: text, fallback: name)
+            // A new deck whose title or DOI matches a paper presents that paper: link them.
+            if existing == nil, let deck = papers[id], deck.isSlides, deck.linkedPaper == nil,
+               let match = paperPresented(by: deck) {
+                linkDeck(id, to: match.id)
+                appendLog("Linked to the paper “\(match.displayTitle)”", paper: id)
+            }
             // Duplicate-import guard: if an existing paper already has this title
             // or DOI, let the user decide before spending LLM + TTS time on it.
             if existing == nil, let dup = findDuplicate(of: papers[id]),
@@ -2129,7 +2164,8 @@ final class AppStore: ObservableObject {
     func reveal(_ id: String) {
         guard papers[id] != nil else { return }
         if !filteredPapers().contains(where: { $0.id == id }) {
-            view = .all; activeTag = nil; activeAuthor = nil; activeLibrary = nil
+            view = papers[id]?.isSlides == true ? .slides : .all
+            activeTag = nil; activeAuthor = nil; activeLibrary = nil
             statusFilter = "all"; search = ""
         }
         selectedId = id

@@ -270,7 +270,7 @@ struct ContextMenuItems: View {
         Button {
             PaperPanels.exportPaper(paper, from: store)
         } label: {
-            Label(L("Export paper…"), systemImage: "shippingbox")
+            Label(PaperPresentation.exportTitle(paper), systemImage: "shippingbox")
         }
         .disabled(!PaperPresentation.canExportPaper(paper))
         if store.isStandalone {

@@ -37,9 +37,14 @@ final class PaperChatPresentationTests: PapertalkTestCase {
 
     func testWording() {
         XCTAssertEqual(PaperChat.windowTitle(Fixtures.paper(title: "Attention")), "Ask — Attention")
-        XCTAssertEqual(PaperChat.suggestions.count, 4)
-        XCTAssertFalse(PaperChat.placeholder.isEmpty || PaperChat.emptyTitle.isEmpty || PaperChat.emptyHint.isEmpty
-                       || PaperChat.sendHelp.isEmpty || PaperChat.clearTitle.isEmpty || PaperChat.thinking.isEmpty)
+        XCTAssertEqual(PaperChat.suggestions().count, 4)
+        XCTAssertFalse(PaperChat.placeholder().isEmpty || PaperChat.emptyTitle().isEmpty || PaperChat.emptyHint().isEmpty
+                       || PaperChat.sendHelp.isEmpty || PaperChat.clearTitle.isEmpty || PaperChat.thinking().isEmpty)
+        XCTAssertEqual(PaperChat.placeholder(slides: true), "Ask about this deck…")
+        XCTAssertEqual(PaperChat.emptyTitle(slides: true), "Ask about this deck")
+        XCTAssertTrue(PaperChat.emptyHint(slides: true).hasPrefix("Answers come from the slides"))
+        XCTAssertEqual(PaperChat.thinking(slides: true), "Reading the slides…")
+        XCTAssertEqual(PaperChat.suggestions(slides: true).first, "Summarize this deck in three sentences.")
     }
 
     func testPagedTextMarksEachPage() {
@@ -89,6 +94,8 @@ final class PaperChatPresentationTests: PapertalkTestCase {
     func testSourceWording() {
         XCTAssertEqual(PaperChat.sourceTitle(page: 4), "Page 4")
         XCTAssertEqual(PaperChat.sourceTitle(page: nil), "The paper")
+        XCTAssertEqual(PaperChat.sourceTitle(page: 4, slides: true), "Slide 4")
+        XCTAssertEqual(PaperChat.sourceTitle(page: nil, slides: true), "The deck")
         XCTAssertNil(PaperChat.sourceNote(highlights: nil))
         XCTAssertNil(PaperChat.sourceNote(highlights: [.zero]))
         XCTAssertEqual(PaperChat.sourceNote(highlights: []), PaperChat.sourceNotFound)

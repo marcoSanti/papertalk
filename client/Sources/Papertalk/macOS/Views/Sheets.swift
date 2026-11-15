@@ -208,7 +208,7 @@ struct UploadSheet: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(ImportForm.noLLMWarning)
+                        Text(form.noLLMWarning)
                             .font(.callout)
                             .fixedSize(horizontal: false, vertical: true)
                         Button(L("Open LLM Settings…")) {

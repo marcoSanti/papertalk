@@ -165,6 +165,9 @@ enum PaperPresentation {
             : (L("Create mind map"), L("Map the paper's key concepts and how they connect"))
     }
 
+    /// The cover's width over height: a portrait page for a paper, a 16:9 slide for a deck.
+    static func coverAspect(_ p: Paper) -> Double { p.isSlides ? 16.0 / 9.0 : 0.75 }
+
     /// The Export row and menu item: a deck is named a deck.
     static func exportTitle(_ p: Paper) -> String { p.isSlides ? L("Export deck…") : L("Export paper…") }
     /// The Delete row and the delete confirmation's button.

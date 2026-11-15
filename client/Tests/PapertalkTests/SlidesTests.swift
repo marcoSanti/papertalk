@@ -195,6 +195,8 @@ final class SlidesWordingTests: PapertalkTestCase {
         let paper = Fixtures.paper(id: "p")
         var deck = paper
         deck.kind = Paper.slidesKind
+        XCTAssertEqual(PaperPresentation.coverAspect(paper), 0.75)
+        XCTAssertEqual(PaperPresentation.coverAspect(deck), 16.0 / 9.0, accuracy: 0.0001)
         XCTAssertEqual(PaperPresentation.exportTitle(paper), "Export paper…")
         XCTAssertEqual(PaperPresentation.exportTitle(deck), "Export deck…")
         XCTAssertEqual(PaperPresentation.deleteTitle(deck), "Delete deck")

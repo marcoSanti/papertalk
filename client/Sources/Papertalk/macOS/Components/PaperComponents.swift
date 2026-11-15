@@ -110,7 +110,7 @@ struct PaperCard: View {
 
 // MARK: - Artwork
 
-/// First page of the paper as a "cover", at page aspect ratio. Falls back to a
+/// First page of the paper as a "cover", at page (or, for a deck, slide) aspect ratio. Falls back to a
 /// soft gradient tile with a document glyph while loading / when there's no PDF.
 /// The paper's cover: its PDF's first page, loaded once per `artworkRevision`, or a tinted
 /// placeholder until it's there.
@@ -122,7 +122,7 @@ struct PaperArtwork: View {
 
     var body: some View {
         Color.clear
-            .aspectRatio(Theme.pageAspect, contentMode: .fit)
+            .aspectRatio(PaperPresentation.coverAspect(paper), contentMode: .fit)
             .overlay {
                 // A card scrolled back into view shows its cached cover at once, not the placeholder.
                 if let image = image ?? store.cachedThumbnail(paper.id) {

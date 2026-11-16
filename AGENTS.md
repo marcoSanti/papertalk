@@ -200,7 +200,10 @@ release stays), so Finder, "Open With" and Help open the build just made.
 
 Done in the Linux UI: library (sidebar, search, covers), detail pane, player bar (playback,
 scrubber, import progress), import sheet (and `Papertalk paper.pdf`), cast and duplicate
-prompts, delete/rerun confirmation, settings and first-run setup.
+prompts, delete/rerun confirmation, settings and first-run setup, and the rest of the UI:
+authors view (an A–Z index and one author's papers with a back header), the transcript
+sheet, editing metadata, editable tags, clipboard copy, and notifications that follow the
+window's focus.
 
 Packaging: `client/linux-dev/dev.sh appimage` (with `VERSION`, `CHANNEL`) builds
 `client/dist/Papertalk-<version>-<arch>.AppImage`: release binary with the Swift runtime
@@ -213,9 +216,7 @@ If you add a native dependency, run the smoke test: a library missing from the b
 shows up on a clean system.
 
 Still to do, in order:
-1. **Rest of the Linux UI:** authors view, transcript view, metadata editing, tag editing,
-   clipboard copy, and `Notifier.isAppActive` from the window's focus (notifications are off
-   until then). Then a pass on looks (spacing, a grid layout option).
+1. A looks pass on the Linux UI (spacing, a grid layout option for the library and authors).
 2. **Updates on Linux:** the update check (menu on macOS) and `UpdateCheck` picking the
    AppImage asset, and installing in place (`Linux/UpdateInstallerCompat.swift` only refuses);
    the Linux build has no version stamped in yet (macOS uses Info.plist).

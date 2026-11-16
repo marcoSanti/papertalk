@@ -45,7 +45,6 @@ this file (for Claude Code), so keep the guidance here.
   `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
   `client/linux-dev/` (dev container `Dockerfile`, `dev.sh`).
 - `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
-- `todo.md`: the backlog. Remove an item in the PR that completes it.
 
 ## Build and test
 

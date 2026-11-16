@@ -748,5 +748,9 @@ extension LanguagePacks {
         "Show this deck in Slides": "Afficher cette présentation dans Diapositives",
         "Show this paper": "Afficher cet article",
         "Unlink paper": "Délier l'article",
+        "1 deck": "1 présentation",
+        "{0} decks": "{0} présentations",
+        "No deck selected": "Aucune présentation sélectionnée",
+        "Pick a deck to see its details, tags and episode.": "Choisissez une présentation pour voir ses détails, ses tags et son épisode.",
     ]
 }

@@ -168,7 +168,7 @@ struct ContentView: View {
         if let paper = store.selectedPaper() {
             DetailView(paper: paper, onEdit: { store.editingPaper = paper })
         } else {
-            EmptyDetailPlaceholder()
+            EmptyDetailPlaceholder(text: LibraryPresentation.detailPlaceholder(slides: store.showsSlides))
         }
     }
 
@@ -252,11 +252,13 @@ struct ContentView: View {
 
 /// The details panel with nothing selected.
 struct EmptyDetailPlaceholder: View {
+    let text: (title: String, message: String)
+
     var body: some View {
         ContentUnavailableView {
-            Label(L("No paper selected"), systemImage: "waveform.and.magnifyingglass")
+            Label(text.title, systemImage: "waveform.and.magnifyingglass")
         } description: {
-            Text(L("Pick a paper from the library to see its details, tags and episode."))
+            Text(text.message)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

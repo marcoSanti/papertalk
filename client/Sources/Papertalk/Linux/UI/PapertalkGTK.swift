@@ -43,7 +43,16 @@ struct RootView: View {
         NavigationSplitView {
             SidebarPane(bridge: bridge)
         } content: {
-            LibraryPane(bridge: bridge)
+            if bridge.store.showsAuthorIndex {
+                AuthorsPane(bridge: bridge)
+            } else {
+                VStack(spacing: 0) {
+                    if let name = bridge.store.shownAuthor {
+                        AuthorHeader(bridge: bridge, name: name)
+                    }
+                    LibraryPane(bridge: bridge)
+                }
+            }
         } detail: {
             VStack(spacing: 0) {
                 DetailPane(bridge: bridge)

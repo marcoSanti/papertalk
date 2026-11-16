@@ -2,6 +2,7 @@
 
 #if os(Linux)
 import Foundation
+import GtkBackend
 import SwiftCrossUI
 
 /// The bottom bar: the loaded episode's transport and the running import,
@@ -32,6 +33,12 @@ struct PlayerBar: View {
         }
         .padding(16)
         .onAppear { bridge.windowAppeared() }
+        // Point the notifier at the window's focus, so notifications are posted only while
+        // the app is in the background (as on macOS). `inspectWindow` hands us the native
+        // window; `isAppActive` then reads its current focus whenever a notification posts.
+        .inspectWindow { window in
+            bridge.store.notifier.isAppActive = { [weak window] in window?.isActive ?? true }
+        }
     }
 }
 

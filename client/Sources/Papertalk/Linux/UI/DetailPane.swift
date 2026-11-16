@@ -41,9 +41,6 @@ struct PaperDetail: View {
                         Text(published).font(.caption).foregroundColor(.gray)
                     }
                     Text(PaperPresentation.statusText(paper)).font(.caption)
-                    if let tags = PaperPresentation.tagLine(paper.tags) {
-                        Text(tags).font(.caption).foregroundColor(.blue)
-                    }
                 }
             }
 
@@ -86,8 +83,11 @@ struct PaperDetail: View {
             HStack(spacing: 8) {
                 Button(PaperPresentation.favoriteButton(paper).title) { store.toggleFavorite(paper.id) }
                 Button(PaperPresentation.listenedToggle(paper).title) { store.toggleRead(paper.id) }
+                Button(L("Edit")) { store.editingPaper = paper }
                 Button(L("Open PDF")) { store.openPDF(paper.id) }
                     .disabled(!paper.hasPdf)
+                Button(L("Transcript")) { store.showTranscript(paper.id) }
+                    .disabled(!paper.hasScript)
                 if store.isStandalone {
                     Button(L("Show in Files")) { store.revealInFinder(paper.id) }
                 }
@@ -96,6 +96,10 @@ struct PaperDetail: View {
                 Button(L("Rerun…")) { store.requestRerun(paper) }
                     .disabled(!PaperPresentation.canRerun(paper))
                 Button(L("Delete…")) { store.pendingConfirmation = .delete(paper) }
+            }
+
+            if paper.tags.count > 0 || !PaperPresentation.suggestedTags(for: paper, tagCounts: store.tagCounts).isEmpty {
+                TagEditor(bridge: bridge, paper: paper)
             }
         }
         .padding(20)

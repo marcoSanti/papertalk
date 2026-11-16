@@ -9,14 +9,14 @@ import XCTest
 final class WhatsNewTests: PapertalkTestCase {
     private let notes = "- 📚 **Cited papers**: listed one by one.\n- not an entry\n- 🎉 **No colon** still read"
 
-    func testParseReadsEmojiTitleAndDetailAndSkipsOtherLines() {
+    func testParseReadsEmojiTitleAndDetailAndSkipsOtherLines() async {
         XCTAssertEqual(WhatsNew.parse(notes), [
             .init(emoji: "📚", title: "Cited papers", detail: "listed one by one."),
             .init(emoji: "🎉", title: "No colon", detail: "still read"),
         ])
     }
 
-    func testShownOnceAfterAnUpdateNeverOnAFirstLaunch() {
+    func testShownOnceAfterAnUpdateNeverOnAFirstLaunch() async {
         let build = AppBuild(version: "0.7.0", commit: nil, whatsNew: notes)
         XCTAssertEqual(WhatsNew.toShow(for: build, seen: nil, onboarded: true)?.title, "What's new in Papertalk 0.7.0")
         XCTAssertEqual(WhatsNew.toShow(for: build, seen: "older", onboarded: true)?.items.count, 2)
@@ -42,7 +42,7 @@ final class WhatsNewTests: PapertalkTestCase {
         XCTAssertNil(store.whatsNew, "same entries: not again")
     }
 
-    func testFirstLaunchRemembersTheEntriesWithoutShowingThem() {
+    func testFirstLaunchRemembersTheEntriesWithoutShowingThem() async {
         let defaults = UserDefaults(suiteName: "whatsnew-\(UUID().uuidString)")!
         let store = AppStore(storage: LocalStorage(root: Fixtures.tempDir()))
         store.showOnboarding = true
@@ -52,7 +52,7 @@ final class WhatsNewTests: PapertalkTestCase {
     }
 
     /// Every entry agents add under `## Unreleased` must be one the screen can show.
-    func testChangelogEntriesFollowTheForm() throws {
+    func testChangelogEntriesFollowTheForm() async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
         let text = try String(contentsOf: root.appendingPathComponent("CHANGELOG.md"), encoding: .utf8)

@@ -31,7 +31,7 @@ struct ImportSheet: View {
                 Text(L("Depth"))
                 Picker(of: PickerOption.depths, selection: depth)
             }
-            if form.depth == .custom {
+            if form.showsDepthNote {
                 TextField(L("Describe the depth you want…"), text: $form.depthNote)
             }
             if form.showsLengthSlider {

@@ -4,6 +4,12 @@
 import Foundation
 
 extension AppStore {
+    /// Close the metadata-edit sheet.
+    func closeEditing() { editingPaper = nil }
+
+    /// Close the transcript sheet.
+    func closeScriptSheet() { transcriptSheet = nil }
+
     /// Close the settings sheet; on first launch, where it's the setup,
     /// closing skips the setup (everything can be set there later).
     func closeSettings() {
@@ -25,9 +31,17 @@ extension AppStore {
 
     /// Open the paper's PDF in the desktop's own viewer (macOS shows it in an
     /// in-app window instead).
+    /// Works on either backend: the PDF is copied to a temporary file first.
     func openPDF(_ id: String) {
         Task {
-            if let url = await url(for: K.pdf(id)) { NSWorkspace.shared.open(url) }
+            guard let data = await pdfData(for: id) else { show(L("No PDF to read")); return }
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("papertalk-\(id).pdf")
+            do {
+                try data.write(to: file, options: .atomic)
+                NSWorkspace.shared.open(file)
+            } catch {
+                show(error.localizedDescription)
+            }
         }
     }
 }

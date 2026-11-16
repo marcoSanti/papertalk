@@ -19,6 +19,9 @@ struct PapertalkGTK: App {
             RootView(bridge: bridge)
         }
         .defaultSize(width: 1180, height: 740)
+        // The GTK backend always draws its light scheme and ignores `preferredColorScheme`,
+        // so the desktop's preference is set on the scene: every pane and sheet follows it.
+        .environment(\.colorScheme, bridge.colorScheme)
         .commands {
             CommandMenu(L("File")) {
                 Button(L("Import PDF…")) { bridge.store.beginImport() }
@@ -40,17 +43,31 @@ struct RootView: View {
         NavigationSplitView {
             SidebarPane(bridge: bridge)
         } content: {
-            LibraryPane(bridge: bridge)
+            if bridge.store.showsAuthorIndex {
+                AuthorsPane(bridge: bridge)
+            } else {
+                VStack(spacing: 0) {
+                    if let name = bridge.store.shownAuthor {
+                        AuthorHeader(bridge: bridge, name: name)
+                    }
+                    LibraryPane(bridge: bridge)
+                }
+            }
         } detail: {
             VStack(spacing: 0) {
                 DetailPane(bridge: bridge)
                 Spacer()
                 PlayerBar(bridge: bridge)
                     .alert(confirmationTitle, isPresented: confirmationShown) {
+                        // As on macOS: confirm, an optional third choice, and the cancel wording.
                         if let pending = bridge.store.pendingConfirmation {
-                            Button(ConfirmationText(pending).confirmLabel) { bridge.store.confirmPending(pending) }
+                            let text = ConfirmationText(pending)
+                            Button(text.confirmLabel) { bridge.store.confirmPending(pending) }
+                            if let secondary = text.secondaryLabel {
+                                Button(secondary) { bridge.store.confirmSecondary(pending) }
+                            }
+                            Button(text.cancelLabel) { bridge.store.pendingConfirmation = nil }
                         }
-                        Button(L("Cancel")) { bridge.store.pendingConfirmation = nil }
                     }
                     .alert(duplicateTitle, isPresented: duplicateShown) {
                         Button(duplicateText?.confirmLabel ?? "") { bridge.store.resolveDuplicate(true) }
@@ -67,13 +84,21 @@ struct RootView: View {
                     .sheet(isPresented: settingsShown) {
                         SettingsSheet(bridge: bridge, isSetup: bridge.store.showOnboarding)
                     }
+                    .sheet(isPresented: transcriptShown) {
+                        if let sheet = bridge.store.transcriptSheet {
+                            TranscriptSheetView(bridge: bridge, sheet: sheet)
+                        }
+                    }
+                    .sheet(isPresented: editingShown) {
+                        if let paper = bridge.store.editingPaper {
+                            EditMetaSheet(bridge: bridge, paper: paper)
+                        }
+                    }
             }
         }
     }
 
-    private var confirmationTitle: String {
-        bridge.store.pendingConfirmation.map { ConfirmationText($0).combined } ?? ""
-    }
+    private var confirmationTitle: String { ConfirmationText.combinedTitle(bridge.store.pendingConfirmation) }
 
     private var duplicateText: ConfirmationText? {
         bridge.store.pendingDuplicate.map { ConfirmationText.duplicate(of: $0.duplicateOf) }
@@ -91,6 +116,14 @@ struct RootView: View {
     private var castShown: Binding<Bool> {
         Binding(get: { bridge.store.pendingCast != nil },
                 set: { if !$0 { bridge.store.cancelCast() } })
+    }
+    private var transcriptShown: Binding<Bool> {
+        Binding(get: { bridge.store.transcriptSheet != nil },
+                set: { if !$0 { bridge.store.closeScriptSheet() } })
+    }
+    private var editingShown: Binding<Bool> {
+        Binding(get: { bridge.store.editingPaper != nil },
+                set: { if !$0 { bridge.store.closeEditing() } })
     }
 
     private var confirmationShown: Binding<Bool> {

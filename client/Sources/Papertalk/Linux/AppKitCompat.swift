@@ -7,7 +7,7 @@ import Foundation
 // The few AppKit pieces the shared code uses, with the same names and
 // signatures, so AppStore compiles unchanged on Linux (AGENTS.md, "Linux port").
 
-/// A cover image, kept as PNG bytes (rendered by python/papertalk_platform/pdf.py).
+/// A cover image, kept as PNG bytes (rendered by poppler, `Linux/PDFKitCompat.swift`).
 /// Stands in for NSImage in AppStore's thumbnail cache; the GTK UI decodes it.
 final class NSImage {
     /// The image as PNG bytes.
@@ -79,6 +79,43 @@ final class Notifier {
 
     /// notify-send can't withdraw a notification.
     func clearInputRequest(paperId: String) {}
+}
+
+/// Copying text to the system clipboard (Linux), so the copy buttons work away
+/// from the Objective-C pasteboard. Pipes the text to a clipboard helper
+/// (`wl-copy` on Wayland, `xclip` on X11) so the desktop, not this app, holds it.
+enum Clipboard {
+    /// Replace the clipboard's contents with `text`.
+    static func copy(_ text: String) {
+        if ProcessInfo.processInfo.environment["WAYLAND_DISPLAY"] != nil {
+            pipe(into: "wl-copy", text)
+        } else {
+            pipe(into: "xclip", text, and: "-selection", "clipboard")
+        }
+    }
+
+    /// Pipes `text` into `tool`'s stdin — the stream the clipboard helpers read from.
+    private static func pipe(into tool: String, _ text: String, and arguments: String...) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = [tool] + arguments
+        let input = Pipe()
+        process.standardInput = input
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return
+        }
+        // Write after run(): a SIGPIPE if stdio isn't ready is a lost copy, not a crash.
+        do {
+            try input.fileHandleForWriting.write(contentsOf: Data(text.utf8))
+            try input.fileHandleForWriting.close()
+        } catch {
+            process.terminate()
+        }
+    }
 }
 
 /// Running the desktop's command-line helpers.

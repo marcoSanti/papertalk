@@ -1,0 +1,5 @@
+// poppler-glib and cairo: PDF text and page images on Linux.
+module CPoppler [system] {
+    header "shim.h"
+    export *
+}

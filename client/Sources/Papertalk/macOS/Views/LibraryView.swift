@@ -77,7 +77,7 @@ struct LibraryView: View {
         }
         .background(AmbientBackground())
         .navigationTitle(title)
-        .navigationSubtitle(LibraryPresentation.paperCount(papers.count))
+        .navigationSubtitle(LibraryPresentation.itemCount(papers.count, slides: store.showsSlides))
         .toolbar {
             if store.view == .author {
                 ToolbarItem(placement: .navigation) {

@@ -60,6 +60,11 @@ final class LibraryPresentationTests: PapertalkTestCase {
     func testCountsAndBadges() {
         XCTAssertEqual(LibraryPresentation.paperCount(1), "1 paper")
         XCTAssertEqual(LibraryPresentation.paperCount(0), "0 papers")
+        XCTAssertEqual(LibraryPresentation.itemCount(1, slides: true), "1 deck")
+        XCTAssertEqual(LibraryPresentation.itemCount(3, slides: true), "3 decks")
+        XCTAssertEqual(LibraryPresentation.itemCount(3, slides: false), "3 papers")
+        XCTAssertEqual(LibraryPresentation.detailPlaceholder(slides: true).title, "No deck selected")
+        XCTAssertEqual(LibraryPresentation.detailPlaceholder(slides: false).title, "No paper selected")
         XCTAssertEqual(LibraryPresentation.authorCount(3), "3 authors")
         XCTAssertNil(LibraryPresentation.badge(0))
         XCTAssertEqual(LibraryPresentation.badge(4), "4")

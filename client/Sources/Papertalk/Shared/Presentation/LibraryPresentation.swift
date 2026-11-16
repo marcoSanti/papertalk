@@ -47,6 +47,11 @@ enum LibraryPresentation {
     }
     /// "1 paper" / "3 papers".
     static func paperCount(_ n: Int) -> String { count(n, L("1 paper"), L("{0} papers")) }
+
+    /// The library header's count: decks in Slides, papers everywhere else.
+    static func itemCount(_ n: Int, slides: Bool) -> String {
+        slides ? count(n, L("1 deck"), L("{0} decks")) : paperCount(n)
+    }
     /// "1 author" / "3 authors".
     static func authorCount(_ n: Int) -> String { count(n, L("1 author"), L("{0} authors")) }
 
@@ -105,6 +110,12 @@ enum LibraryPresentation {
     /// The details pane with nothing selected.
     static var noSelection: (title: String, message: String) {
         (L("No paper selected"), L("Select a paper to see its details and episode."))
+    }
+
+    /// The macOS details pane with nothing selected, worded for decks in Slides.
+    static func detailPlaceholder(slides: Bool) -> (title: String, message: String) {
+        slides ? (L("No deck selected"), L("Pick a deck to see its details, tags and episode."))
+            : (L("No paper selected"), L("Pick a paper from the library to see its details, tags and episode."))
     }
 
     /// Which empty state applies: an empty library, a search with no hits, or filters that hide everything.

@@ -15,7 +15,7 @@ struct TranscriptSheetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider().opacity(0.4)
+            Divider()
             if let transcript = TranscriptPresentation.readable(sheet.transcript) {
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 26) {
@@ -77,7 +77,7 @@ struct TranscriptSheetView: View {
     /// One segment: its number, title and turns.
     private func segmentView(_ index: Int, _ segment: Transcript.Segment) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 Text(TranscriptPresentation.segmentNumber(index))
                     .font(.caption).fontWeight(.bold)
                     .foregroundColor(.blue)

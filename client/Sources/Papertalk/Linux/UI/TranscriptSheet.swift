@@ -95,7 +95,7 @@ struct TranscriptSheetView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(turn.speaker).font(.caption).fontWeight(.semibold)
                             .foregroundColor(.blue)
-                        Text(turn.text).foregroundColor(.primary)
+                        Text(turn.text)
                     }
                 }
             }

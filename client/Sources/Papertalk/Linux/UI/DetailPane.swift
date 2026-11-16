@@ -83,6 +83,7 @@ struct PaperDetail: View {
             HStack(spacing: 8) {
                 Button(PaperPresentation.favoriteButton(paper).title) { store.toggleFavorite(paper.id) }
                 Button(PaperPresentation.listenedToggle(paper).title) { store.toggleRead(paper.id) }
+                Button(L("Edit")) { store.editingPaper = paper }
                 Button(L("Open PDF")) { store.openPDF(paper.id) }
                     .disabled(!paper.hasPdf)
                 Button(L("Transcript")) { store.showTranscript(paper.id) }

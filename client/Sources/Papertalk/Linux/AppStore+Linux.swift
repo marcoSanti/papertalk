@@ -4,6 +4,9 @@
 import Foundation
 
 extension AppStore {
+    /// Close the metadata-edit sheet.
+    func closeEditing() { editingPaper = nil }
+
     /// Close the transcript sheet.
     func closeScriptSheet() { transcriptSheet = nil }
 

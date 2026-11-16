@@ -80,6 +80,11 @@ struct RootView: View {
                             TranscriptSheetView(bridge: bridge, sheet: sheet)
                         }
                     }
+                    .sheet(isPresented: editingShown) {
+                        if let paper = bridge.store.editingPaper {
+                            EditMetaSheet(bridge: bridge, paper: paper)
+                        }
+                    }
             }
         }
     }
@@ -106,6 +111,10 @@ struct RootView: View {
     private var transcriptShown: Binding<Bool> {
         Binding(get: { bridge.store.transcriptSheet != nil },
                 set: { if !$0 { bridge.store.closeScriptSheet() } })
+    }
+    private var editingShown: Binding<Bool> {
+        Binding(get: { bridge.store.editingPaper != nil },
+                set: { if !$0 { bridge.store.closeEditing() } })
     }
 
     private var confirmationShown: Binding<Bool> {

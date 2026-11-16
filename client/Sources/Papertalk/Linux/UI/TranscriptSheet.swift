@@ -59,7 +59,7 @@ struct TranscriptSheetView: View {
             Spacer()
             HStack(spacing: 8) {
                 Button(copied ? L("Copied") : L("Copy transcript")) { copyAll() }
-                Button(L("Close")) { bridge.closeScriptSheet() }
+                Button(L("Close")) { bridge.store.closeScriptSheet() }
             }
         }
         .padding(20)

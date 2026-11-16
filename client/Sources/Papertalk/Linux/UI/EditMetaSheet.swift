@@ -46,7 +46,7 @@ struct EditMetaSheet: View {
 
             HStack(spacing: 8) {
                 Spacer()
-                Button(L("Cancel")) { bridge.closeEditing() }
+                Button(L("Cancel")) { bridge.store.closeEditing() }
                 Button(L("Save")) { save() }
             }
         }
@@ -57,7 +57,7 @@ struct EditMetaSheet: View {
     /// Save the edited metadata and close the sheet.
     private func save() {
         bridge.store.saveMetadata(paper.id, form)
-        bridge.closeEditing()
+        bridge.store.closeEditing()
     }
 }
 #endif

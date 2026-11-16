@@ -88,6 +88,8 @@ struct PaperDetail: View {
                 Button(PaperPresentation.listenedToggle(paper).title) { store.toggleRead(paper.id) }
                 Button(L("Open PDF")) { store.openPDF(paper.id) }
                     .disabled(!paper.hasPdf)
+                Button(L("Transcript")) { store.showTranscript(paper.id) }
+                    .disabled(!paper.hasScript)
                 if store.isStandalone {
                     Button(L("Show in Files")) { store.revealInFinder(paper.id) }
                 }

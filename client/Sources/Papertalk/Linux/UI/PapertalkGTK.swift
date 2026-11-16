@@ -75,6 +75,11 @@ struct RootView: View {
                     .sheet(isPresented: settingsShown) {
                         SettingsSheet(bridge: bridge, isSetup: bridge.store.showOnboarding)
                     }
+                    .sheet(isPresented: transcriptShown) {
+                        if let sheet = bridge.store.transcriptSheet {
+                            TranscriptSheetView(bridge: bridge, sheet: sheet)
+                        }
+                    }
             }
         }
     }
@@ -97,6 +102,10 @@ struct RootView: View {
     private var castShown: Binding<Bool> {
         Binding(get: { bridge.store.pendingCast != nil },
                 set: { if !$0 { bridge.store.cancelCast() } })
+    }
+    private var transcriptShown: Binding<Bool> {
+        Binding(get: { bridge.store.transcriptSheet != nil },
+                set: { if !$0 { bridge.store.closeScriptSheet() } })
     }
 
     private var confirmationShown: Binding<Bool> {

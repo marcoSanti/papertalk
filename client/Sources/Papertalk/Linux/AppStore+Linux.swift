@@ -4,6 +4,9 @@
 import Foundation
 
 extension AppStore {
+    /// Close the transcript sheet.
+    func closeScriptSheet() { transcriptSheet = nil }
+
     /// Close the settings sheet; on first launch, where it's the setup,
     /// closing skips the setup (everything can be set there later).
     func closeSettings() {

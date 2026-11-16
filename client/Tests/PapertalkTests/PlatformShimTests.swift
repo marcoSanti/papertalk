@@ -116,6 +116,18 @@ final class LinuxShimTests: PapertalkTestCase {
 #endif
 
 #if os(Linux)
+/// The system clipboard: copying shouldn't crash when there's no desktop helper
+/// (CI is headless), and picks a helper that reads the piped text on stdin.
+final class ClipboardTests: PapertalkTestCase {
+    /// Copying with no display helper present is a no-op, not a crash.
+    func testCopyWithoutADisplayHelperDoesNotThrow() {
+        Clipboard.copy("hello")
+        Clipboard.copy("")
+    }
+}
+#endif
+
+#if os(Linux)
 /// Reading the desktop's dark preference (SwiftCrossUI doesn't).
 final class DesktopThemeTests: PapertalkTestCase {
     func testGTKThemeVariableWins() {

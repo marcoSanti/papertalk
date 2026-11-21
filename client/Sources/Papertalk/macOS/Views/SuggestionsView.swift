@@ -1,5 +1,5 @@
-// The Suggested section of the main window: the daily check's header, the paper being fetched,
-// one row per suggested paper, and the details panel that shows the picked one's abstract.
+// The Suggested section of the main window: a tab per source with Check Now, the paper being
+// fetched, one row per suggested paper, and the details panel that shows the picked one's abstract.
 
 #if os(macOS)
 import SwiftUI
@@ -8,17 +8,21 @@ import SwiftUI
 /// `SuggestionsPresentation`; actions go to the store.
 struct SuggestionsView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var tab: Suggestion.Source = .semanticScholar
 
     var body: some View {
+        let shown = SuggestionsPresentation.pending(store.suggestionLog.pending, in: tab)
         Group {
-            if store.suggestionLog.pending.isEmpty {
-                emptyState
-            } else {
-                List(store.suggestionLog.pending, selection: $store.selectedSuggestionId) { s in
+            if !shown.isEmpty {
+                List(shown, selection: $store.selectedSuggestionId) { s in
                     SuggestionRow(suggestion: s)
                 }
                 .listStyle(.inset)
                 .scrollContentBackground(.hidden)
+            } else if SuggestionsPresentation.showsAlertSetup(tab: tab, ready: store.alertsReady) {
+                alertSetup
+            } else {
+                emptyState
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -33,15 +37,22 @@ struct SuggestionsView: View {
         .background(AmbientBackground())
         .navigationTitle(SuggestionsPresentation.windowTitle)
         .navigationSubtitle(SuggestionsPresentation.lastChecked(store.suggestionLog.lastCheckIso))
+        .onChange(of: tab) { store.selectedSuggestionId = nil }
     }
 
-    /// The daily check's switch, the last check's result, and Check Now, on one glass bar.
+    /// The source tabs, the last check's result, and Check Now, on one glass bar. The daily
+    /// switch and the import depth live in Settings → Suggested Papers.
     private var header: some View {
         HStack(spacing: 12) {
-            Toggle(SuggestionsPresentation.enableToggle, isOn: $store.suggestionsEnabled)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .help(SuggestionsPresentation.enableHelp)
+            Picker("", selection: $tab) {
+                ForEach(SuggestionsPresentation.tabs, id: \.self) { t in
+                    Text(SuggestionsPresentation.tabLabel(t, count: SuggestionsPresentation.pending(store.suggestionLog.pending, in: t).count))
+                        .tag(t)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
             if let status = store.suggestionsStatus {
                 Text(status)
                     .font(.callout)
@@ -49,18 +60,6 @@ struct SuggestionsView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 8)
-            Picker(SuggestionsPresentation.importDepthLabel, selection: $store.suggestionDepth) {
-                ForEach(SuggestionsPresentation.importDepths(current: store.suggestionDepth)) { Text($0.label).tag($0) }
-            }
-            .fixedSize()
-            .help(SuggestionsPresentation.importDepthHelp)
-            Button {
-                store.openSettings(.suggestions)
-            } label: {
-                Label(SuggestionsPresentation.alertsButton(ready: store.alertsReady), systemImage: "gearshape")
-            }
-            .buttonStyle(.glass)
-            .help(SuggestionsPresentation.alertsHelp(ready: store.alertsReady))
             Button {
                 Task { await store.checkSuggestions() }
             } label: {
@@ -75,6 +74,19 @@ struct SuggestionsView: View {
         .glassEffect(.regular, in: Capsule())
     }
 
+    /// The Google Scholar tab before alerts are read: what they add, and the way to Settings.
+    private var alertSetup: some View {
+        ContentUnavailableView {
+            Label(SuggestionsPresentation.alertsNotSetUpTitle, systemImage: "envelope")
+        } description: {
+            Text(SuggestionsPresentation.alertsNotSetUpMessage)
+        } actions: {
+            Button(SuggestionsPresentation.setUpAlertsButton) { store.openSettings(.suggestions) }
+                .buttonStyle(.glassProminent)
+                .help(SuggestionsPresentation.setUpAlertsHelp)
+        }
+    }
+
     private var emptyState: some View {
         ContentUnavailableView {
             Label(SuggestionsPresentation.emptyTitle, systemImage: "sparkles")
@@ -87,7 +99,7 @@ struct SuggestionsView: View {
     }
 }
 
-/// One suggested paper: title, byline, the LLM's reason, how the PDF arrives, and its actions.
+/// One suggested paper (its tab names the source): title, byline, the LLM's reason, how the PDF arrives, and its actions.
 private struct SuggestionRow: View {
     @EnvironmentObject private var store: AppStore
     let suggestion: Suggestion
@@ -105,13 +117,10 @@ private struct SuggestionRow: View {
                 Text(suggestion.title)
                     .font(.body.weight(.medium))
                     .lineLimit(2)
-                HStack(spacing: 6) {
-                    SourceBadge(source: suggestion.source)
-                    Text(SuggestionsPresentation.details(suggestion))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                Text(SuggestionsPresentation.details(suggestion))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 if let why = suggestion.reason {
                     Label(why, systemImage: "sparkles")
                         .font(.caption)

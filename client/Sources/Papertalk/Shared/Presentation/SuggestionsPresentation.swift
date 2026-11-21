@@ -11,12 +11,28 @@ enum SuggestionsPresentation {
     static var menuItem: String { L("Show Suggested Papers") }
     /// The sidebar row's tooltip.
     static var sidebarHelp: String { L("Papers like yours, from Semantic Scholar and your Google Scholar alerts") }
-    /// The header's button to Settings → Suggested Papers: an invitation until alerts are read.
-    static func alertsButton(ready: Bool) -> String { ready ? L("Scholar Alert Settings…") : L("Set Up Scholar Alerts…") }
-    static func alertsHelp(ready: Bool) -> String {
-        ready ? L("Opens Settings → Suggested Papers: the mail account your Google Scholar alerts are read from, and how far back.")
-            : L("Opens Settings → Suggested Papers, to also read the papers in your Google Scholar alert emails.")
+    /// The Google Scholar tab's button to Settings → Suggested Papers, shown until alerts are read.
+    static var setUpAlertsButton: String { L("Set Up Scholar Alerts…") }
+    static var setUpAlertsHelp: String {
+        L("Opens Settings → Suggested Papers, to also read the papers in your Google Scholar alert emails.")
     }
+    static var alertsNotSetUpTitle: String { L("Google Scholar alerts aren't set up") }
+    static var alertsNotSetUpMessage: String {
+        L("Papertalk can add the papers from your Google Scholar alert emails here. Tell it which mail account they arrive in.")
+    }
+
+    // MARK: Tabs
+
+    /// One tab per source, so the two lists aren't mixed.
+    static let tabs: [Suggestion.Source] = [.semanticScholar, .scholarAlert]
+    /// "Semantic Scholar (4)".
+    static func tabLabel(_ tab: Suggestion.Source, count: Int) -> String {
+        L("{0} ({1})", tab == .semanticScholar ? L("Semantic Scholar") : L("Google Scholar alerts"), count)
+    }
+    /// The pending suggestions from one source, in their ranked order.
+    static func pending(_ all: [Suggestion], in tab: Suggestion.Source) -> [Suggestion] { all.filter { $0.source == tab } }
+    /// An empty Google Scholar tab invites setting alerts up until they're read.
+    static func showsAlertSetup(tab: Suggestion.Source, ready: Bool) -> Bool { tab == .scholarAlert && !ready }
 
     // MARK: Header
 
@@ -66,7 +82,7 @@ enum SuggestionsPresentation {
     static var emptyTitle: String { L("No suggested papers") }
     static func emptyMessage(enabled: Bool) -> String {
         enabled ? L("New suggestions appear here after the daily check. Check Now looks right away.")
-            : L("Turn on Check every day above, or use Check Now once.")
+            : L("Turn on Check every day in Settings → Suggested Papers, or use Check Now once.")
     }
 
     /// "A. Vaswani, N. Shazeer, N. Parmar et al. · 2017" (the source has its own badge).

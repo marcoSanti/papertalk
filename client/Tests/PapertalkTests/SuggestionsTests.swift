@@ -168,9 +168,8 @@ final class SuggestionsTests: PapertalkTestCase {
         XCTAssertEqual(SuggestionsPresentation.sourceIcon(.scholarAlert), "envelope")
         XCTAssertEqual(SuggestionsPresentation.sourceIcon(.semanticScholar), "magnifyingglass")
         XCTAssertNotEqual(SuggestionsPresentation.sourceHelp(.scholarAlert), SuggestionsPresentation.sourceHelp(.semanticScholar))
-        XCTAssertEqual(SuggestionsPresentation.alertsButton(ready: false), "Set Up Scholar Alerts…")
-        XCTAssertEqual(SuggestionsPresentation.alertsButton(ready: true), "Scholar Alert Settings…")
-        XCTAssertTrue(SuggestionsPresentation.alertsHelp(ready: false).hasPrefix("Opens Settings → Suggested Papers"))
+        XCTAssertEqual(SuggestionsPresentation.setUpAlertsButton, "Set Up Scholar Alerts…")
+        XCTAssertTrue(SuggestionsPresentation.setUpAlertsHelp.hasPrefix("Opens Settings → Suggested Papers"))
         XCTAssertEqual(SuggestionsPresentation.availability(s), "Free PDF")
         XCTAssertEqual(SuggestionsPresentation.availabilityIcon(s), "arrow.down.doc")
         s.pdfURL = nil
@@ -195,6 +194,20 @@ final class SuggestionsTests: PapertalkTestCase {
         XCTAssertEqual(SuggestionsPresentation.importDepths(current: .custom), [.inDepth, .summary, .direct, .custom])
         XCTAssertTrue(SuggestionsPresentation.mismatch(file: "f.pdf", title: "T").contains("“f.pdf”"))
         XCTAssertTrue(SuggestionsPresentation.checkFailed("boom").hasSuffix("boom"))
+    }
+
+    func testTabsSplitBySource() {
+        var alert = Self.suggestion("A", pdf: nil)
+        alert.source = .scholarAlert
+        let all = [Self.suggestion("S1", pdf: nil), alert, Self.suggestion("S2", pdf: nil)]
+        XCTAssertEqual(SuggestionsPresentation.tabs, [.semanticScholar, .scholarAlert])
+        XCTAssertEqual(SuggestionsPresentation.pending(all, in: .semanticScholar).map(\.title), ["S1", "S2"])
+        XCTAssertEqual(SuggestionsPresentation.pending(all, in: .scholarAlert).map(\.title), ["A"])
+        XCTAssertEqual(SuggestionsPresentation.tabLabel(.semanticScholar, count: 2), "Semantic Scholar (2)")
+        XCTAssertEqual(SuggestionsPresentation.tabLabel(.scholarAlert, count: 0), "Google Scholar alerts (0)")
+        XCTAssertTrue(SuggestionsPresentation.showsAlertSetup(tab: .scholarAlert, ready: false))
+        XCTAssertFalse(SuggestionsPresentation.showsAlertSetup(tab: .scholarAlert, ready: true))
+        XCTAssertFalse(SuggestionsPresentation.showsAlertSetup(tab: .semanticScholar, ready: false))
     }
 
     func testFetchPanelWording() {

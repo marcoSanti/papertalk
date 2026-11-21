@@ -1,4 +1,4 @@
-// Settings → Suggested Papers on macOS: the mail account Google Scholar alerts are read from,
+// Settings → Suggested Papers on macOS: the daily check and import depth, then the mail account Google Scholar alerts are read from,
 // with the steps to set alerts and an app password up, and Test Connection.
 
 #if os(macOS)
@@ -12,6 +12,25 @@ struct MailSettingsPage: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                Text(SuggestionsPresentation.windowTitle).font(.title3).fontWeight(.semibold)
+                // Bound to the store, which saves them as they change, like the Suggested section did.
+                Toggle(SuggestionsPresentation.enableToggle, isOn: $store.suggestionsEnabled)
+                    .toggleStyle(.switch)
+                Text(SuggestionsPresentation.enableHelp)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                field(SuggestionsPresentation.importDepthLabel) {
+                    Picker(SuggestionsPresentation.importDepthLabel, selection: $store.suggestionDepth) {
+                        ForEach(SuggestionsPresentation.importDepths(current: store.suggestionDepth)) { Text($0.label).tag($0) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    Text(SuggestionsPresentation.importDepthHelp)
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Divider().padding(.vertical, 4)
+
                 Text(MailSettingsForm.title).font(.title3).fontWeight(.semibold)
                 Toggle(MailSettingsForm.enableToggle, isOn: $form.enabled)
                     .toggleStyle(.switch)

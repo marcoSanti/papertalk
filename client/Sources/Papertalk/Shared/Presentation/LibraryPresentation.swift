@@ -5,7 +5,7 @@ import Foundation
 
 /// What the sidebar can point the library at.
 enum SidebarItem: Hashable {
-    case all, favorites, authors, slides, tag(String), library(String)
+    case all, favorites, authors, slides, suggested, tag(String), library(String)
 }
 
 /// Library wording and keyboard navigation. Pure functions: the library and
@@ -21,6 +21,7 @@ enum LibraryPresentation {
         case .author: return author ?? L("Author")
         case .library: return library ?? L("Library")
         case .slides: return L("Slides")
+        case .suggested: return L("Suggested Papers")
         }
     }
 
@@ -33,6 +34,7 @@ enum LibraryPresentation {
         case .tag(let tag): return tag
         case .library(let id): return libraries.first { $0.id == id }?.name ?? L("Library")
         case .slides: return L("Slides")
+        case .suggested: return L("Suggested Papers")
         }
     }
 

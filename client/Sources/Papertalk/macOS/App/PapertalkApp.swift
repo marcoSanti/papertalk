@@ -41,6 +41,7 @@ struct PapertalkApp: App {
                     .keyboardShortcut("o", modifiers: .command)
                 Button(L("Import Paper…")) { PaperPanels.importPapers(into: store) }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
+                Button(SuggestionsPresentation.menuItem) { store.selectSidebar(.suggested) }
                 Divider()
                 Button(L("Redraw All Mind Maps…")) { store.requestRedrawAllMindMaps() }
                     .disabled(store.mindMapsToRedraw.isEmpty)

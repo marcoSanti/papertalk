@@ -37,6 +37,13 @@ ideas. It's a native macOS app written in SwiftUI.
   quoted words highlighted. The chat lasts while the app is open; **New chat** starts over. Scanned PDFs without a
   text layer can't be asked about, and very long papers are cut at about 30,000 tokens. The prompt
   is editable under Query Prompts.
+- **Suggested papers.** The **Suggested Papers** section of the sidebar lists papers like yours
+  from [Semantic Scholar](https://www.semanticscholar.org), checked once a day after you turn on
+  **Check every day** (a check sends your papers' DOIs there), ranked by your LLM with a line on
+  why. Click one to read its abstract in the details panel, then **Import** it: a free PDF is
+  downloaded directly; otherwise **Open in Browser**, download the PDF, and Papertalk picks it up
+  from your Downloads folder. Imports use your last import's depth. **Dismiss** hides a
+  suggestion for good.
 - **A mind map of every paper.** The key concepts as a graph around three branches: the problem,
   the approach and the demonstration, each broken into its parts, with links between them. It
   opens on a plain-language summary of the paper; click a concept for its core idea and

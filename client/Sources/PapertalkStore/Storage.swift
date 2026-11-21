@@ -35,6 +35,8 @@ public enum K {
     public static let papersRoot = "papers/"
     /// Every `Library` (the user's folders of papers).
     public static let libraries = "libraries.json"
+    /// Suggested papers waiting in the Suggested Papers window, and those already handled.
+    public static let suggestions = "suggestions.json"
     /// The library record (`Paper`).
     public static func paper(_ id: String) -> String { "papers/\(id)/paper.json" }
     /// A script file older builds wrote; only deleted now.

@@ -160,9 +160,17 @@ final class SuggestionsTests: PapertalkTestCase {
     func testWindowWording() {
         var s = Self.suggestion("T", pdf: "https://x/p.pdf")
         s.authors = ["A", "B", "C", "D"]
-        XCTAssertEqual(SuggestionsPresentation.details(s), "A, B, C et al. · 2025 · Semantic Scholar")
+        XCTAssertEqual(SuggestionsPresentation.details(s), "A, B, C et al. · 2025")
         s.authors = []; s.year = nil; s.source = .scholarAlert
-        XCTAssertEqual(SuggestionsPresentation.details(s), "Google Scholar alert")
+        XCTAssertEqual(SuggestionsPresentation.details(s), "")
+        XCTAssertEqual(SuggestionsPresentation.source(.scholarAlert), "Google Scholar alert")
+        XCTAssertEqual(SuggestionsPresentation.source(.semanticScholar), "Semantic Scholar")
+        XCTAssertEqual(SuggestionsPresentation.sourceIcon(.scholarAlert), "envelope")
+        XCTAssertEqual(SuggestionsPresentation.sourceIcon(.semanticScholar), "magnifyingglass")
+        XCTAssertNotEqual(SuggestionsPresentation.sourceHelp(.scholarAlert), SuggestionsPresentation.sourceHelp(.semanticScholar))
+        XCTAssertEqual(SuggestionsPresentation.alertsButton(ready: false), "Set Up Scholar Alerts…")
+        XCTAssertEqual(SuggestionsPresentation.alertsButton(ready: true), "Scholar Alert Settings…")
+        XCTAssertTrue(SuggestionsPresentation.alertsHelp(ready: false).hasPrefix("Opens Settings → Suggested Papers"))
         XCTAssertEqual(SuggestionsPresentation.availability(s), "Free PDF")
         XCTAssertEqual(SuggestionsPresentation.availabilityIcon(s), "arrow.down.doc")
         s.pdfURL = nil
@@ -183,7 +191,8 @@ final class SuggestionsTests: PapertalkTestCase {
         XCTAssertFalse(SuggestionsPresentation.canCheck(checking: true))
         XCTAssertTrue(SuggestionsPresentation.canCheck(checking: false))
         XCTAssertNotEqual(SuggestionsPresentation.emptyMessage(enabled: true), SuggestionsPresentation.emptyMessage(enabled: false))
-        XCTAssertEqual(SuggestionsPresentation.importsWith(ImportChoice(depth: "summary")), "Imported as: Summary")
+        XCTAssertEqual(SuggestionsPresentation.importDepths(current: .summary), [.inDepth, .summary, .direct])
+        XCTAssertEqual(SuggestionsPresentation.importDepths(current: .custom), [.inDepth, .summary, .direct, .custom])
         XCTAssertTrue(SuggestionsPresentation.mismatch(file: "f.pdf", title: "T").contains("“f.pdf”"))
         XCTAssertTrue(SuggestionsPresentation.checkFailed("boom").hasSuffix("boom"))
     }
@@ -343,6 +352,19 @@ final class SuggestionsTests: PapertalkTestCase {
         await store.checkSuggestionsIfDue()
         await store.checkSuggestionsIfDue()
         XCTAssertEqual(calls, 1)
+    }
+
+    func testTheDepthMenuChangesOnlyTheDepthOfTheImportChoice() async {
+        let store = await makeStore([])
+        let saved = store.importChoice
+        defer { store.importChoice = saved }
+        store.importChoice = ImportChoice(depth: Depth.inDepth.rawValue, depthNote: "", targetMinutes: 20, scriptLanguage: "it")
+        XCTAssertEqual(store.suggestionDepth, .inDepth)
+        store.suggestionDepth = .summary
+        XCTAssertEqual(store.importChoice, ImportChoice(depth: "summary", depthNote: "", targetMinutes: 20, scriptLanguage: "it"))
+        XCTAssertEqual(ImportChoice.load().resolvedDepth, .summary)
+        store.mailPassword = { "" }
+        XCTAssertFalse(store.alertsReady)
     }
 
     func testDismissedSuggestionsNeverComeBack() async {

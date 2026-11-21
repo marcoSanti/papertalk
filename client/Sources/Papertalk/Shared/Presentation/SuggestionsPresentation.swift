@@ -10,14 +10,20 @@ enum SuggestionsPresentation {
     /// The File menu item, which shows the section.
     static var menuItem: String { L("Show Suggested Papers") }
     /// The sidebar row's tooltip.
-    static var sidebarHelp: String { L("Papers like yours, from Semantic Scholar") }
+    static var sidebarHelp: String { L("Papers like yours, from Semantic Scholar and your Google Scholar alerts") }
+    /// The header's button to Settings → Suggested Papers: an invitation until alerts are read.
+    static func alertsButton(ready: Bool) -> String { ready ? L("Scholar Alert Settings…") : L("Set Up Scholar Alerts…") }
+    static func alertsHelp(ready: Bool) -> String {
+        ready ? L("Opens Settings → Suggested Papers: the mail account your Google Scholar alerts are read from, and how far back.")
+            : L("Opens Settings → Suggested Papers, to also read the papers in your Google Scholar alert emails.")
+    }
 
     // MARK: Header
 
     static var enableToggle: String { L("Check every day") }
     /// The switch's tooltip, and the empty list's text: what a check sends where, since it's off until turned on.
     static var enableHelp: String {
-        L("Once a day, Papertalk sends the DOIs of the papers in your library to Semantic Scholar and lists papers like them here. Your LLM ranks them by how well they fit.")
+        L("Once a day, Papertalk sends the DOIs of the papers in your library to Semantic Scholar, reads your Google Scholar alert emails if you set them up, and lists the papers here. Your LLM ranks them by how well they fit.")
     }
     static func checkButton(checking: Bool) -> String { checking ? L("Checking…") : L("Check Now") }
     /// Check Now works without the switch (a one-off check), but not twice at once.
@@ -32,9 +38,15 @@ enum SuggestionsPresentation {
     // MARK: Results of a check
 
     static var noSeeds: String {
-        L("Suggestions start from your papers' DOIs, and none of your papers has one. Add a DOI with Edit paper first.")
+        L("Suggestions start from your papers' DOIs or your Google Scholar alert emails, and there are neither yet. Add a DOI with Edit paper, or click Set Up Scholar Alerts… to read your alert emails.")
     }
     static func checkFailed(_ reason: String) -> String { L("Couldn't check for suggested papers: {0}", reason) }
+    /// Why the alert emails couldn't be read, as one of a check's failures.
+    static func alertsFailed(_ reason: String) -> String { L("Google Scholar alerts: {0}", reason) }
+    /// After a check that got an answer: how many arrived, and what failed alongside.
+    static func checkResult(added: Int, failures: [String]) -> String {
+        failures.isEmpty ? found(added) : found(added) + " " + checkFailed(failures.joined(separator: " "))
+    }
     /// The status line, and the notification's text.
     static func found(_ n: Int) -> String {
         switch n {
@@ -57,11 +69,27 @@ enum SuggestionsPresentation {
             : L("Turn on Check every day above, or use Check Now once.")
     }
 
-    /// "A. Vaswani, N. Shazeer, N. Parmar et al. · 2017 · Semantic Scholar".
+    /// "A. Vaswani, N. Shazeer, N. Parmar et al. · 2017" (the source has its own badge).
     static func details(_ s: Suggestion) -> String {
         let authors = s.authors.count > 3 ? L("{0} et al.", s.authors.prefix(3).joined(separator: ", "))
             : s.authors.joined(separator: ", ")
-        return [authors, s.year.map(String.init) ?? "", source(s.source)].filter { !$0.isEmpty }.joined(separator: " · ")
+        return [authors, s.year.map(String.init) ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// The source badge's SF Symbol: a mail for alerts, a magnifier for Semantic Scholar's search.
+    static func sourceIcon(_ s: Suggestion.Source) -> String {
+        switch s {
+        case .semanticScholar: return "magnifyingglass"
+        case .scholarAlert: return "envelope"
+        }
+    }
+
+    /// The source badge's tooltip: why this paper is here.
+    static func sourceHelp(_ s: Suggestion.Source) -> String {
+        switch s {
+        case .semanticScholar: return L("Recommended by Semantic Scholar, from the papers in your library")
+        case .scholarAlert: return L("From one of your Google Scholar alert emails")
+        }
     }
 
     static func source(_ s: Suggestion.Source) -> String {
@@ -105,8 +133,16 @@ enum SuggestionsPresentation {
     static var dismissButton: String { L("Dismiss") }
     static var dismissHelp: String { L("Hide this paper for good") }
     static var openPageButton: String { L("Open in Browser") }
-    /// "Imported as: Summary": the depth the last import sheet used.
-    static func importsWith(_ choice: ImportChoice) -> String { L("Imported as: {0}", choice.resolvedDepth.label) }
+    /// The header's depth menu.
+    static var importDepthLabel: String { L("Import as") }
+    static var importDepthHelp: String {
+        L("How suggested papers are written. It starts as your last import's depth; Summary uses that import's length.")
+    }
+    /// The menu's depths: the ones that need nothing typed, plus Custom when it's the current one
+    /// (from the import sheet, with its description).
+    static func importDepths(current: Depth) -> [Depth] {
+        [.inDepth, .summary, .direct] + (current == .custom ? [.custom] : [])
+    }
 
     // MARK: Details panel
 

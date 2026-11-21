@@ -126,8 +126,8 @@ final class AppStore: ObservableObject {
                   targetMinutes: form.targetMinutes, scriptLanguage: form.scriptLanguage)
         } else if let s = form.submission {
             // Suggested papers are imported the way the last import was.
-            ImportChoice(depth: s.depth.rawValue, depthNote: s.depthNote, targetMinutes: s.targetMinutes,
-                         scriptLanguage: s.scriptLanguage.rawValue).save()
+            importChoice = ImportChoice(depth: s.depth.rawValue, depthNote: s.depthNote, targetMinutes: s.targetMinutes,
+                                        scriptLanguage: s.scriptLanguage.rawValue)
             upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
                    targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage, library: s.library,
                    slides: s.slides)
@@ -393,7 +393,7 @@ final class AppStore: ObservableObject {
 
     /// Raw values are remembered between launches: add new pages at the end.
     enum SettingsPage: Int, Identifiable {
-        case llm, server, prompts, presets, clear, voices, general
+        case llm, server, prompts, presets, clear, voices, general, suggestions
         var id: Int { rawValue }
     }
     /// Whether the unified settings sheet is open.
@@ -993,12 +993,27 @@ final class AppStore: ObservableObject {
     @Published var suggestionsEnabled = UserDefaults.standard.bool(forKey: AppStore.suggestionsEnabledKey) {
         didSet { UserDefaults.standard.set(suggestionsEnabled, forKey: Self.suggestionsEnabledKey) }
     }
+    /// How suggested papers are imported: the last import sheet's choices, or the depth picked
+    /// in the Suggested section.
+    @Published var importChoice = ImportChoice.load() { didSet { importChoice.save() } }
     /// Where the browser saves downloads (tests point it at a temp folder).
     var downloadsFolder = PaperDownload.downloadsFolder
     /// How often the Downloads folder is looked at while waiting for a PDF.
     var downloadsPollInterval: TimeInterval = 1
     /// The wait for the current suggestion's PDF in Downloads.
     var downloadsWatch: Task<Void, Never>?
+    /// The mail account Google Scholar alerts are read from (its password is in the Keychain).
+    @Published var mail = MailSettings.load() { didSet { mail.save() } }
+    /// The mail account's app password (tests replace it: the Keychain stays untested).
+    var mailPassword: () -> String = { KeychainStore.get(MailSettings.passwordAccount) ?? "" }
+    /// Saves the app password (tests replace it, like `mailPassword`).
+    var storeMailPassword: (String) -> Void = { KeychainStore.set($0, account: MailSettings.passwordAccount) }
+    /// The connection alerts are read over (tests script a server).
+    var makeMailTransport: (MailSettings) throws -> IMAPTransport = ScholarAlertSource.defaultTransport
+    /// Settings' Test Connection is under way.
+    @Published var isTestingMail = false
+    /// What Test Connection found; nil before a test.
+    @Published var mailTestResult: String?
 
     /// Save the library sheet: add the library, or update it in place.
     func saveLibrary(_ form: LibraryForm) {

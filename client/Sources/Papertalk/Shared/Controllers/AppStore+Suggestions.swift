@@ -43,26 +43,57 @@ extension AppStore {
         await checkSuggestions(now: now)
     }
 
-    /// Ask Semantic Scholar for papers like the library's, add the new ones, rank the waiting ones
-    /// with the LLM and say how many arrived (a notification while in the background).
+    /// The Google Scholar alerts source, when the user set up a mail account for it.
+    var alertSource: ScholarAlertSource? {
+        let password = mailPassword()
+        guard mail.isReady(password: password) else { return nil }
+        return ScholarAlertSource(settings: mail, password: password, makeTransport: makeMailTransport)
+    }
+
+    /// Ask the sources (Semantic Scholar for papers like the library's, the user's Google Scholar
+    /// alert emails) for suggestions, add the new ones, rank the waiting ones with the LLM and say
+    /// how many arrived (a notification while in the background). One source failing doesn't
+    /// lose the other's papers.
     func checkSuggestions(source: SemanticScholar = SemanticScholar(), now: Date = Date()) async {
         guard !isCheckingSuggestions else { return }
         let seeds = Suggestions.seeds(allPapers)
-        guard !seeds.isEmpty else { suggestionsStatus = SuggestionsPresentation.noSeeds; return }
+        let alerts = alertSource
+        guard !seeds.isEmpty || alerts != nil else { suggestionsStatus = SuggestionsPresentation.noSeeds; return }
         isCheckingSuggestions = true
         defer { isCheckingSuggestions = false }
         await reloadSuggestionLog()
-        let found: [Suggestion]
-        do {
-            found = try await source.recommendations(for: seeds)
-        } catch {
-            suggestionsStatus = SuggestionsPresentation.checkFailed(error.localizedDescription)
+        var found: [Suggestion] = []
+        var failures: [String] = []
+        var anyAnswered = false
+        var readAlerts: [String] = []
+        // Alerts first: Google's own picks lead when the LLM doesn't rank.
+        if let alerts {
+            do {
+                let result = try await alerts.suggestions(now: now, alreadyRead: Set(suggestionLog.readAlerts ?? []))
+                found += result.papers
+                readAlerts = result.read
+                anyAnswered = true
+            } catch {
+                failures.append(SuggestionsPresentation.alertsFailed(error.localizedDescription))
+            }
+        }
+        if !seeds.isEmpty {
+            do {
+                found += try await source.recommendations(for: seeds)
+                anyAnswered = true
+            } catch {
+                failures.append(error.localizedDescription)
+            }
+        }
+        guard anyAnswered else {
+            suggestionsStatus = SuggestionsPresentation.checkFailed(failures.joined(separator: " "))
             return
         }
         var (log, added) = Suggestions.merge(found, into: suggestionLog, library: allPapers)
         log.lastCheckIso = ISO8601DateFormatter().string(from: now)
+        if !readAlerts.isEmpty { log.readAlerts = ScholarAlerts.remember(readAlerts, in: log.readAlerts) }
         suggestionLog = log
-        suggestionsStatus = SuggestionsPresentation.found(added.count)
+        suggestionsStatus = SuggestionsPresentation.checkResult(added: added.count, failures: failures)
         if !added.isEmpty {
             await rankSuggestions()
             notifier.post(.suggestions(SuggestionsPresentation.found(added.count)),
@@ -71,6 +102,27 @@ extension AppStore {
             show(SuggestionsPresentation.foundToast(added.count))
         }
         persistSuggestions()
+    }
+
+    /// Save Settings' mail page: the account in user defaults, the password in the Keychain,
+    /// each only when it changed.
+    func saveMailSettings(_ form: MailSettingsForm) {
+        let next = form.settings
+        if next != mail { mail = next }
+        if form.password != mailPassword() { storeMailPassword(form.password) }
+    }
+
+    /// Settings' Test Connection: sign in with what the form holds and count recent alerts.
+    func testMailConnection(_ form: MailSettingsForm, now: Date = Date()) async {
+        guard !isTestingMail else { return }
+        isTestingMail = true
+        defer { isTestingMail = false }
+        let source = ScholarAlertSource(settings: form.settings, password: form.password, makeTransport: makeMailTransport)
+        do {
+            mailTestResult = MailSettingsForm.testSucceeded(alerts: try await source.test(now: now), days: form.lookBackDays)
+        } catch {
+            mailTestResult = MailSettingsForm.testFailed(error.localizedDescription)
+        }
     }
 
     /// Order the waiting suggestions by the LLM's sense of fit, with its reasons. Without an LLM,
@@ -103,6 +155,15 @@ extension AppStore {
     var selectedSuggestion: Suggestion? {
         selectedSuggestionId.flatMap { id in suggestionLog.pending.first { $0.id == id } }
     }
+
+    /// The Suggested section's depth menu, over `importChoice` (the rest of it is kept).
+    var suggestionDepth: Depth {
+        get { importChoice.resolvedDepth }
+        set { importChoice.depth = newValue.rawValue }
+    }
+
+    /// Alerts are read in checks (Settings filled in, with a password).
+    var alertsReady: Bool { alertSource != nil }
 
     /// Never show these again. Ones being imported stay (Stop or Skip first).
     func dismissSuggestions(_ ids: Set<String>) {
@@ -193,7 +254,7 @@ extension AppStore {
         if !Suggestions.titleMatches(s.title, text: opening) {
             show(SuggestionsPresentation.mismatch(file: fileName, title: s.title))
         }
-        let choice = ImportChoice.load()
+        let choice = importChoice
         upload(data, filename: fileName, depth: choice.resolvedDepth, depthNote: choice.depthNote,
                targetMinutes: choice.targetMinutes, scriptLanguage: choice.resolvedLanguage)
         suggestionLog = Suggestions.handle([s.id], in: suggestionLog)

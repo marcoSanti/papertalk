@@ -32,6 +32,9 @@ struct SuggestionLog: Codable, Equatable {
     var handled: [String] = []
     /// ISO 8601; nil before the first check.
     var lastCheckIso: String?
+    /// Alert emails already read (`ScholarAlerts.alertId`), so a check doesn't read them again.
+    /// Optional, so logs written before alerts still decode.
+    var readAlerts: [String]? = nil
 }
 
 /// The depth, length and language of the last import started from the import sheet, which

@@ -889,6 +889,7 @@ struct SettingsView: View {
                     Label(L("Server Settings"), systemImage: "server.rack").tag(AppStore.SettingsPage.server.rawValue)
                     Label(L("Query Prompts"), systemImage: "quote.bubble").tag(AppStore.SettingsPage.prompts.rawValue)
                     Label(L("Prompt Presets"), systemImage: "slider.horizontal.3").tag(AppStore.SettingsPage.presets.rawValue)
+                    Label(SuggestionsPresentation.windowTitle, systemImage: "sparkles").tag(AppStore.SettingsPage.suggestions.rawValue)
                     Label(L("Clear Data"), systemImage: "trash").tag(AppStore.SettingsPage.clear.rawValue)
                 }
                 .listStyle(.sidebar)
@@ -903,6 +904,7 @@ struct SettingsView: View {
                     case .presets: CustomPresetsPage()
                     case .clear: ClearDataPage()
                     case .general: LanguageSettingsPage()
+                    case .suggestions: MailSettingsPage()
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

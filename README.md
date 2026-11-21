@@ -42,8 +42,11 @@ ideas. It's a native macOS app written in SwiftUI.
   **Check every day** (a check sends your papers' DOIs there), ranked by your LLM with a line on
   why. Click one to read its abstract in the details panel, then **Import** it: a free PDF is
   downloaded directly; otherwise **Open in Browser**, download the PDF, and Papertalk picks it up
-  from your Downloads folder. Imports use your last import's depth. **Dismiss** hides a
-  suggestion for good.
+  from your Downloads folder. **Import as** picks the depth (it starts as your last import's).
+  Each row's badge says whether it came from Semantic Scholar or a Google Scholar alert. **Dismiss** hides a
+  suggestion for good. It can also read your **Google Scholar alert emails** over IMAP
+  (**Settings → Suggested Papers**: server, address, an app password kept in the Keychain, and how
+  far back to look), read-only, at most 20 new alert emails per check.
 - **A mind map of every paper.** The key concepts as a graph around three branches: the problem,
   the approach and the demonstration, each broken into its parts, with links between them. It
   opens on a plain-language summary of the paper; click a concept for its core idea and

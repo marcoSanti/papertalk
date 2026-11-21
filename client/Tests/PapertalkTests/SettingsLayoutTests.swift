@@ -15,9 +15,10 @@ final class SettingsLayoutTests: PapertalkTestCase {
     func testSidebarIsVisibleOnEveryPage() async throws {
         _ = NSApplication.shared
         // The LLM page is left out: opening it asks the configured endpoint for models.
-        for page: AppStore.SettingsPage in [.clear, .voices, .server, .prompts, .presets, .general] {
+        for page: AppStore.SettingsPage in [.clear, .voices, .server, .prompts, .presets, .general, .suggestions] {
             let store = AppStore(storage: LocalStorage(root: Fixtures.tempDir()), speech: FakeSpeechBackend())
             store.settingsPage = page
+            store.mailPassword = { "" }   // the mail page reads it on appearing; the Keychain stays untested
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
                                   styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
@@ -32,7 +33,7 @@ final class SettingsLayoutTests: PapertalkTestCase {
             }
             try? await Task.sleep(nanoseconds: 300_000_000)   // let the split view settle
             let table = try XCTUnwrap(sidebar, "\(page)")
-            XCTAssertEqual(table.numberOfRows, 7, "\(page)")
+            XCTAssertEqual(table.numberOfRows, 8, "\(page)")
             XCTAssertTrue(table.visibleRect.contains(table.rect(ofRow: 0)), "first page hidden when opening \(page)")
             XCTAssertLessThan(table.frame.height, 1000, "sidebar stretched when opening \(page)")
         }

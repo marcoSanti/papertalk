@@ -49,9 +49,18 @@ struct SuggestionsView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 8)
-            Text(SuggestionsPresentation.importsWith(ImportChoice.load()))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Picker(SuggestionsPresentation.importDepthLabel, selection: $store.suggestionDepth) {
+                ForEach(SuggestionsPresentation.importDepths(current: store.suggestionDepth)) { Text($0.label).tag($0) }
+            }
+            .fixedSize()
+            .help(SuggestionsPresentation.importDepthHelp)
+            Button {
+                store.openSettings(.suggestions)
+            } label: {
+                Label(SuggestionsPresentation.alertsButton(ready: store.alertsReady), systemImage: "gearshape")
+            }
+            .buttonStyle(.glass)
+            .help(SuggestionsPresentation.alertsHelp(ready: store.alertsReady))
             Button {
                 Task { await store.checkSuggestions() }
             } label: {
@@ -96,10 +105,13 @@ private struct SuggestionRow: View {
                 Text(suggestion.title)
                     .font(.body.weight(.medium))
                     .lineLimit(2)
-                Text(SuggestionsPresentation.details(suggestion))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    SourceBadge(source: suggestion.source)
+                    Text(SuggestionsPresentation.details(suggestion))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 if let why = suggestion.reason {
                     Label(why, systemImage: "sparkles")
                         .font(.caption)
@@ -132,6 +144,23 @@ private struct SuggestionRow: View {
             Button(SuggestionsPresentation.dismissButton) { store.dismissSuggestions([suggestion.id]) }
                 .disabled(!SuggestionsPresentation.canAct(state))
         }
+    }
+}
+
+/// Where a suggestion came from (Semantic Scholar or a Google Scholar alert), as a small capsule.
+private struct SourceBadge: View {
+    let source: Suggestion.Source
+
+    var body: some View {
+        Label(SuggestionsPresentation.source(source), systemImage: SuggestionsPresentation.sourceIcon(source))
+            .font(.caption2.weight(.medium))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .foregroundStyle(Color.appAccent)
+            .background(Color.appAccent.opacity(0.12), in: Capsule())
+            .help(SuggestionsPresentation.sourceHelp(source))
     }
 }
 
@@ -210,6 +239,7 @@ struct SuggestionDetail: View {
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                     HStack(spacing: 8) {
+                        SourceBadge(source: suggestion.source)
                         AvailabilityBadge(suggestion: suggestion)
                         Text(SuggestionsPresentation.details(suggestion))
                             .font(.caption)

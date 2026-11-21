@@ -20,6 +20,8 @@ struct ContentView: View {
                 Group {
                     if store.showsAuthorIndex {
                         AuthorsView()
+                    } else if store.showsSuggestions {
+                        SuggestionsView()
                     } else {
                         LibraryView(onImport: { store.beginImport() })
                     }
@@ -139,6 +141,7 @@ struct ContentView: View {
             NowPlaying.shared.attach(to: store)
             Task { await store.launchUpdateCheck() }
         }
+        .task { await store.runSuggestionChecks() }
     }
 
     private var confirmationShown: Binding<Bool> {
@@ -165,7 +168,13 @@ struct ContentView: View {
 
     /// The selected paper's details, or a placeholder.
     @ViewBuilder private var inspectorContent: some View {
-        if let paper = store.selectedPaper() {
+        if store.showsSuggestions {
+            if let s = store.selectedSuggestion {
+                SuggestionDetail(suggestion: s)
+            } else {
+                NoSuggestionPlaceholder()
+            }
+        } else if let paper = store.selectedPaper() {
             DetailView(paper: paper, onEdit: { store.editingPaper = paper })
         } else {
             EmptyDetailPlaceholder(text: LibraryPresentation.detailPlaceholder(slides: store.showsSlides))

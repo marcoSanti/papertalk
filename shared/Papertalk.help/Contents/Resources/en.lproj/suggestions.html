@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Suggested papers</title>
+<meta name="description" content="Get papers like the ones in your library from Semantic Scholar, ranked by your LLM, and import the ones you pick.">
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<nav><a href="index.html">Papertalk Help</a></nav>
+<h1>Suggested papers</h1>
+<p class="lead">Papertalk can find papers like the ones in your library, rank them by how well they fit, and import the ones you pick.</p>
+<h2>Turn it on</h2>
+<p>Click <b>Suggested Papers</b> in the sidebar (or choose <b>File → Show Suggested Papers</b>) and switch on <b>Check every day</b> in the bar at the top. It's off until you turn it on, because a check sends the DOIs of the papers in your library to <a href="https://www.semanticscholar.org">Semantic Scholar</a>. Nothing else about your papers is sent.</p>
+<p>Once a day, while Papertalk is open, it asks Semantic Scholar for papers like up to 100 of your most recent ones. When new papers turn up, a notification says how many (a message at the bottom of the window if Papertalk is in front), and the sidebar row counts them. Click the notification to open the list. <b>Check Now</b> checks right away, even with the daily check off. The section's subtitle says when it last checked.</p>
+<p>Suggestions start from DOIs, so papers without one aren't used. Add a missing DOI with <b>Edit paper</b>. Papers already in your library, and papers you dismissed or imported, are never suggested again.</p>
+<h2>Read and pick</h2>
+<p>Each suggested paper is a row with its title, authors, year and source. If an LLM is set in <a href="settings.html">Settings → LLM Settings</a>, it ranks the list by how well each paper fits your library and adds a line on why, marked with sparkles. Without one, the list keeps Semantic Scholar's order.</p>
+<p>Click a row to see the paper in the details panel on the right: every author, why it fits, its abstract and DOI. From there, <b>Import</b> it, <b>Open in Browser</b> to read more, or <b>Dismiss</b> it.</p>
+<p>Each row says how its PDF arrives:</p>
+<ul>
+<li><b>Free PDF</b>: Papertalk downloads it itself.</li>
+<li><b>Download in browser</b>: you download it, as below.</li>
+</ul>
+<p>Each row also has its own <b>Import</b> button, and a <b>Dismiss</b> button that hides the paper for good; right-click a row for the same actions. Imports use the depth, length and language of your last import from the import sheet, shown in the top bar as <b>Imported as</b>. Import more papers while one is on its way and they wait their turn, marked <b>Queued</b>.</p>
+<h2>Get a paper through your browser</h2>
+<p>Papers are fetched one at a time, in a card above the list. When a paper has no free PDF, or its free link doesn't give a PDF, the card shows these steps:</p>
+<ol>
+<li>Click <b>Open in Browser</b> to open the paper's page.</li>
+<li>Download the PDF. Sign in through your library or institution if the page asks.</li>
+<li>Papertalk picks up the new PDF from your Downloads folder and imports it.</li>
+</ol>
+<p>While it waits, the card shows <b>Waiting for a new PDF in Downloads…</b>. Only a PDF that arrives after the wait begins counts, and only once the browser has finished saving it. <b>Skip</b> leaves the paper in the list and moves to the next; <b>Stop</b> ends the imports, and the papers not imported stay in the list.</p>
+<p>If the PDF doesn't look like the suggested paper (its title isn't on the first pages), it's imported anyway and a message says so. Delete it if it's the wrong paper.</p>
+</body>
+</html>

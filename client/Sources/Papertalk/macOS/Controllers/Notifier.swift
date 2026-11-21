@@ -32,9 +32,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
-    /// What a notification says: ready, failed (with why), or a question waiting (with the question).
+    /// What a notification says: ready, failed (with why), a question waiting (with the question),
+    /// or new suggested papers (with how many).
     enum Event {
-        case ready, failed(String), needsInput(String)
+        case ready, failed(String), needsInput(String), suggestions(String)
     }
 
     /// Post about the paper titled `title`; nothing happens while the app is frontmost or not bundled.
@@ -61,6 +62,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             identifier = "input-\(paperId)"
             // Also bounce the Dock icon until the app is brought forward.
             NSApp?.requestUserAttention(.criticalRequest)
+        case .suggestions(let found):
+            content.title = title
+            content.body = found
+            identifier = "suggestions"
         }
         center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
     }

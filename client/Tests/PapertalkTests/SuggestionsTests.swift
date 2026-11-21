@@ -413,6 +413,19 @@ final class SuggestionsTests: PapertalkTestCase {
         XCTAssertEqual(store.suggestionLog.pending.map(\.id), [a.id, b.id])
     }
 
+    func testEachImportKeepsTheLibraryItWasFiledIn() async {
+        let a = Self.suggestion("Closed A"), b = Self.suggestion("Closed B"), c = Self.suggestion("Closed C")
+        let store = await makeStore([], pending: [a, b, c])
+        store.importSuggestions([a.id], library: "lib-1")
+        await waitUntil { store.paperFetch?.step == .waiting }
+        store.importSuggestions([b.id])                       // queued, no library
+        store.importSuggestions([c.id], library: "lib-2")     // queued, another library
+        XCTAssertEqual(store.paperFetch?.libraries, [a.id: "lib-1", c.id: "lib-2"])
+        store.stopFetch()
+        XCTAssertFalse(SuggestionsPresentation.asksLibrary([]))
+        XCTAssertTrue(SuggestionsPresentation.asksLibrary([Library(id: "lib-1", name: "ML", icon: "books.vertical", connectsAcross: false)]))
+    }
+
     func testAFreePDFThatIsntOneFallsBackToTheBrowser() async {
         let s = Self.suggestion("Open", pdf: "https://example.org/landing")
         let store = await makeStore([], pending: [s])

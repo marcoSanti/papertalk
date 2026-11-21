@@ -135,7 +135,7 @@ private struct SuggestionRow: View {
             if let status = SuggestionsPresentation.rowStatus(state) {
                 Text(status).font(.caption).foregroundStyle(.secondary)
             } else {
-                Button(SuggestionsPresentation.importButton) { store.importSuggestions([suggestion.id]) }
+                SuggestionImportButton(id: suggestion.id) { Text(SuggestionsPresentation.importButton) }
                     .buttonStyle(.glassProminent)
                     .help(SuggestionsPresentation.importHelp)
                 Button(SuggestionsPresentation.dismissButton) { store.dismissSuggestions([suggestion.id]) }
@@ -145,13 +145,38 @@ private struct SuggestionRow: View {
         }
         .padding(.vertical, 6)
         .contextMenu {
-            Button(SuggestionsPresentation.importButton) { store.importSuggestions([suggestion.id]) }
+            SuggestionImportButton(id: suggestion.id) { Text(SuggestionsPresentation.importButton) }
                 .disabled(!SuggestionsPresentation.canAct(state))
             Button(SuggestionsPresentation.openPageButton) { store.openPage(of: suggestion) }
                 .disabled(!SuggestionsPresentation.canOpenPage(suggestion))
             Divider()
             Button(SuggestionsPresentation.dismissButton) { store.dismissSuggestions([suggestion.id]) }
                 .disabled(!SuggestionsPresentation.canAct(state))
+        }
+    }
+}
+
+/// Import for one suggestion: a plain button, or with libraries a menu asking which one it goes in.
+private struct SuggestionImportButton<Content: View>: View {
+    @EnvironmentObject private var store: AppStore
+    let id: String
+    @ViewBuilder let label: () -> Content
+
+    var body: some View {
+        if SuggestionsPresentation.asksLibrary(store.libraries) {
+            Menu {
+                Section(SuggestionsPresentation.libraryMenuTitle) {
+                    Button(SuggestionsPresentation.noLibrary) { store.importSuggestions([id]) }
+                    ForEach(store.libraries) { lib in
+                        Button(lib.name) { store.importSuggestions([id], library: lib.id) }
+                    }
+                }
+            } label: {
+                label()
+            }
+            .menuStyle(.button)
+        } else {
+            Button { store.importSuggestions([id]) } label: { label() }
         }
     }
 }
@@ -267,9 +292,7 @@ struct SuggestionDetail: View {
                         }
                         .frame(maxWidth: .infinity, minHeight: 28)
                     } else {
-                        Button {
-                            store.importSuggestions([suggestion.id])
-                        } label: {
+                        SuggestionImportButton(id: suggestion.id) {
                             Label(SuggestionsPresentation.importButton, systemImage: "square.and.arrow.down")
                                 .frame(maxWidth: .infinity)
                         }

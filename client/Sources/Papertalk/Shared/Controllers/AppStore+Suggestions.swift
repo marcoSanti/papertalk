@@ -24,6 +24,8 @@ struct PaperFetch: Equatable {
     /// How many were chosen, and the position of `current` (from 1).
     var total: Int
     var position: Int
+    /// The library each chosen suggestion is filed in, by suggestion id; missing: no library.
+    var libraries: [String: String] = [:]
 }
 
 extension AppStore {
@@ -172,19 +174,21 @@ extension AppStore {
         persistSuggestions()
     }
 
-    /// Import the chosen suggestions one at a time, in the list's order. While others are being
-    /// imported, they join the end of the queue.
-    func importSuggestions(_ ids: Set<String>) {
+    /// Import the chosen suggestions one at a time, in the list's order, filed in `library` (nil:
+    /// none). While others are being imported, they join the end of the queue.
+    func importSuggestions(_ ids: Set<String>, library: String? = nil) {
         let busy = Set(paperFetch.map { [$0.current.id] + $0.queue.map(\.id) } ?? [])
         let chosen = suggestionLog.pending.filter { ids.contains($0.id) && !busy.contains($0.id) }
+        let filed = library.map { lib in Dictionary(uniqueKeysWithValues: chosen.map { ($0.id, lib) }) } ?? [:]
         if paperFetch != nil {
             paperFetch?.queue += chosen
             paperFetch?.total += chosen.count
+            paperFetch?.libraries.merge(filed) { $1 }
             return
         }
         guard let first = chosen.first else { return }
         paperFetch = PaperFetch(current: first, queue: Array(chosen.dropFirst()), step: .downloading,
-                                total: chosen.count, position: 1)
+                                total: chosen.count, position: 1, libraries: filed)
         Task { await fetchCurrent() }
     }
 
@@ -256,7 +260,8 @@ extension AppStore {
         }
         let choice = importChoice
         upload(data, filename: fileName, depth: choice.resolvedDepth, depthNote: choice.depthNote,
-               targetMinutes: choice.targetMinutes, scriptLanguage: choice.resolvedLanguage)
+               targetMinutes: choice.targetMinutes, scriptLanguage: choice.resolvedLanguage,
+               library: paperFetch?.libraries[s.id])
         suggestionLog = Suggestions.handle([s.id], in: suggestionLog)
         persistSuggestions()
         advanceFetch()

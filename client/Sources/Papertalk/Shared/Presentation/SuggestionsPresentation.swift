@@ -145,6 +145,10 @@ enum SuggestionsPresentation {
     static func canAct(_ state: RowState) -> Bool { state == .idle }
 
     static var importButton: String { L("Import") }
+    /// With libraries, Import is a menu asking which one the paper goes in (like the import sheet).
+    static func asksLibrary(_ libraries: [Library]) -> Bool { !libraries.isEmpty }
+    static var libraryMenuTitle: String { L("Add to library") }
+    static var noLibrary: String { L("No Library") }
     static var importHelp: String { L("Import this paper with the depth of your last import") }
     static var dismissButton: String { L("Dismiss") }
     static var dismissHelp: String { L("Hide this paper for good") }

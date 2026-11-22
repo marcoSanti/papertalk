@@ -61,7 +61,7 @@ final class Notifier {
 
     /// What a notification says, as on macOS.
     enum Event {
-        case ready, failed(String), needsInput(String)
+        case ready, failed(String), needsInput(String), suggestions(String)
     }
 
     /// Post through notify-send while the app is in the background.
@@ -72,6 +72,7 @@ final class Notifier {
             case .ready: return (L("Episode ready"), title, "normal")
             case .failed(let reason): return (L("Conversion failed"), "\(title): \(reason)", "normal")
             case .needsInput(let question): return (question, title, "critical")
+            case .suggestions(let found): return (title, found, "normal")
             }
         }()
         LinuxDesktop.launch("notify-send", ["--app-name=Papertalk", "--urgency=\(urgency)", summary, body])

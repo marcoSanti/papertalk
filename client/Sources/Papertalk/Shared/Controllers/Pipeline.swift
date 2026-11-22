@@ -891,6 +891,24 @@ struct LocalPipeline {
         return links
     }
 
+    /// Ask the LLM to order suggested papers by how well they fit a library of `library` titles,
+    /// with a line on why. Returns the raw reply, for `Suggestions.applyRanking`.
+    // shortcut: a fixed prompt, not in `PromptSettings`; move it there if users want to tune it.
+    func rankSuggestions(library: [String], candidates: [Suggestion]) async throws -> String {
+        let system = """
+        You help a researcher choose which suggested papers to listen to next. Given the titles in \
+        their library and numbered candidate papers, rank the candidates from best to worst fit \
+        for this reader: closest to their interests first, off-topic last. For each, give one short \
+        sentence (at most 20 words) on why it fits, naming the library topic it connects to.
+
+        Return ONLY a JSON object, no markdown or prose:
+        {"ranked": [{"n": number, "why": string}]}
+        """
+        log("Suggestions: ranking \(candidates.count) papers…")
+        return try await chat(system: system, user: Suggestions.rankingInput(library: library, candidates: candidates),
+                              maxTokens: 3000)
+    }
+
     /// Ask the LLM to cast the episode: who speaks, each person's gender and a
     /// suggested name. Used *after* metadata so the scientist's real author name
     /// can inform it. Falls back to a sensible two-person cast when the model is

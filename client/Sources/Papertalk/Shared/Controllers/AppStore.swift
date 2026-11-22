@@ -125,6 +125,9 @@ final class AppStore: ObservableObject {
             rerun(p.id, depth: form.depth, depthNote: form.depthNote,
                   targetMinutes: form.targetMinutes, scriptLanguage: form.scriptLanguage)
         } else if let s = form.submission {
+            // Suggested papers are imported the way the last import was.
+            importChoice = ImportChoice(depth: s.depth.rawValue, depthNote: s.depthNote, targetMinutes: s.targetMinutes,
+                                        scriptLanguage: s.scriptLanguage.rawValue)
             upload(s.data, filename: s.filename, depth: s.depth, depthNote: s.depthNote,
                    targetMinutes: s.targetMinutes, scriptLanguage: s.scriptLanguage, library: s.library,
                    slides: s.slides)
@@ -390,7 +393,7 @@ final class AppStore: ObservableObject {
 
     /// Raw values are remembered between launches: add new pages at the end.
     enum SettingsPage: Int, Identifiable {
-        case llm, server, prompts, presets, clear, voices, general
+        case llm, server, prompts, presets, clear, voices, general, suggestions
         var id: Int { rawValue }
     }
     /// Whether the unified settings sheet is open.
@@ -408,7 +411,7 @@ final class AppStore: ObservableObject {
 
     /// What the library shows: every paper, favourites, the Authors screen, one tag, one author,
     /// one library, or the slide decks (kept apart: no other view shows them).
-    enum ViewMode { case all, fav, authors, tag, author, library, slides }
+    enum ViewMode { case all, fav, authors, tag, author, library, slides, suggested }
 
     /// `storage` pins the backend (tests pass a temp-folder `LocalStorage`);
     /// the app passes nothing and follows the configured server. `speech`
@@ -419,7 +422,9 @@ final class AppStore: ObservableObject {
         let settings = SpeechSettings.load()
         speech = settings
         player = PlayerController(speechBackend: backend ?? settings.makeBackend())
-        notifier.onOpen = { [weak self] id in self?.reveal(id) }
+        notifier.onOpen = { [weak self] id in
+            if id == Self.suggestionsNotificationId { self?.selectSidebar(.suggested) } else { self?.reveal(id) }
+        }
         Self.migrateDefaults()
         refresh()
         showOnboarding = !Self.didOnboard()
@@ -510,14 +515,14 @@ final class AppStore: ObservableObject {
     /// a tag, an author), before the status filter and search apply.
     private func inScope(_ p: Paper) -> Bool {
         if view == .slides { return p.isSlides }
-        guard !p.isSlides else { return false }
+        guard !p.isSlides, view != .suggested else { return false }
         switch view {
         case .all, .authors: return true
         case .fav: return p.favorite
         case .tag: return activeTag.map { p.tags.contains($0) } ?? true
         case .author: return activeAuthor.map { p.authors.map(AuthorName.clean).contains($0) } ?? true
         case .library: return p.library == activeLibrary
-        case .slides: return true
+        case .slides, .suggested: return true
         }
     }
 
@@ -591,6 +596,7 @@ final class AppStore: ObservableObject {
         case .tag: return activeTag.map { .tag($0) } ?? .all
         case .library: return activeLibrary.map { .library($0) } ?? .all
         case .slides: return .slides
+        case .suggested: return .suggested
         }
     }
 
@@ -606,6 +612,7 @@ final class AppStore: ObservableObject {
         case .tag(let t): view = .tag; activeTag = t
         case .library(let id): view = .library; activeLibrary = id
         case .slides: view = .slides
+        case .suggested: view = .suggested
         }
         if let id = selectedId, !filteredPapers().contains(where: { $0.id == id }) {
             selectedId = nil
@@ -613,6 +620,7 @@ final class AppStore: ObservableObject {
     }
 
     /// The sidebar's rows in order: the library sections, each library, then each tag.
+    // shortcut: no Suggested row, since the Linux UI (its only user) has no suggestions pane yet.
     var sidebarItems: [SidebarItem] {
         [.all, .favorites, .authors, .slides] + libraries.map { .library($0.id) } + tagCounts.map { .tag($0.0) }
     }
@@ -626,6 +634,7 @@ final class AppStore: ObservableObject {
         case .tag(let tag): return tagCounts.first { $0.0 == tag }?.1 ?? 0
         case .library(let id): return papers.values.filter { $0.library == id }.count
         case .slides: return papers.values.filter(\.isSlides).count
+        case .suggested: return suggestionLog.pending.count
         }
     }
 
@@ -742,6 +751,8 @@ final class AppStore: ObservableObject {
     var shownAuthor: String? { view == .author ? activeAuthor : nil }
     /// True on the Authors index (every author), not one author's papers.
     var showsAuthorIndex: Bool { view == .authors && activeAuthor == nil }
+    /// The Suggested section is on screen (its list instead of the library's).
+    var showsSuggestions: Bool { view == .suggested }
 
     /// Back from one author's papers to every author.
     func showAllAuthors() {
@@ -821,6 +832,7 @@ final class AppStore: ObservableObject {
         Task {
             let ids = (try? await storage.list()) ?? []
             libraries = await storage.exists([Library].self, K.libraries) ?? []
+            suggestionLog = await storage.exists(SuggestionLog.self, K.suggestions) ?? SuggestionLog()
             let seen = Set(ids)
             // One change for the whole scan: a redraw per paper made opening a big library crawl.
             var loaded: [String: Paper] = [:]
@@ -944,6 +956,64 @@ final class AppStore: ObservableObject {
             await storage.save(libraries, K.libraries)
         }
     }
+
+    /// Queue a save of `suggestions.json` (behind paper saves, like `persist`).
+    func persistSuggestions() {
+        let previous = saveQueue
+        saveQueue = Task {
+            await previous?.value
+            await storage.save(suggestionLog, K.suggestions)
+        }
+    }
+
+    /// Read `suggestions.json` again once queued saves are written, so a check never merges into
+    /// a log the startup scan hasn't loaded yet (and then saves over the dismissed ones).
+    func reloadSuggestionLog() async {
+        await saveQueue?.value
+        suggestionLog = await storage.exists(SuggestionLog.self, K.suggestions) ?? suggestionLog
+    }
+
+    // MARK: Suggested papers (the rest is in AppStore+Suggestions.swift)
+
+    /// The notification "paper id" that opens the Suggested Papers window instead of a paper.
+    static let suggestionsNotificationId = "suggested-papers"
+    /// User-defaults key of the daily check's switch.
+    static let suggestionsEnabledKey = "papertalk.suggestions.enabled"
+    /// What `suggestions.json` holds: the suggestions waiting, and those handled.
+    @Published var suggestionLog = SuggestionLog()
+    /// The suggestion shown in the details panel while Suggested is on screen.
+    @Published var selectedSuggestionId: String?
+    /// A check for suggestions is under way.
+    @Published var isCheckingSuggestions = false
+    /// The last check's result or failure, under the window's header; nil before one.
+    @Published var suggestionsStatus: String?
+    /// The selected suggestions being fetched and imported, one at a time; nil when idle.
+    @Published var paperFetch: PaperFetch?
+    /// Off until the user turns it on: a check sends the library's DOIs to Semantic Scholar.
+    @Published var suggestionsEnabled = UserDefaults.standard.bool(forKey: AppStore.suggestionsEnabledKey) {
+        didSet { UserDefaults.standard.set(suggestionsEnabled, forKey: Self.suggestionsEnabledKey) }
+    }
+    /// How suggested papers are imported: the last import sheet's choices, or the depth picked
+    /// in the Suggested section.
+    @Published var importChoice = ImportChoice.load() { didSet { importChoice.save() } }
+    /// Where the browser saves downloads (tests point it at a temp folder).
+    var downloadsFolder = PaperDownload.downloadsFolder
+    /// How often the Downloads folder is looked at while waiting for a PDF.
+    var downloadsPollInterval: TimeInterval = 1
+    /// The wait for the current suggestion's PDF in Downloads.
+    var downloadsWatch: Task<Void, Never>?
+    /// The mail account Google Scholar alerts are read from (its password is in the Keychain).
+    @Published var mail = MailSettings.load() { didSet { mail.save() } }
+    /// The mail account's app password (tests replace it: the Keychain stays untested).
+    var mailPassword: () -> String = { KeychainStore.get(MailSettings.passwordAccount) ?? "" }
+    /// Saves the app password (tests replace it, like `mailPassword`).
+    var storeMailPassword: (String) -> Void = { KeychainStore.set($0, account: MailSettings.passwordAccount) }
+    /// The connection alerts are read over (tests script a server).
+    var makeMailTransport: (MailSettings) throws -> IMAPTransport = ScholarAlertSource.defaultTransport
+    /// Settings' Test Connection is under way.
+    @Published var isTestingMail = false
+    /// What Test Connection found; nil before a test.
+    @Published var mailTestResult: String?
 
     /// Save the library sheet: add the library, or update it in place.
     func saveLibrary(_ form: LibraryForm) {

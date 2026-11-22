@@ -21,6 +21,7 @@ on your machine read it aloud.
 - 🧠 **Mind maps**: each paper's key ideas as an editable graph, linked across your library.
 - 💬 **Ask AI**: chat with a paper; answers cite and highlight its pages.
 - 🖼️ **Slide decks**: import a presentation as PDF, charts and diagrams included.
+- 🔭 **Suggested papers**: papers like yours from Semantic Scholar (a check sends it your papers' DOIs) and from your Google Scholar alert emails.
 - 📚 **A real library**: covers, favourites, tags, authors, libraries, search, citations.
 - 🔒 **Your setup**: any OpenAI-compatible LLM (local or hosted); voices on your Mac or on a server.
 - 🌍 **Five languages**: English, Italian, Spanish, German and French.

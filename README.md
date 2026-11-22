@@ -128,6 +128,6 @@ Needs macOS 26 and Xcode with Swift 6.2.
 ./app.sh release    # optimized build, zipped
 ```
 
-Read [AGENTS.md](AGENTS.md) first: it explains the code layout, the rules, and how releases are
-cut from `VERSION`. A Linux build (GTK 4 AppImage) is in progress under `linux-dev/`.
+Read [AGENTS.md](AGENTS.md) first: it has the rules, and links to the
+[development guides](docs/development/) on the code layout, tests and releases. A Linux build (GTK 4 AppImage) is in progress under `linux-dev/`.
 When reporting a bug, include the **Activity** log from the paper's details.

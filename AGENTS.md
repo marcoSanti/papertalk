@@ -1,53 +1,48 @@
 # AGENTS.md
 
-Guidance for coding agents working on Papertalk. Read `README.md` for what the app does; this
-file covers how to work on it and the traps that have already bitten. `CLAUDE.md` only imports
-this file (for Claude Code), so keep the guidance here.
+Guidance for anyone, human or agent, working on Papertalk. Read `README.md` for what the app does.
+This file holds the rules for every change. The details, and the traps that have already bitten,
+are in `docs/development/`: **read the page for an area before changing it.**
 
-## Repo map
+## Guides
 
-- `Package.swift`: the Swift package, at the repo root (target `Papertalk`). It is the macOS app and
-  also builds the Linux binary (tooling in `linux-dev/`). `Sources/Papertalk/` is split by
-  platform: `Shared/` (both), `macOS/` (macOS only) and `Linux/` (Linux only). The UI and
-  the whole pipeline (PDF → metadata → cast → script → audio) run in-process.
-  - `Shared/Controllers/AppStore.swift`: the single `@MainActor` `ObservableObject` holding all app
-    state, the import pipeline orchestration, and every mutation. Start here.
-  - `Shared/Controllers/Pipeline.swift`: LLM calls (`LocalPipeline`): metadata, cast proposal, plan,
-    dialogue/monologue writing, JSON parsing.
-  - `macOS/Controllers/KokoroEngine.swift`: the only Kokoro TTS instance (on Linux,
-    `Linux/KokoroCompat.swift`). `Shared/Models/Kokoro.swift` holds voice lists and pools;
-    their labels are in `Shared/Presentation/VoicePresentation.swift`.
-  - `Shared/Controllers/PlayerController.swift`: episode playback and voice-sample previews.
-  - `Shared/Controllers/Storage.swift`: `StorageFactory` and `HttpStorage` (the storage
-    server's client). `Shared/Models/LibraryStore.swift` re-exports `PapertalkStore`, so the app
-    sees `Storage`, `K` and `LocalStorage` without importing it.
-  - `Shared/Controllers/AppStore+Actions.swift`: the small actions views forward;
-    `AppStore+Forms.swift`: the I/O forms need (model lists, the chosen PDF).
-  - `Shared/Presentation/`: everything the views show or decide, as pure Swift with no SwiftUI:
-    wording and labels, form state and validation (`ImportForm`, `MetadataForm`,
-    `LLMSettingsForm`, `ServerSettingsForm`, `CastForm`), grouping/sorting (`AuthorsPresentation`),
-    and display decisions (`EpisodeProgress`, `BottomBarContent`, `PlayerPane`, `PlaybackStatus`).
-  - `macOS/Views/`, `macOS/Components/`: SwiftUI layout only (see "Views hold no logic" below).
-    `macOS/Support/Theme.swift` has shared styling (`glassCard`, `StatusBadge`, `FlowLayout`,
-    `Color.stable(for:)`); `macOS/Support/Clipboard.swift` copies text.
-- `Sources/PapertalkStore/`: a library target shared by the app and the server:
-  `Storage.swift` (the `Storage` protocol, the `K` key layout, `LocalStorage`) and
-  `StorageServer.swift` (the HTTP key/value server over a `LocalStorage` folder; no compute).
-  Foundation and POSIX sockets only: it must never depend on the app's frameworks.
-- `Sources/PapertalkServer/main.swift`: the server's command line (`app.sh server`),
-  configured by the `PAPER2POD_STORAGE_*` env vars (loopback only unless given a token or host). It replaced `server/storage_server.py`
-  and adopts roots that script wrote (plain `papers/<id>/` folders become packages).
-- `VERSION`: the app version, edited by hand (`app.sh version` prints it).
-- `CHANGELOG.md`: what each release changes, shown in the app's "What's new" sheet (see below).
-- `scripts/check_layers.sh`: the MVC layer check (see "MVC layers").
-- `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
-- `.github/workflows/`: `tests.yml` (pull requests) and `release.yml` (`main`: dev + stable releases).
-- `shared/`: app icon (`icon.icns`, drawn by `scripts/icons.swift`), and `Papertalk.help/`, the
-  user guide (macOS Help Book, see "User guide").
-- Linux port pieces: `Sources/Papertalk/Linux/` (compat shims, `#if os(Linux)`),
-  `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
-  `linux-dev/` (dev container `Dockerfile`, `dev.sh`).
-- `Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
+| Before you touch | Read |
+| --- | --- |
+| Anything, if you don't know where it lives | [Architecture](docs/development/architecture.md) |
+| `AppStore` saves, `Storage`, the server, settings, the Keychain, Erase | [Data and storage](docs/development/storage.md) |
+| Imports, prompts, LLM replies, speech, Kokoro (FluidAudio #817), mind maps | [Pipeline](docs/development/pipeline.md) |
+| A view, a presentation type, interface text | [Interface](docs/development/ui.md) |
+| A test | [Tests](docs/development/testing.md) |
+| `VERSION`, `CHANGELOG.md`, workflows, `app.sh`, icons, the updater | [CI and releases](docs/development/releases.md) |
+| Anything a user will notice | [User guide](docs/development/user-guide.md) |
+| `Linux/`, `linux-dev/`, `python/` | [Linux port](docs/development/linux.md) |
+
+When a change makes a page wrong, fix that page in the same PR. A new trap goes on its area's
+page; only a rule for every change goes here.
+
+## Never
+
+- **Lose the user's data.** A failed read is not an empty one: never save it back. Save papers
+  through `persist`, mind maps through `saveMindMap`, and add new `Paper` fields as optionals.
+- **Touch the user's real library, settings or Keychain from a test.** Subclass `PapertalkTestCase`
+  and never build an `AppStore` on the default storage. Checkouts from before 0.9.1 have no
+  Keychain guard: don't run their tests outside a sandbox.
+- **Put a secret outside the Keychain**: no API key or password in user defaults or files.
+- **Trust an LLM reply or a file**: check numbers, ids and URLs from them before use.
+- **Disturb the running app**: don't start a second copy, `pkill` it, or use `app.sh run` while
+  the user has it open.
+- **Release by accident**: don't bump `VERSION`, push tags, or give a patch its own `CHANGELOG.md`
+  section (that publishes it as stable) unless the user asks.
+- **Touch work that isn't yours**: the user often has uncommitted work in progress. Build on top
+  of it, and don't commit, revert, or reformat unrelated code unless asked.
+
+## Every change
+
+- A bug fix comes with a regression test that fails without the fix; a new presentation type or
+  store method comes with tests.
+- Interface text goes through `L("…")`, with the key in every pack.
+- A change users will notice adds one line under `## Unreleased` in `CHANGELOG.md`, and updates
+  the Help Book and `README.md`.
 
 ## Build and test
 
@@ -77,278 +72,6 @@ the Papertalk that is running: don't use it while the user has the app open.
   launch a second copy of the app if the user already has it open, and never `pkill` it. If you
   can't see the UI, say so plainly instead of claiming a visual check.
 
-## CI, pull requests and versions
-
-- Work goes through pull requests into `main` (squash or rebase; one approving review). CI does
-  only what's needed, on GitHub's `macos-26` runner:
-  - `tests.yml`, on every PR into `main` (not on one stacked on another branch): `app.sh coverage`
-    (the layer check and the suite, once, with coverage; it builds and tests the storage server
-    too). No app bundle: nothing would be uploaded. PRs that change only
-    Markdown skip it (no check is required, so they can still merge).
-  - `release.yml`, on every push to `main` (Markdown-only pushes skip it): `app.sh test`, then the
-    release build and the GitHub release (see below). It's the only run on `main`, so it's what
-    tests `main`. It can be started by hand to retry a release, from `main` only.
-  - The Linux jobs in both are paused (`if: false`); see "Linux port".
-  Keep it green: a change that needs new tooling must update the workflows too.
-- The version lives only in `VERSION` (semver, `MAJOR.MINOR.PATCH`). `app.sh` stamps it into
-  the built app's `Info.plist`, with the short commit hash as the build number (shown as
-  "Version 0.0.1 (a1b2c3d)" in About Papertalk). Don't hard-code
-  versions elsewhere; read them with `app.sh version`.
-- Coverage needs no external service: `tests.yml` runs `app.sh coverage` and appends
-  `coverage/summary.md` to the job summary (and uploads `coverage/` as a run artifact). Nothing is
-  published elsewhere. `scripts/coverage.sh` and `scripts/coverage_summary.py` produce the files;
-  the "logic" figure excludes `macOS/Views/`, `macOS/Components/`, `macOS/App/` and
-  `macOS/Support/Theme.swift`.
-- **Before merging, every PR with a user-visible change adds one line to `CHANGELOG.md`**
-  under `## Unreleased`: `- <emoji> **Title**: one short sentence.` Pick one emoji that shows
-  the action (📚 a new list, 🐛 a fix, ⚡️ faster, 🎨 looks), keep the title to a few words
-  named as the UI names things, and say what changed for the user, not how. CI-only, test-only
-  and refactoring PRs add nothing. `WhatsNewTests` fails on a line the app can't read.
-  `app.sh` embeds only the build's section (`## <VERSION>` without any `-dev` suffix, else
-  `## Unreleased`) as the `PapertalkWhatsNew` Info.plist string. After an update the app shows
-  those entries once (`WhatsNew`, `AppStore.showWhatsNewIfUpdated`), never on a first launch.
-  When bumping `VERSION` to `X.Y.0`, rename `## Unreleased` to `## X.Y.0` and add a new empty
-  `## Unreleased` above it. Patch bumps leave it alone: giving a patch its own section releases it
-  as stable (below).
-- Bump by editing `VERSION` as part of a PR. Patch for fixes, minor for features, major for
-  breaking changes (e.g. a library format that older builds can't read).
-- Stable releases are CI-driven: on a push to `main`, `.github/workflows/release.yml` publishes
-  a full release tagged `v<VERSION>`, marked Latest, when that tag doesn't exist yet and either:
-  - `VERSION` is `X.Y.0`, or
-  - `VERSION` is a patch and `CHANGELOG.md` has a line that is exactly `## <VERSION>`.
-  Any other patch ships as dev pre-releases (`v<VERSION>-dev.<commit>`), so users of stable builds
-  only get it with the next stable release.
-- **A patch's changelog section is its release switch.** Write one only when the user asks to
-  release that patch: in the PR that bumps `VERSION`, rename `## Unreleased` as for `X.Y.0`.
-  There is nothing to edit in the workflow. A section merged later in a Markdown-only PR doesn't
-  start the workflow: run Release by hand from `main`. Deleting the tag of the current `VERSION`
-  makes the next run publish it again.
-- Icons: the `CHANNEL` env var of `app.sh` (default `dev`) picks the app icon. Only a stable
-  release (see above) builds with `CHANNEL=stable` and gets the official
-  `shared/icon.icns`; every other build (local, CI, dev pre-releases) gets a "DEV" stripe version
-  generated into `.build/icons/` by `scripts/icons.swift dev`. Don't ship the official icon
-  from anything but a stable release. The exception is the Finder icon of `.papertalk` files
-  (`PaperDocument.icns`, a page with the app icon on it, from `scripts/icons.swift document`): it's
-  made from the official icon on every channel, so a file's icon doesn't depend on the build.
-- The official icon is drawn in code: change `AppIcon` in `scripts/icons.swift`, run
-  `swift scripts/icons.swift app shared/icon.icns`, and commit both. Every other icon (dev,
-  document, the Help Book's `icon.png`, the Linux AppImage's PNG) is generated from that file at
-  build time, so never edit those. Keep shapes filled and thick: it has to read at 16 px.
-- The in-app updater (`UpdateInstall`, `macOS/Controllers/UpdateInstaller.swift`) installs a stable
-  release from its `Papertalk-<version>.zip` and `Papertalk-<version>.zip.sha256` assets, checks the
-  unzipped app's bundle id and version, and swaps it in with `UpdateInstall.swapScript` after the app
-  quits. Renaming those release assets, or the zip's top-level `Papertalk.app`, breaks it: keep them.
-- `app.sh release` also writes `dist/Papertalk-<version>-source.tar.gz` (`git archive` of HEAD);
-  the release workflow publishes it, with checksums, beside the app zip.
-- Dev builds: every other push to `main`, unless it changes only Markdown, publishes a **pre-release**
-  `v<VERSION>-dev.<short commit>`, built with `VERSION=<that> app.sh release` (the `VERSION`
-  env overrides the file for that build only). It keeps the newest 10 dev builds and deletes
-  older ones with their tags. Never create `-dev.` tags by hand, and never push tags or bump the
-  version unless the user asks.
-
-## Linux port
-
-- The `Papertalk` target builds on macOS and Linux. macOS-only files are wrapped in
-  `#if os(macOS)` and live under `macOS/` (App, Views, Components, Controllers, Support). Linux
-  supplies same-named compat shims in `Linux/`, so shared code compiles unchanged. Prefer extending a shim to adding `#if` in shared code.
-  Never change how the macOS app looks or behaves for the port's sake.
-- A new file goes in `Shared/`, `macOS/` or `Linux/` by where it compiles, and files in `macOS/`
-  and `Linux/` keep their whole-file `#if os(...)` guard (one target compiles every folder;
-  SwiftPM can't exclude files per platform).
-- Build and test Linux with Docker (OrbStack here): `linux-dev/dev.sh build` once, then
-  `linux-dev/dev.sh test` (Swift suite + pytest) and `linux-dev/dev.sh e2e` (the opt-in
-  `EndToEndImportTests`: a real import with Kokoro, LLM mocked). Run `swift build` and
-  `app.sh test` on macOS too, after every change to shared code.
-- Python is called only through `PythonRuntime` (one thread). Nothing time-critical goes through
-  it (playback stays in Swift), because it can be busy with Kokoro for seconds.
-- Linux traps: `Timer.scheduledTimer` is unavailable in async code; `URLProtocol`s are consulted
-  in registration order; sync test methods in `@MainActor` test classes crash test discovery
-  (make them `async`); files using URLSession types need `FoundationNetworking`.
-- The Linux UI (`Linux/UI/`) is SwiftCrossUI 0.9.0 on GTK 4 (`GtkBackend`; `DefaultBackend`
-  fails to build on Linux) over the shared `AppStore`. `StoreBridge` forwards `AppStore`'s and
-  `PlayerController`'s `objectWillChange` to SwiftCrossUI's own `ObservableObject` and is the
-  only UI file that imports OpenCombine. Views follow the same "no logic" rule as macOS:
-  wording and decisions come from `Shared/Presentation/` (with tests); Linux-only store
-  helpers go in `Linux/AppStore+Linux.swift`.
-- SwiftCrossUI 0.9 traps (each one cost a debugging session):
-  - Write every `body` in view-builder style. `let` is fine; an explicit `return` skips the
-    builder's tuple wrapping, and views inserted later (a selected paper) never appear.
-  - The `NavigationSplitView` must be the window's root, with no modifiers on it, and a pane's
-    root view takes no modifiers either (with a `List` inside, the pane is then laid out at its
-    minimum size, centred and clipped). Pad rows instead; `PaneWidth` widens a column.
-    Alerts and sheets go on an inner view (the player bar).
-  - Sheets asked for before the window has appeared, or during the first layout, are dropped:
-    launch-time sheets wait for `StoreBridge.windowReady`.
-  - `Picker` shows `"\(option)"`: wrap values in `PickerOption` for readable labels. Menu items
-    have no keyboard shortcuts.
-- Look at the UI headless: `linux-dev/dev.sh screenshot` runs it under Xvfb and openbox on
-  a demo library and saves PNGs to `.build-linux/shots/`; `PAPERTALK_UI_SCRIPT` drives it
-  with xdotool and `PAPERTALK_UI_ARGS` passes a PDF to import. xdotool can't type into GTK 4's
-  file dialog, so pass the PDF as an argument. `PAPERTALK_AUDIO_SINK` replaces the sound
-  server's player (e.g. `cat > /dev/null` where there is no sound card).
-
-Done in the Linux UI: library (sidebar, search, covers), detail pane, player bar (playback,
-scrubber, import progress), import sheet (and `Papertalk paper.pdf`), cast and duplicate
-prompts, delete/rerun confirmation, opening the PDF, settings and first-run setup.
-
-Packaging: `linux-dev/dev.sh appimage` (with `VERSION`, `CHANNEL`) builds
-`dist/Papertalk-<version>-<arch>.AppImage`: release binary with the Swift runtime
-static, a bundled Python 3.12 with the packages (so nothing is installed at first launch), every
-other library except the GTK / graphics / glibc stack, and a `.desktop` file with `%f`.
-`linux-dev/appimage_smoke.sh` checks it on plain Ubuntu. CI used to pack and smoke-test it
-on every PR and upload it to each release (x86_64); those jobs are paused (`if: false` in both
-workflows, plus the `LINUX_BUILDS` guard in the release notes) until the Linux work resumes.
-If you add a Python package or a native dependency, run the smoke test: a library missing from
-the bundle only shows up on a clean system.
-
-Still to do, in order:
-1. **Rest of the Linux UI:** authors view, transcript view, metadata editing, tag editing,
-   clipboard copy, and `Notifier.isAppActive` from the window's focus (notifications are off
-   until then). Then a pass on looks (spacing, a grid layout option).
-2. **Updates on Linux:** the update check (menu on macOS) and `UpdateCheck` picking the
-   AppImage asset, and installing in place (`Linux/UpdateInstallerCompat.swift` only refuses);
-   the Linux build has no version stamped in yet (macOS uses Info.plist).
-3. Later: an arm64 AppImage (an `ubuntu-24.04-arm` runner), an in-app PDF viewer from
-   pypdfium2 renders, and a re-check of OpenSwiftUI for a Linux renderer.
-
-## Tests (`Tests/PapertalkTests`)
-
-- The suite is **XCTest only**. `app.sh test` runs `swift test --disable-swift-testing`, so the
-  empty Swift Testing pass doesn't print a confusing "0 tests" line. If you ever add
-  `import Testing` / `@Test` tests, drop that flag or they will silently not run.
-- Every test class subclasses **`PapertalkTestCase`** (`TestSupport.swift`), never
-  `XCTestCase` directly. It installs `NetworkGuard`, which blocks and fails any request that
-  isn't answered by a mock. Tests must never reach a real LLM, doi2bib or storage server.
-- **LLM calls**: use `MockLLM.install { request in ... }` and match on
-  `MockLLM.allText(in:)` (e.g. outline prompts contain `"segments": [{"title"`, dialogue prompts
-  `TARGET LENGTH: about N words`, monologue prompts `METHOD TEXT`). Reply with
-  `MockLLM.chatReply(_:)`. The storage server is faked the same way (`HttpStorageServerTests`);
-  `StorageServerTests` runs the real one on a loopback port, let through by
-  `NetworkGuard.allowLocal(port:)`.
-- **`AppStore`**: always `AppStore(storage: LocalStorage(root: Fixtures.tempDir()))`. Never build
-  a store on the default storage: that's the user's real library. Seed finished papers on disk
-  and let the store's startup scan load them (it drops in-memory-only papers). Keep converting
-  papers (`running`/`queued`) **in memory only**: on disk the scan would resume them and call the
-  LLM. Edits save asynchronously; assert on disk with `waitUntil { ... }`.
-- Don't start conversions, regeneration or playback (`upload`, a real `rerun`,
-  `togglePlayback`, `previewVoice`) in tests: they need the LLM or Kokoro. Kokoro synthesis and
-  the Keychain are deliberately untested.
-- The suite never reaches the login Keychain: `PapertalkTestCase` turns `KeychainStore` off. Keep
-  it so: the Keychain is per user, and a test that saved settings would replace the user's real keys.
-  Checkouts from before 0.9.1 don't have this guard: running their tests can overwrite those keys.
-- Helpers: `TempLibraryTestCase`, `Fixtures.paper(...)`, `Fixtures.blankPaper(...)`, `Fixtures.transcript(...)`, `Fixtures.silentWAV(seconds:)`,
-  `Fixtures.tempDir()`, `waitUntil`. `@MainActor` test classes need fixtures marked
-  `nonisolated(unsafe)` and `async` test methods.
-- When fixing a bug, add a regression test and check it fails without the fix (temporarily
-  revert the line, run, restore).
-
-## Data and storage
-
-- Local library: `~/Library/Application Support/papertalk/papers/<id>.papertalk/` (or the folder
-  picked in Settings, `LocalStorage.folderDefaultsKey`), containing
-  `paper.json`, `source.pdf`, `transcript.json`, `mindmap.json`, `slides.json` (decks only), `audio.json` (manifest) and
-  `turns/<n>.wav`.
-  Kokoro models: `~/.cache/fluidaudio/Models/kokoro*`.
-- Keys stay `papers/<id>/…` on every backend; only `LocalStorage.path(_:)` adds the `.papertalk`
-  extension (a package declared in Info.plist, so Finder shows one item), and its `list()` renames
-  older plain folders. Exports are the same layout (`PaperBundle`); imports read only its known
-  files, validate them, and never use the file's id unless it's a free UUID.
-- **A failed read is not an empty one.** `storage.exists` is nil for both, so never save back
-  something read with it as a whole. `libraries.json` and `suggestions.json` are read with
-  `loadIfPresent` (nil only when surely absent) and saved only once loaded; a switch of server or
-  folder, and Erase, go through `forgetIndexes()`. The server answers 404 only for what isn't there.
-- The library folder moves only through `LocalStorage.moveLibrary` (`Shared/Models/LibraryMove.swift`):
-  papers and both index files. A new root-level key must be added there and to `clearAll`.
-  A new setting or Keychain account must be added to `clearAll` too (Erase).
-- Everything for a paper lives under `K.folder(id)`. Delete a paper with
-  `storage.deleteFolder(K.folder(id))`, never with a hand-written list of keys (that left
-  orphaned folders before).
-- **`Paper` is decoded from disk with synthesized `Codable`.** A new non-optional property added
-  to `CodingKeys` makes every existing `paper.json` fail to decode, and those papers silently
-  vanish from the library. Add new fields as optionals (see `storedSpeakers` and its computed
-  `speakers` wrapper), or write a tolerant `init(from:)`. A property left *out* of `CodingKeys`
-  is silently never saved.
-- API keys and the mail password live in the Keychain only (`KeychainStore`). `LLMSettings.save()` and
-  `SpeechSettings.save()` strip the key before writing user defaults; keep it that way.
-
-## Pipeline rules
-
-- **Audio is baked at import** and saved per turn; playback uses the baked audio. Live synthesis
-  in `PlayerController.prepare(transcript:)` is only a fallback for papers without complete
-  audio, and it plays progressively. Don't move the normal path to live synthesis.
-- Memory on 8 GB Macs: papers are voiced one at a time (`AppStore.audioGate`), and every turn
-  goes to Kokoro in pieces of at most 200 characters (`KokoroSpeech.pieces`, joined with
-  `joinWAVs`). One call holds all its samples and Core ML buffers until it returns, so a long
-  monologue in one call peaked at ~1.2 GB and got the app killed; pieces keep it near 0.45 GB.
-- `bakeAudio` reuses turns already on disk, so re-running it resumes. On failure it returns a
-  message and the paper goes to an error state via `failAudio`, never to "done" without audio.
-- **Synthesis goes through `SpeechBackend`** (`Shared/Controllers/SpeechBackend.swift`), picked
-  only by `SpeechSettings.makeBackend()` via `AppStore.speechBackend` (the player gets the same
-  one). `LocalSpeechBackend` wraps `KokoroEngine.shared`; `RemoteSpeechBackend` calls an
-  OpenAI-compatible `/audio/speech` and never touches Core ML. Whatever a backend returns goes
-  through `SpeechAudio.normalizedWAV`, so stored turns are always 24 kHz mono 16-bit WAV with a
-  44-byte header (`wavDuration` and `joinWAVs` assume it). `bakeAudio` voices up to
-  `backend.parallelRequests` turns at once (always 1 for local Kokoro; the user's setting on a
-  server) and writes each turn as it finishes, so resuming still works. Remote voices are the
-  cast's Kokoro ids, sent as they are. Tests pass a fake backend to `AppStore(storage:speech:)`.
-- **Known upstream bug, re-check on every FluidAudio update** (seen on 0.17.7, Oct 2026): after
-  ~100 calls, one `KokoroEngine` call can run away inside Core ML's CPU path
-  (`E5RT::Ops::BnnsCpuInferenceOperation` → `BNNSGraphContextExecute`) and grow to ~50 GB in
-  ~90 s, until macOS kills the app (launchd reason `(1, 13, 9)`: jetsam, low swap). It isn't
-  our buffers: footprint stays at ~380 MB for 96 turns, and the text alone voices fine.
-  Repro: voice the 172 turns of a long summary (VerifyIO's did it at turn 97 every run) through
-  `KokoroEngine.shared` piece by piece in a throwaway test, logging `phys_footprint` per turn to
-  a file (stdout is lost when the process is killed), and `sample` the process once it
-  passes a few GB. Upstream: FluidAudio #817, #844. It's tied to the loaded model, not the input:
-  in Nov 2026 a probe of 200 short pieces (8–36 words, two voices) died on the 81st call every
-  run (11 GB after 8 s), and the same call on a freshly loaded model voiced fine. So
-  `KokoroEngine` reloads the model every `callsPerModel` (25) calls, about 1 s each; with that,
-  200 calls ran with footprint flat at 250–440 MB. Never let one model serve more calls. If it
-  still happens, the next fix is running Kokoro in a helper process so a runaway kills only the
-  helper. When it's gone upstream, remove the reload, this note and the README's "Known issues" entry.
-- **Use `KokoroEngine.shared` for all local synthesis.** Never create another `KokoroAneManager`: two
-  model copies on the Neural Engine, or overlapping calls into one (actors are re-entrant across
-  `await`), fail with "unable to compute the asynchronous prediction".
-- `LLMReply.json` takes text from the first `{` to the last `}`. **Ask the LLM for a
-  JSON object, never a top-level array**: an array gets mangled and the parse silently falls
-  back to defaults (this broke the cast step for a long time).
-- Replies and files are untrusted: check any number from them before indexing or converting to
-  `Int`, and never force-unwrap a URL made from typed text (`URL.web`). `MindMap`'s decoder
-  refuses maps that can't be laid out.
-- Depth: only `.inDepth` may have full-length method monologues; `generateTranscript` forces
-  every other depth to dialogue. Summary's ceiling is the import sheet's length
-  (`SummaryLength`, 5–60 min, default 35, saved as `Paper.targetMinutes` for reruns); it aims
-  for 6/7 of it, and the ceiling is enforced segment by segment on what was *written*: each
-  segment is told its limit (`lengthLimit`), and one that runs >15% over is condensed by the LLM
-  once, then cut (`LocalPipeline.trimTurns`). Models overshoot short targets 2×, so never trust
-  the request alone. In-depth has no cap and scales with the paper. Lengths
-  assume about 145 spoken words per minute at the default pace.
-- Cast: the interviewer keeps the signature voice for their gender (Heart / Michael); the guest
-  gets `KokoroSpeech.guestVoice` (same gender, different voice, stable per name). Gender comes
-  from the LLM (per speaker and per author); `KokoroSpeech.guessGender(fromName:)` is only a
-  fallback. The sheet shows the gender so the user can correct it. Never let an unknown gender
-  quietly become a female voice.
-- The cast prompt can answer **Skip audio** (`resolveCast(_:voiceAudio: false)`): the script
-  is written and the paper finishes "done" with `hasAudio == false`; Regenerate audio voices it.
-- Mind map (`MindMap`, `LocalPipeline.mindMap`): drawn after the script, before voicing, and
-  best-effort (a failure logs and toasts, never fails the import; Create mind map retries).
-  `MindMap.parse` repairs the reply (short labels, orphans under their branch root, cycles,
-  stray links) and returns nil unless all three pillars exist; the pipeline asks once more when a
-  pillar has fewer than two parts. Layout is `MindMapLayout` (pure, tested); `Paper.hasMindMap`
-  is optional so older records decode.
-- Connections between maps (`MindMapConnections`, `AppStore.connectMindMap`): after a map is
-  drawn, a local TF-IDF pass shortlists concept pairs with other maps (bounded: `maxPairs`,
-  `maxPapers`), and only that shortlist goes to the LLM, so the prompt doesn't grow with the
-  library. Never send whole maps. Results go on `MindMap.external` (optional). Connections are
-  two-way: save maps only through `AppStore.saveMindMap`, which writes the other side of every
-  connection involved (from a fresh read) and bumps `mindMapRevision` so open windows reload.
-  Writing `K.mindMap` directly leaves a connection one-sided. `mindMap(for:)` hides links to
-  papers no longer in the library. A link whose other side couldn't be read is kept, not dropped:
-  it goes only when the paper or concept is surely gone.
-- The duplicate and cast prompts pause the pipeline on a `CheckedContinuation`. Prompts queue,
-  one at a time. Only *new* imports (`existing == nil`) may be discarded by the duplicate
-  prompt, because declining deletes the paper.
-
 ## MVC layers
 
 Dependencies point one way: Views → Controllers → Presentation → Model.
@@ -361,7 +84,7 @@ Dependencies point one way: Views → Controllers → Presentation → Model.
 - **Controllers** (`*/Controllers/`, and `Linux/AppStore+Linux.swift`): all state changes, and all I/O
   beyond the Model's own saving (settings, Keychain, `LocalStorage`). A record change that words a
   message goes here (`PaperTransitions.swift`).
-- **Views** (`macOS/Views/`, `macOS/Components/`, `Linux/UI/`): see below. They talk to the store,
+- **Views** (`macOS/Views/`, `macOS/Components/`, `Linux/UI/`): see [Interface](docs/development/ui.md). They talk to the store,
   the player and the window openers, and never assign their properties.
 
 Two checks enforce it, both in `app.sh test` and CI. `scripts/check_layers.sh` compiles the Model
@@ -373,77 +96,10 @@ I/O, wording in the Model). Fix the code rather than widening the test's lists.
 Before writing a helper, look in `Shared/Support/` (text, HTTP, saved JSON), `Fixtures` (tests)
 and `macOS/Components/CommonViews.swift` / `ZoomableMap.swift` (UI).
 
-## Views hold no logic
+## Linux port
 
-- A view lays out what it's given and forwards user actions. Anything that decides, computes,
-  formats, validates, filters, sorts or picks wording goes in `Presentation/` (pure functions or
-  value types, unit-tested) or, if it changes app state, in a method on `AppStore`.
-- Allowed in views: layout and styling, `@State` for purely visual state (hover, focus, which
-  sheet or disclosure is open, a drag in progress), bindings to a form value type, and calls like
-  `store.requestRerun(paper)` or `form.rename(id, to:)`.
-- Not allowed in views: `?:` or `if` on app data to choose text, counts or enablement (use e.g.
-  `PaperPresentation.playButton`, `LibraryPresentation.badge`), string building and pluralising,
-  trimming or parsing input, filtering/sorting collections, file or network access (use
-  store methods such as `readPDF`), or duplicating a rule that exists elsewhere.
-- Shared forms keep Settings and the setup wizard identical: both use `LLMSettingsForm`,
-  `ServerSettingsForm` and `KeySourceFields`.
-- Interface text goes through `L("English wording", args…)` (`Shared/Localization/`), with
-  values as `{0}`, `{1}` placeholders, never `\(…)` interpolation. Add each new key to every pack
-  in `Shared/Localization/Packs/`; `LocalizationTests` scans the sources and fails on a missing
-  or stale key. Only the interface is translated: prompts, logs and what the LLM writes stay
-  English, unless an import sets `Paper.scriptLanguage` (then `LocalPipeline.outputLanguage`
-  appends the `outputLanguage` prompt).
-- Every new presentation type or store method gets tests (`PresentationTests.swift`,
-  `AppStoreTests.swift`). Coverage of `Presentation/` should stay near 100%.
-
-## SwiftUI conventions and known traps
-
-- Paper records are saved through `AppStore.persist(id)`, a serial queue that writes the
-  *latest* state. Never save a record from a fire-and-forget `Task` with a captured snapshot:
-  quick edits then land out of order. `delete` awaits the queue before removing the folder.
-- Toasts: always `store.show(_:)`. `toast` is `private(set)` because direct assignment never
-  auto-dismissed.
-- Destructive confirmations go through `store.pendingConfirmation`, presented once from
-  `ContentView`. A `confirmationDialog` attached inside a context menu is torn down when the
-  menu closes.
-- Sheets whose content depends on async-loaded data use `.sheet(item:)` with the data as the
-  item. `isPresented` plus separate state can render the empty branch (the transcript sheet
-  showed "No transcript yet" this way).
-- `@AppStorage` inside an `ObservableObject` does not publish changes. Use `@Published` with a
-  `didSet` that writes `UserDefaults` (see `PlayerController.voiceSpeed`).
-- The inspector is a manual pane on purpose. `.inspector()` was removed in c5a0161 to fix an
-  Auto Layout invalidation-loop crash during playback; don't bring it back.
-- The sidebar uses the native `List(selection:)`. Its highlight follows the user's system accent,
-  not the app's orange tint; a hand-drawn replacement was tried and rejected. Keep native.
-- Cover images are keyed on `store.artworkRevision[id]`; call `pdfStored(id)` whenever a PDF is
-  written so covers reload.
-- System notifications (`Notifier`) post only while the app is in the background and need a
-  `.app` bundle; they are skipped under `swift run`.
-- Settings pages save silently and only when values change; the Save button shows an inline
-  "Saved". Don't add toasts there, because the toast overlay sits behind the settings sheet.
-
-## User guide (Help → Papertalk Help)
-
-- `shared/Papertalk.help/` is a macOS Help Book: plain HTML pages in `Contents/Resources/en.lproj/`
-  with `help.css`, opened from the Help menu (the app's `Info.plist` names it with
-  `CFBundleHelpBookFolder` / `CFBundleHelpBookName`). `app.sh` copies it into the bundle and indexes it
-  with `hiutil` for the Help menu's search, and makes the home page's `icon.png` from the official
-  icon; both are build output, never committed.
-- **Every PR that adds or changes a user-visible feature updates the guide in the same PR**: the
-  page for that area (new menu items, buttons, shortcuts, settings, behaviour), or a new page linked
-  from `index.html`. Removing a feature removes it from the guide. Keep it in step with `README.md`.
-- Same copy rules as the interface: plain, specific, named exactly as the UI names things.
-  `HelpBookTests` fails on a page not linked from `index.html` or a broken link. The guide is
-  English only for now.
-- macOS copies the guide into its own cache the first time it's opened, keyed by the **app's**
-  version (`…/group.com.apple.helpviewer.content/Library/Caches/dev.papertalk.desktop.*<VERSION>.help`),
-  and shows that copy until the version changes. Releases always change it. To see guide edits in a
-  local build, build with a plain numeric version macOS hasn't seen yet (`VERSION=0.4.99 app.sh app`,
-  then 0.4.100 for the next edit: a suffix like `0.4.2-x` is read as 0.4.2) and reopen. Deleting the cache instead needs Full Disk Access, and
-  deleting only part of it leaves Tips showing "content unavailable". To check a page without the
-  cache, render the built bundle's `en.lproj/index.html` with `qlmanage -t`. Dev pre-releases
-  (`<VERSION>-dev.<commit>`) count as `<VERSION>`, so their users see the guide of the first dev
-  build they opened until the next stable release.
+Paused in CI. macOS and Linux build from one target: prefer a shim in `Linux/` to `#if` in shared
+code, and never change the macOS app for the port's sake. Details: [Linux port](docs/development/linux.md).
 
 ## Style
 
@@ -455,5 +111,3 @@ and `macOS/Components/CommonViews.swift` / `ZoomableMap.swift` (UI).
 - User-facing copy: plain and specific. Say what happened and what to do next.
 - Keep `README.md` in step with user-visible behaviour (shortcuts, settings, data locations). Its
   opening warning note stays exactly as written.
-- The user often has uncommitted work in progress. Build on top of it, and don't commit, revert,
-  or reformat unrelated code unless asked.

@@ -6,8 +6,8 @@ this file (for Claude Code), so keep the guidance here.
 
 ## Repo map
 
-- `client/`: the Swift package (`Package.swift`, target `Papertalk`). It is the macOS app and
-  also builds the Linux binary (tooling in `client/linux-dev/`). `Sources/Papertalk/` is split by
+- `Package.swift`: the Swift package, at the repo root (target `Papertalk`). It is the macOS app and
+  also builds the Linux binary (tooling in `linux-dev/`). `Sources/Papertalk/` is split by
   platform: `Shared/` (both), `macOS/` (macOS only) and `Linux/` (Linux only). The UI and
   the whole pipeline (PDF → metadata → cast → script → audio) run in-process.
   - `Shared/Controllers/AppStore.swift`: the single `@MainActor` `ObservableObject` holding all app
@@ -15,12 +15,14 @@ this file (for Claude Code), so keep the guidance here.
   - `Shared/Controllers/Pipeline.swift`: LLM calls (`LocalPipeline`): metadata, cast proposal, plan,
     dialogue/monologue writing, JSON parsing.
   - `macOS/Controllers/KokoroEngine.swift`: the only Kokoro TTS instance (on Linux,
-    `Linux/KokoroCompat.swift`). `Shared/Controllers/Kokoro.swift` holds voice lists, labels
-    and pools.
+    `Linux/KokoroCompat.swift`). `Shared/Models/Kokoro.swift` holds voice lists and pools;
+    their labels are in `Shared/Presentation/VoicePresentation.swift`.
   - `Shared/Controllers/PlayerController.swift`: episode playback and voice-sample previews.
   - `Shared/Controllers/Storage.swift`: `StorageFactory` and `HttpStorage` (the storage
-    server's client). It re-exports `PapertalkStore`, so the app sees `Storage`, `K` and
-    `LocalStorage` without importing it.
+    server's client). `Shared/Models/LibraryStore.swift` re-exports `PapertalkStore`, so the app
+    sees `Storage`, `K` and `LocalStorage` without importing it.
+  - `Shared/Controllers/AppStore+Actions.swift`: the small actions views forward;
+    `AppStore+Forms.swift`: the I/O forms need (model lists, the chosen PDF).
   - `Shared/Presentation/`: everything the views show or decide, as pure Swift with no SwiftUI:
     wording and labels, form state and validation (`ImportForm`, `MetadataForm`,
     `LLMSettingsForm`, `ServerSettingsForm`, `CastForm`), grouping/sorting (`AuthorsPresentation`),
@@ -28,35 +30,36 @@ this file (for Claude Code), so keep the guidance here.
   - `macOS/Views/`, `macOS/Components/`: SwiftUI layout only (see "Views hold no logic" below).
     `macOS/Support/Theme.swift` has shared styling (`glassCard`, `StatusBadge`, `FlowLayout`,
     `Color.stable(for:)`); `macOS/Support/Clipboard.swift` copies text.
-- `client/Sources/PapertalkStore/`: a library target shared by the app and the server:
+- `Sources/PapertalkStore/`: a library target shared by the app and the server:
   `Storage.swift` (the `Storage` protocol, the `K` key layout, `LocalStorage`) and
   `StorageServer.swift` (the HTTP key/value server over a `LocalStorage` folder; no compute).
   Foundation and POSIX sockets only: it must never depend on the app's frameworks.
-- `client/Sources/PapertalkServer/main.swift`: the server's command line (`app.sh server`),
+- `Sources/PapertalkServer/main.swift`: the server's command line (`app.sh server`),
   configured by the `PAPER2POD_STORAGE_*` env vars. It replaced `server/storage_server.py`
   and adopts roots that script wrote (plain `papers/<id>/` folders become packages).
 - `VERSION`: the app version, edited by hand (`app.sh version` prints it).
 - `CHANGELOG.md`: what each release changes, shown in the app's "What's new" sheet (see below).
+- `scripts/check_layers.sh`: the MVC layer check (see "MVC layers").
 - `scripts/coverage.sh`, `scripts/coverage_summary.py`: code coverage (`app.sh coverage`).
 - `.github/workflows/`: `tests.yml` (pull requests) and `release.yml` (`main`: dev + stable releases).
-- `shared/`: app icon (`icon.icns`, drawn by `scripts/app_icon.swift`), and `Papertalk.help/`, the
+- `shared/`: app icon (`icon.icns`, drawn by `scripts/icons.swift`), and `Papertalk.help/`, the
   user guide (macOS Help Book, see "User guide").
-- Linux port pieces: `client/Sources/Papertalk/Linux/` (compat shims, `#if os(Linux)`),
+- Linux port pieces: `Sources/Papertalk/Linux/` (compat shims, `#if os(Linux)`),
   `python/papertalk_platform/` (PDF, Kokoro, keyring services for Linux, with pytest tests),
-  `client/linux-dev/` (dev container `Dockerfile`, `dev.sh`).
-- `client/Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
+  `linux-dev/` (dev container `Dockerfile`, `dev.sh`).
+- `Tests/PapertalkTests/`: the XCTest suite (see "Tests" below).
 
 ## Build and test
 
 ```bash
-swift build          # compile (from client/)
-../app.sh test       # the whole suite, ~10 s, no network or real data (from client/)
-../app.sh coverage   # the suite with coverage → ../coverage/ (summary.md, report.txt, lcov.info)
-../app.sh app        # build dist/Papertalk.app (debug); `app.sh release` → dist/Papertalk-<version>.zip
+swift build          # compile (from the repo root)
+./app.sh test        # the layer check, then the whole suite: no network, Keychain or real data
+./app.sh coverage    # the suite with coverage → coverage/ (summary.md, report.txt, lcov.info)
+./app.sh app         # build dist/Papertalk.app (debug); `app.sh release` → dist/Papertalk-<version>.zip
 ```
 
 `app.sh` (repo root) replaces the old Makefile: build/app/run/release/test/coverage/server/clean/version.
-It's run from anywhere; from `client/` prefix it with `../`.
+It's run from anywhere.
 Every build of the app bundle (`app`, `run`, `release`) registers it with Launch Services and
 unregisters every other `Papertalk.app` macOS knows, except copies in `/Applications` (an installed
 release stays), so Finder, "Open With" and Help open the build just made.
@@ -77,7 +80,7 @@ release stays), so Finder, "Open With" and Help open the build just made.
 
 - Work goes through pull requests into `main` (squash or rebase; one approving review). CI does
   only what's needed, on GitHub's `macos-26` runner:
-  - `tests.yml`, on every PR: `app.sh coverage` (the suite, once, with coverage; it builds and
+  - `tests.yml`, on every PR: `app.sh coverage` (the layer check and the suite, once, with coverage; it builds and
     tests the storage server too). No app bundle: nothing would be uploaded. PRs that change only
     Markdown skip it (no check is required, so they can still merge).
   - `release.yml`, on every push to `main` (Markdown-only pushes skip it): `app.sh test`, then the
@@ -113,12 +116,12 @@ release stays), so Finder, "Open With" and Help open the build just made.
 - Icons: the `CHANNEL` env var of `app.sh` (default `dev`) picks the app icon. Only the stable
   release (an `X.Y.0` bump merged to `main`) builds with `CHANNEL=stable` and gets the official
   `shared/icon.icns`; every other build (local, CI, dev pre-releases) gets a "DEV" stripe version
-  generated into `client/.build/icons/` by `scripts/dev_icon.swift`. Don't ship the official icon
+  generated into `.build/icons/` by `scripts/icons.swift dev`. Don't ship the official icon
   from anything but a stable release. The exception is the Finder icon of `.papertalk` files
-  (`PaperDocument.icns`, a page with the app icon on it, from `scripts/document_icon.swift`): it's
+  (`PaperDocument.icns`, a page with the app icon on it, from `scripts/icons.swift document`): it's
   made from the official icon on every channel, so a file's icon doesn't depend on the build.
-- The official icon is drawn in code: change `scripts/app_icon.swift`, run
-  `swift scripts/app_icon.swift shared/icon.icns`, and commit both. Every other icon (dev,
+- The official icon is drawn in code: change `AppIcon` in `scripts/icons.swift`, run
+  `swift scripts/icons.swift app shared/icon.icns`, and commit both. Every other icon (dev,
   document, the Help Book's `icon.png`, the Linux AppImage's PNG) is generated from that file at
   build time, so never edit those. Keep shapes filled and thick: it has to read at 16 px.
 - The in-app updater (`UpdateInstall`, `macOS/Controllers/UpdateInstaller.swift`) installs a stable
@@ -143,8 +146,8 @@ release stays), so Finder, "Open With" and Help open the build just made.
 - A new file goes in `Shared/`, `macOS/` or `Linux/` by where it compiles, and files in `macOS/`
   and `Linux/` keep their whole-file `#if os(...)` guard (one target compiles every folder;
   SwiftPM can't exclude files per platform).
-- Build and test Linux with Docker (OrbStack here): `client/linux-dev/dev.sh build` once, then
-  `client/linux-dev/dev.sh test` (Swift suite + pytest) and `client/linux-dev/dev.sh e2e` (the opt-in
+- Build and test Linux with Docker (OrbStack here): `linux-dev/dev.sh build` once, then
+  `linux-dev/dev.sh test` (Swift suite + pytest) and `linux-dev/dev.sh e2e` (the opt-in
   `EndToEndImportTests`: a real import with Kokoro, LLM mocked). Run `swift build` and
   `app.sh test` on macOS too, after every change to shared code.
 - Python is called only through `PythonRuntime` (one thread). Nothing time-critical goes through
@@ -157,7 +160,7 @@ release stays), so Finder, "Open With" and Help open the build just made.
   `PlayerController`'s `objectWillChange` to SwiftCrossUI's own `ObservableObject` and is the
   only UI file that imports OpenCombine. Views follow the same "no logic" rule as macOS:
   wording and decisions come from `Shared/Presentation/` (with tests); Linux-only store
-  helpers go in `Linux/UI/AppStore+Linux.swift`.
+  helpers go in `Linux/AppStore+Linux.swift`.
 - SwiftCrossUI 0.9 traps (each one cost a debugging session):
   - Write every `body` in view-builder style. `let` is fine; an explicit `return` skips the
     builder's tuple wrapping, and views inserted later (a selected paper) never appear.
@@ -169,8 +172,8 @@ release stays), so Finder, "Open With" and Help open the build just made.
     launch-time sheets wait for `StoreBridge.windowReady`.
   - `Picker` shows `"\(option)"`: wrap values in `PickerOption` for readable labels. Menu items
     have no keyboard shortcuts.
-- Look at the UI headless: `client/linux-dev/dev.sh screenshot` runs it under Xvfb and openbox on
-  a demo library and saves PNGs to `client/.build-linux/shots/`; `PAPERTALK_UI_SCRIPT` drives it
+- Look at the UI headless: `linux-dev/dev.sh screenshot` runs it under Xvfb and openbox on
+  a demo library and saves PNGs to `.build-linux/shots/`; `PAPERTALK_UI_SCRIPT` drives it
   with xdotool and `PAPERTALK_UI_ARGS` passes a PDF to import. xdotool can't type into GTK 4's
   file dialog, so pass the PDF as an argument. `PAPERTALK_AUDIO_SINK` replaces the sound
   server's player (e.g. `cat > /dev/null` where there is no sound card).
@@ -179,11 +182,11 @@ Done in the Linux UI: library (sidebar, search, covers), detail pane, player bar
 scrubber, import progress), import sheet (and `Papertalk paper.pdf`), cast and duplicate
 prompts, delete/rerun confirmation, settings and first-run setup.
 
-Packaging: `client/linux-dev/dev.sh appimage` (with `VERSION`, `CHANNEL`) builds
-`client/dist/Papertalk-<version>-<arch>.AppImage`: release binary with the Swift runtime
+Packaging: `linux-dev/dev.sh appimage` (with `VERSION`, `CHANNEL`) builds
+`dist/Papertalk-<version>-<arch>.AppImage`: release binary with the Swift runtime
 static, a bundled Python 3.12 with the packages (so nothing is installed at first launch), every
 other library except the GTK / graphics / glibc stack, and a `.desktop` file with `%f`.
-`client/linux-dev/appimage_smoke.sh` checks it on plain Ubuntu. CI used to pack and smoke-test it
+`linux-dev/appimage_smoke.sh` checks it on plain Ubuntu. CI used to pack and smoke-test it
 on every PR and upload it to each release (x86_64); those jobs are paused (`if: false` in both
 workflows, plus the `LINUX_BUILDS` guard in the release notes) until the Linux work resumes.
 If you add a Python package or a native dependency, run the smoke test: a library missing from
@@ -199,7 +202,7 @@ Still to do, in order:
 3. Later: an arm64 AppImage (an `ubuntu-24.04-arm` runner), an in-app PDF viewer from
    pypdfium2 renders, and a re-check of OpenSwiftUI for a Linux renderer.
 
-## Tests (`client/Tests/PapertalkTests`)
+## Tests (`Tests/PapertalkTests`)
 
 - The suite is **XCTest only**. `app.sh test` runs `swift test --disable-swift-testing`, so the
   empty Swift Testing pass doesn't print a confusing "0 tests" line. If you ever add
@@ -221,7 +224,9 @@ Still to do, in order:
 - Don't start conversions, regeneration or playback (`upload`, a real `rerun`,
   `togglePlayback`, `previewVoice`) in tests: they need the LLM or Kokoro. Kokoro synthesis and
   the Keychain are deliberately untested.
-- Helpers: `Fixtures.paper(...)`, `Fixtures.transcript(...)`, `Fixtures.silentWAV(seconds:)`,
+- The suite never reaches the login Keychain: `PapertalkTestCase` turns `KeychainStore` off. Keep
+  it so: the Keychain is per user, and a test that saved settings would replace the user's real keys.
+- Helpers: `TempLibraryTestCase`, `Fixtures.paper(...)`, `Fixtures.blankPaper(...)`, `Fixtures.transcript(...)`, `Fixtures.silentWAV(seconds:)`,
   `Fixtures.tempDir()`, `waitUntil`. `@MainActor` test classes need fixtures marked
   `nonisolated(unsafe)` and `async` test methods.
 - When fixing a bug, add a regression test and check it fails without the fix (temporarily
@@ -287,7 +292,7 @@ Still to do, in order:
 - **Use `KokoroEngine.shared` for all local synthesis.** Never create another `KokoroAneManager`: two
   model copies on the Neural Engine, or overlapping calls into one (actors are re-entrant across
   `await`), fail with "unable to compute the asynchronous prediction".
-- `LocalPipeline.extractJSON` takes text from the first `{` to the last `}`. **Ask the LLM for a
+- `LLMReply.json` takes text from the first `{` to the last `}`. **Ask the LLM for a
   JSON object, never a top-level array**: an array gets mangled and the parse silently falls
   back to defaults (this broke the cast step for a long time).
 - Depth: only `.inDepth` may have full-length method monologues; `generateTranscript` forces
@@ -323,6 +328,28 @@ Still to do, in order:
   one at a time. Only *new* imports (`existing == nil`) may be discarded by the duplicate
   prompt, because declining deletes the paper.
 
+## MVC layers
+
+Dependencies point one way: Views → Controllers → Presentation → Model.
+
+- **Model** (`Shared/Models/`, `Shared/Support/`, `Sources/PapertalkStore/`): data, its rules and
+  how it's saved. No `L(...)` wording, no network, no UI, nothing from the layers above.
+- **Presentation** (`Shared/Presentation/`): wording, forms and display decisions, computed from
+  the Model alone. It never names `AppStore`, `PlayerController` or a client. State both it and
+  the store need is a Model type (`Shared/Models/AppState.swift`).
+- **Controllers** (`*/Controllers/`, and `Linux/AppStore+Linux.swift`): all state changes and all I/O. A record change that words a
+  message goes here (`PaperTransitions.swift`).
+- **Views** (`macOS/Views/`, `macOS/Components/`, `Linux/UI/`): see below. They talk to the store,
+  the player and the window openers, and never assign their properties.
+
+Two checks enforce it, both in `app.sh test` and CI. `scripts/check_layers.sh` compiles the Model
+alone and Model + Presentation alone, so a reference upwards doesn't compile.
+`ArchitectureTests` reads the sources for what a compiler can't see (a view writing state or doing
+I/O, wording in the Model). Fix the code rather than widening the test's lists.
+
+Before writing a helper, look in `Shared/Support/` (text, HTTP, saved JSON), `Fixtures` (tests)
+and `macOS/Components/CommonViews.swift` / `ZoomableMap.swift` (UI).
+
 ## Views hold no logic
 
 - A view lays out what it's given and forwards user actions. Anything that decides, computes,
@@ -334,7 +361,7 @@ Still to do, in order:
 - Not allowed in views: `?:` or `if` on app data to choose text, counts or enablement (use e.g.
   `PaperPresentation.playButton`, `LibraryPresentation.badge`), string building and pluralising,
   trimming or parsing input, filtering/sorting collections, file or network access (use
-  `PDFFile`, store methods), or duplicating a rule that exists elsewhere.
+  store methods such as `readPDF`), or duplicating a rule that exists elsewhere.
 - Shared forms keep Settings and the setup wizard identical: both use `LLMSettingsForm`,
   `ServerSettingsForm` and `KeySourceFields`.
 - Interface text goes through `L("English wording", args…)` (`Shared/Localization/`), with

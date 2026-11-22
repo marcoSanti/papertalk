@@ -45,9 +45,6 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       kind: ${{ steps.version.outputs.kind }}
-    defaults:
-      run:
-        working-directory: client
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,7 +53,7 @@ jobs:
       - name: Decide the version
         id: version
         run: |
-          BASE="$(../app.sh version)"
+          BASE="$(./app.sh version)"
           SHORT="$(git rev-parse --short HEAD)"
           if [ -z "${BASE}" ]; then
             echo "::error::Could not read VERSION"; exit 1
@@ -86,13 +83,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            client/.build
+            .build
             ~/Library/Caches/org.swift.swiftpm
-          key: spm-release-${{ runner.os }}-${{ hashFiles('client/Package.resolved', 'client/Package.swift') }}
+          key: spm-release-${{ runner.os }}-${{ hashFiles('Package.resolved', 'Package.swift') }}
           restore-keys: spm-release-${{ runner.os }}-
 
       - name: Test
-        run: ../app.sh test
+        run: ./app.sh test
 
       - name: Build release
         # VERSION env overrides the file, so a dev build carries its -dev.<commit>
@@ -101,7 +98,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           CHANNEL: ${{ steps.version.outputs.kind }}
-        run: ../app.sh release
+        run: ./app.sh release
 
       - name: Checksum
         id: artifact
@@ -112,11 +109,10 @@ jobs:
           SRC="dist/Papertalk-${VERSION}-source.tar.gz"
           shasum -a 256 "$ZIP" | tee "${ZIP}.sha256"
           shasum -a 256 "$SRC" | tee "${SRC}.sha256"
-          echo "zip=client/${ZIP}" >> "$GITHUB_OUTPUT"
-          echo "src=client/${SRC}" >> "$GITHUB_OUTPUT"
+          echo "zip=${ZIP}" >> "$GITHUB_OUTPUT"
+          echo "src=${SRC}" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
-        working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -170,7 +166,6 @@ jobs:
 
       - name: Prune old dev builds
         if: steps.version.outputs.kind == 'dev'
-        working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -198,19 +193,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the dev image
-        run: client/linux-dev/dev.sh build
+        run: linux-dev/dev.sh build
 
       - name: Test
-        run: client/linux-dev/dev.sh test
+        run: linux-dev/dev.sh test
 
       - name: Pack the AppImage
         env:
           VERSION: ${{ needs.release.outputs.version }}
           CHANNEL: ${{ needs.release.outputs.kind }}
-        run: client/linux-dev/dev.sh appimage
+        run: linux-dev/dev.sh appimage
 
       - name: Smoke test on plain Ubuntu
-        run: client/linux-dev/appimage_smoke.sh
+        run: linux-dev/appimage_smoke.sh
 
       - name: Upload to the release
         env:
@@ -218,6 +213,6 @@ jobs:
           TAG: ${{ needs.release.outputs.tag }}
           VERSION: ${{ needs.release.outputs.version }}
         run: |
-          APPIMAGE="client/dist/Papertalk-${VERSION}-x86_64.AppImage"
-          sha256sum "$APPIMAGE" | sed 's#  client/dist/#  #' | tee "${APPIMAGE}.sha256"
+          APPIMAGE="dist/Papertalk-${VERSION}-x86_64.AppImage"
+          sha256sum "$APPIMAGE" | sed 's#  dist/#  #' | tee "${APPIMAGE}.sha256"
           gh release upload "$TAG" "$APPIMAGE" "${APPIMAGE}.sha256"

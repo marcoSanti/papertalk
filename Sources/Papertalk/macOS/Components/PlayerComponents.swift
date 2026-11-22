@@ -1,0 +1,302 @@
+// The floating bottom bar: the episode player (transport, scrubber, turn counter) and the
+// progress of running imports and mind maps, side by side when both are there.
+
+#if os(macOS)
+import SwiftUI
+
+// MARK: - Player bar (transport + scrubber + now-playing info)
+/// Transport and scrubber for the loaded episode.
+struct PlayerBar: View {
+    @ObservedObject var player: PlayerController
+    /// Called with the time (seconds) the scrubber was released at.
+    let onSeek: (Double) -> Void
+    /// The turn playing, for the "3 of 40" label.
+    let activeTurn: Int
+    let paper: Paper
+    @State private var isScrubbing = false
+    @State private var scrubValue: Double = 0
+
+    var body: some View {
+        HStack(spacing: 14) {
+            transport
+            PaperArtwork(paper: paper)
+                .frame(width: PaperPresentation.coverWidth(paper, paperWidth: 34))
+                .smallCover(shadow: 0.18)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(paper.displayTitle)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                    Text(turnLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(PlayerBarPresentation.timeLabel(displayTime, of: player.duration))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                }
+                switch PlayerBarPresentation.line(isRendering: player.isRendering, error: player.renderError,
+                                                  renderedCount: player.renderedCount) {
+                case .preparing(let note):
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text(note).font(.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(height: 14)
+                case .failed(let err):
+                    Label(err, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(1)
+                        .help(err)
+                        .frame(height: 14)
+                case .scrubber:
+                    Slider(
+                        value: Binding(
+                            get: { isScrubbing ? scrubValue : player.currentTime },
+                            set: { scrubValue = $0 }),
+                        in: PlayerBarPresentation.scrubRange(duration: player.duration),
+                        onEditingChanged: { editing in
+                            isScrubbing = editing
+                            if editing { scrubValue = player.currentTime }
+                            if !editing { onSeek(scrubValue) }
+                        }
+                    )
+                    .controlSize(.mini)
+                    .disabled(!PlayerBarPresentation.canScrub(duration: player.duration))
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var displayTime: Double { isScrubbing ? scrubValue : player.currentTime }
+
+    private var turnLabel: String {
+        PlayerBarPresentation.turnLabel(activeTurn: activeTurn, turnCount: player.turnCount,
+                                        renderedCount: player.renderedCount,
+                                        isBuffering: player.isBuffering, hasError: player.renderError != nil)
+    }
+
+    private var transport: some View {
+        GlassEffectContainer(spacing: 6) {
+            HStack(spacing: 6) {
+                skipButton(-1, systemImage: "backward.fill",
+                           enabled: PlayerBarPresentation.canSkipBack(activeTurn: player.activeTurn))
+                Button {
+                    player.playPause()
+                } label: {
+                    Image(systemName: PlayerBarPresentation.playButton(isPlaying: player.isPlaying).icon)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 40, height: 40)
+                        .glassEffect(.regular.tint(Color.appAccent).interactive(), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!PlayerBarPresentation.canPlay(isRendering: player.isRendering, turnCount: player.turnCount))
+                .help(PlayerBarPresentation.playButton(isPlaying: player.isPlaying).help)
+                skipButton(1, systemImage: "forward.fill",
+                           enabled: PlayerBarPresentation.canSkipForward(activeTurn: player.activeTurn,
+                                                                         turnCount: player.turnCount))
+            }
+        }
+    }
+
+    /// Previous/next turn button.
+    private func skipButton(_ delta: Int, systemImage: String, enabled: Bool) -> some View {
+        Button {
+            player.skip(by: delta)
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .bold))
+                .glassCircle()
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+        .help(PlayerBarPresentation.skipHelp(delta))
+    }
+}
+
+// MARK: - Floating glass "now playing" / import status capsule
+/// The bar under the library: what it holds is decided by `BottomBarContent`.
+struct BottomBar: View {
+    @EnvironmentObject private var store: AppStore
+    @ObservedObject var player: PlayerController
+
+    var body: some View {
+        let content = BottomBarContent(activeImport: store.shownProgress,
+                                       playing: store.playingPaper,
+                                       selected: store.selectedPaper())
+        Group {
+            switch content {
+            case .playerAndImport(let playing, let run):
+                capsule(maxWidth: 1100) {
+                    HStack(spacing: 16) {
+                        playPane(playing)
+                        Divider().frame(height: 40)
+                        importPane(run)
+                    }
+                }
+            case .importOnly(let run):
+                capsule { importProgress(run) }
+            case .player(let paper):
+                capsule { playPane(paper) }
+            case .hidden:
+                EmptyView()
+            }
+        }
+        .animation(.spring(duration: 0.35), value: content)
+    }
+
+    /// The player for `paper`: the transport once loaded, else a play button or why it can't play.
+    @ViewBuilder
+    private func playPane(_ paper: Paper) -> some View {
+        pane {
+            switch PlayerPane(paper: paper, playerHasAudio: player.hasAudio) {
+            case .loaded:
+                PlayerBar(player: player,
+                          onSeek: { player.seek(toTime: $0) },
+                          activeTurn: player.activeTurn,
+                          paper: paper)
+            case .ready(let playTitle, let detail):
+                HStack(spacing: 12) {
+                    Button {
+                        store.togglePlayback(paper.id)
+                    } label: {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .glassEffect(.regular.tint(Color.appAccent).interactive(), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(playTitle)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(paper.displayTitle)
+                            .font(.callout.weight(.semibold))
+                            .lineLimit(1)
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            case .unavailable(let reason):
+                HStack(spacing: 10) {
+                    Image(systemName: "waveform.slash")
+                        .foregroundStyle(.secondary)
+                    Text(reason)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(height: 28)
+            }
+        }
+    }
+
+    /// The progress of the import (or mind map) in focus.
+    private func importPane(_ run: Paper) -> some View {
+        pane {
+            importProgress(run)
+        }
+    }
+
+    /// A pane's width rules inside the capsule.
+    private func pane<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        content()
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The glass capsule the bar's panes sit in.
+    private func capsule<C: View>(maxWidth: CGFloat = 760,
+                                  @ViewBuilder _ content: () -> C) -> some View {
+        content()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(maxWidth: maxWidth)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(color: .black.opacity(0.10), radius: 16, y: 6)
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    /// Stage, message and progress bar of a run, with arrows to cycle through several.
+    private func importProgress(_ p: Paper) -> some View {
+        HStack(spacing: 12) {
+            if let counter = ImportProgressPresentation.counter(index: store.activeRunIndex, count: store.progressItems.count) {
+                VStack(spacing: 8) {
+                    arrowButton("chevron.up", -1)
+                    arrowButton("chevron.down", 1)
+                    Text(counter)
+                        .font(.system(size: 9).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 4)
+            }
+            ZStack {
+                if p.isError {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            .frame(width: 36, height: 36)
+            .glassEffect(.regular.tint(p.isError ? Color.red.opacity(0.25) : Color.appAccent.opacity(0.25)), in: Circle())
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Text(ImportProgressPresentation.stage(p))
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                    Text(ImportProgressPresentation.titleLine(p))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    if p.isError {
+                        Button(L("Dismiss")) { store.resetError(p.id) }
+                            .buttonStyle(.glass)
+                            .controlSize(.small)
+                    } else {
+                        Text(ConversionPresentation.percentLabel(p.progress))
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                ProgressView(value: ConversionPresentation.barValue(p.progress))
+                    .progressViewStyle(.linear)
+                    .tint(Color.appAccent)
+                    .controlSize(.small)
+                    .animation(.easeInOut(duration: 0.25), value: p.progress)
+                if let m = PaperPresentation.message(p) {
+                    Text(m).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+        }
+    }
+
+    /// Cycles the focus through running imports.
+    private func arrowButton(_ systemImage: String, _ delta: Int) -> some View {
+        Button {
+            store.focusImport(delta)
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(ImportProgressPresentation.arrowHelp(delta))
+    }
+}
+
+#endif

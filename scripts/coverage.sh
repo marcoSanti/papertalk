@@ -7,8 +7,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/coverage"
-cd "$ROOT/client"
+cd "$ROOT"
 
+"$ROOT/scripts/check_layers.sh"
 swift test --disable-swift-testing --enable-code-coverage
 
 # Locate the outputs instead of assuming a layout: SwiftPM's two build systems

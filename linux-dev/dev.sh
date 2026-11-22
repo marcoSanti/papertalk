@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Run things in the Linux dev container (AGENTS.md, "Linux port"). Needs Docker.
+#   linux-dev/dev.sh build | shell | test | e2e | app | screenshot | appimage | <command...>
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE=papertalk-linux-dev
+# Linux build products live in their own folder so they never mix with the macOS .build.
+# VERSION and CHANNEL are passed through when set (for appimage).
+RUN=(docker run --rm -v "$ROOT:/src" -v papertalk-linux-build:/src/.build-linux
+     -v papertalk-linux-cache:/root/.cache -e VERSION -e CHANNEL -w /src "$IMAGE")
+
+case "${1:-}" in
+    build) docker build -t "$IMAGE" -f "$ROOT/linux-dev/Dockerfile" "$ROOT" ;;
+    shell) docker run --rm -it -v "$ROOT:/src" -v papertalk-linux-build:/src/.build-linux \
+               -v papertalk-linux-cache:/root/.cache -w /src "$IMAGE" bash ;;
+    # The Swift suite and the Python services' tests, on Linux.
+    test)  "${RUN[@]}" bash -lc 'swift test --disable-swift-testing --scratch-path .build-linux/main && cd python && python3 -m pytest -q' ;;
+    # The opt-in end-to-end import test: real PDF, Kokoro and WAVs, mocked LLM.
+    e2e)   "${RUN[@]}" bash -lc 'PAPERTALK_E2E=1 LLM_BASE_URL=http://llm.mock/v1 PAPERTALK_MODEL=m swift test --disable-swift-testing --scratch-path .build-linux/main --filter EndToEndImportTests' ;;
+    # Build the Linux app (.build-linux/main/debug/Papertalk).
+    app)   "${RUN[@]}" bash -lc 'swift build --scratch-path .build-linux/main' ;;
+    # Run the UI headless on a demo library and save screenshots (.build-linux/shots).
+    screenshot) "${RUN[@]}" bash -lc 'linux-dev/screenshot.sh' ;;
+    # Pack the AppImage into dist (VERSION and CHANNEL pass through).
+    appimage) "${RUN[@]}" bash -lc 'linux-dev/appimage.sh' ;;
+    '') echo "usage: $0 build | shell | test | e2e | app | screenshot | appimage | <command...>" >&2; exit 2 ;;
+    *) "${RUN[@]}" bash -lc "$*" ;;
+esac

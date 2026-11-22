@@ -118,11 +118,11 @@ files; conversion happens in the app.
 Needs macOS 26 and Xcode with Swift 6.2.
 
 ```bash
-./app.sh run        # debug build of client/dist/Papertalk.app, then open it
+./app.sh run        # debug build of dist/Papertalk.app, then open it
 ./app.sh test       # the test suite, about ten seconds, no network needed
 ./app.sh release    # optimized build, zipped
 ```
 
 Read [AGENTS.md](AGENTS.md) first: it explains the code layout, the rules, and how releases are
-cut from `VERSION`. A Linux build (GTK 4 AppImage) is in progress under `client/linux-dev/`.
+cut from `VERSION`. A Linux build (GTK 4 AppImage) is in progress under `linux-dev/`.
 When reporting a bug, include the **Activity** log from the paper's details.

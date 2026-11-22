@@ -62,7 +62,8 @@ swift build          # compile (from the repo root)
 It's run from anywhere.
 Every build of the app bundle (`app`, `run`, `release`) registers it with Launch Services and
 unregisters every other `Papertalk.app` macOS knows, except copies in `/Applications` (an installed
-release stays), so Finder, "Open With" and Help open the build just made.
+release stays), so Finder, "Open With" and Help open the build just made. `app.sh run` also quits
+the Papertalk that is running: don't use it while the user has the app open.
 
 - Requires macOS 26 and Swift 6.2 tools; app and tests compile in Swift 5 language mode.
 - After every change, run `swift build` **and** `app.sh test`, and report the results. Read the
@@ -80,8 +81,9 @@ release stays), so Finder, "Open With" and Help open the build just made.
 
 - Work goes through pull requests into `main` (squash or rebase; one approving review). CI does
   only what's needed, on GitHub's `macos-26` runner:
-  - `tests.yml`, on every PR: `app.sh coverage` (the layer check and the suite, once, with coverage; it builds and
-    tests the storage server too). No app bundle: nothing would be uploaded. PRs that change only
+  - `tests.yml`, on every PR into `main` (not on one stacked on another branch): `app.sh coverage`
+    (the layer check and the suite, once, with coverage; it builds and tests the storage server
+    too). No app bundle: nothing would be uploaded. PRs that change only
     Markdown skip it (no check is required, so they can still merge).
   - `release.yml`, on every push to `main` (Markdown-only pushes skip it): `app.sh test`, then the
     release build and the GitHub release (see below). It's the only run on `main`, so it's what
@@ -106,19 +108,23 @@ release stays), so Finder, "Open With" and Help open the build just made.
   `## Unreleased`) as the `PapertalkWhatsNew` Info.plist string. After an update the app shows
   those entries once (`WhatsNew`, `AppStore.showWhatsNewIfUpdated`), never on a first launch.
   When bumping `VERSION` to `X.Y.0`, rename `## Unreleased` to `## X.Y.0` and add a new empty
-  `## Unreleased` above it. Patch bumps leave it alone, unless the patch is force-released (below):
-  that one gets its own section the same way.
+  `## Unreleased` above it. Patch bumps leave it alone: giving a patch its own section releases it
+  as stable (below).
 - Bump by editing `VERSION` as part of a PR. Patch for fixes, minor for features, major for
   breaking changes (e.g. a library format that older builds can't read).
-- Stable releases are CI-driven: merge a `VERSION` bumped to `X.Y.0` to `main` and
-  `.github/workflows/release.yml` publishes a full release tagged `v<VERSION>`, marked Latest.
-  A patch version (`X.Y.1`, …) never makes a full release: it ships as dev pre-releases
-  (`v<VERSION>-dev.<commit>`), so users of stable builds only get it with the next `X.Y.0`.
-  The exception, only when the user asks for it: `FORCED_RELEASE` in `release.yml` names one exact
-  patch version to release as stable (0.9.1 was), with the official icon. It works once, as the
-  tag then exists.
-- Icons: the `CHANNEL` env var of `app.sh` (default `dev`) picks the app icon. Only the stable
-  release (an `X.Y.0` bump merged to `main`) builds with `CHANNEL=stable` and gets the official
+- Stable releases are CI-driven: on a push to `main`, `.github/workflows/release.yml` publishes
+  a full release tagged `v<VERSION>`, marked Latest, when that tag doesn't exist yet and either:
+  - `VERSION` is `X.Y.0`, or
+  - `VERSION` is a patch and `CHANGELOG.md` has a line that is exactly `## <VERSION>`.
+  Any other patch ships as dev pre-releases (`v<VERSION>-dev.<commit>`), so users of stable builds
+  only get it with the next stable release.
+- **A patch's changelog section is its release switch.** Write one only when the user asks to
+  release that patch: in the PR that bumps `VERSION`, rename `## Unreleased` as for `X.Y.0`.
+  There is nothing to edit in the workflow. A section merged later in a Markdown-only PR doesn't
+  start the workflow: run Release by hand from `main`. Deleting the tag of the current `VERSION`
+  makes the next run publish it again.
+- Icons: the `CHANNEL` env var of `app.sh` (default `dev`) picks the app icon. Only a stable
+  release (see above) builds with `CHANNEL=stable` and gets the official
   `shared/icon.icns`; every other build (local, CI, dev pre-releases) gets a "DEV" stripe version
   generated into `.build/icons/` by `scripts/icons.swift dev`. Don't ship the official icon
   from anything but a stable release. The exception is the Finder icon of `.papertalk` files
@@ -134,7 +140,7 @@ release stays), so Finder, "Open With" and Help open the build just made.
   quits. Renaming those release assets, or the zip's top-level `Papertalk.app`, breaks it: keep them.
 - `app.sh release` also writes `dist/Papertalk-<version>-source.tar.gz` (`git archive` of HEAD);
   the release workflow publishes it, with checksums, beside the app zip.
-- Dev builds: every push to `main` that didn't bump the version publishes a **pre-release**
+- Dev builds: every other push to `main`, unless it changes only Markdown, publishes a **pre-release**
   `v<VERSION>-dev.<short commit>`, built with `VERSION=<that> app.sh release` (the `VERSION`
   env overrides the file for that build only). It keeps the newest 10 dev builds and deletes
   older ones with their tags. Never create `-dev.` tags by hand, and never push tags or bump the
@@ -143,9 +149,8 @@ release stays), so Finder, "Open With" and Help open the build just made.
 ## Linux port
 
 - The `Papertalk` target builds on macOS and Linux. macOS-only files are wrapped in
-  `#if os(macOS)` (App, Views, Components, Theme, Clipboard, Notifier, PDFViewerWindow,
-  MindMapWindow, KokoroEngine), which live under `macOS/`. Linux supplies same-named compat shims in `Linux/`,
-  so shared code compiles unchanged. Prefer extending a shim to adding `#if` in shared code.
+  `#if os(macOS)` and live under `macOS/` (App, Views, Components, Controllers, Support). Linux
+  supplies same-named compat shims in `Linux/`, so shared code compiles unchanged. Prefer extending a shim to adding `#if` in shared code.
   Never change how the macOS app looks or behaves for the port's sake.
 - A new file goes in `Shared/`, `macOS/` or `Linux/` by where it compiles, and files in `macOS/`
   and `Linux/` keep their whole-file `#if os(...)` guard (one target compiles every folder;
@@ -184,7 +189,7 @@ release stays), so Finder, "Open With" and Help open the build just made.
 
 Done in the Linux UI: library (sidebar, search, covers), detail pane, player bar (playback,
 scrubber, import progress), import sheet (and `Papertalk paper.pdf`), cast and duplicate
-prompts, delete/rerun confirmation, settings and first-run setup.
+prompts, delete/rerun confirmation, opening the PDF, settings and first-run setup.
 
 Packaging: `linux-dev/dev.sh appimage` (with `VERSION`, `CHANNEL`) builds
 `dist/Papertalk-<version>-<arch>.AppImage`: release binary with the Swift runtime
@@ -230,6 +235,7 @@ Still to do, in order:
   the Keychain are deliberately untested.
 - The suite never reaches the login Keychain: `PapertalkTestCase` turns `KeychainStore` off. Keep
   it so: the Keychain is per user, and a test that saved settings would replace the user's real keys.
+  Checkouts from before 0.9.1 don't have this guard: running their tests can overwrite those keys.
 - Helpers: `TempLibraryTestCase`, `Fixtures.paper(...)`, `Fixtures.blankPaper(...)`, `Fixtures.transcript(...)`, `Fixtures.silentWAV(seconds:)`,
   `Fixtures.tempDir()`, `waitUntil`. `@MainActor` test classes need fixtures marked
   `nonisolated(unsafe)` and `async` test methods.
@@ -253,6 +259,7 @@ Still to do, in order:
   folder, and Erase, go through `forgetIndexes()`. The server answers 404 only for what isn't there.
 - The library folder moves only through `LocalStorage.moveLibrary` (`Shared/Models/LibraryMove.swift`):
   papers and both index files. A new root-level key must be added there and to `clearAll`.
+  A new setting or Keychain account must be added to `clearAll` too (Erase).
 - Everything for a paper lives under `K.folder(id)`. Delete a paper with
   `storage.deleteFolder(K.folder(id))`, never with a hand-written list of keys (that left
   orphaned folders before).
@@ -261,7 +268,7 @@ Still to do, in order:
   vanish from the library. Add new fields as optionals (see `storedSpeakers` and its computed
   `speakers` wrapper), or write a tolerant `init(from:)`. A property left *out* of `CodingKeys`
   is silently never saved.
-- API keys live in the Keychain only (`KeychainStore`). `LLMSettings.save()` and
+- API keys and the mail password live in the Keychain only (`KeychainStore`). `LLMSettings.save()` and
   `SpeechSettings.save()` strip the key before writing user defaults; keep it that way.
 
 ## Pipeline rules
@@ -346,18 +353,20 @@ Still to do, in order:
 
 Dependencies point one way: Views → Controllers → Presentation → Model.
 
-- **Model** (`Shared/Models/`, `Shared/Support/`, `Sources/PapertalkStore/`): data, its rules and
+- **Model** (`Shared/Models/`, `Shared/Support/`, `Shared/Localization/`, `Sources/PapertalkStore/`): data, its rules and
   how it's saved. No `L(...)` wording, no network, no UI, nothing from the layers above.
 - **Presentation** (`Shared/Presentation/`): wording, forms and display decisions, computed from
   the Model alone. It never names `AppStore`, `PlayerController` or a client. State both it and
   the store need is a Model type (`Shared/Models/AppState.swift`).
-- **Controllers** (`*/Controllers/`, and `Linux/AppStore+Linux.swift`): all state changes and all I/O. A record change that words a
+- **Controllers** (`*/Controllers/`, and `Linux/AppStore+Linux.swift`): all state changes, and all I/O
+  beyond the Model's own saving (settings, Keychain, `LocalStorage`). A record change that words a
   message goes here (`PaperTransitions.swift`).
 - **Views** (`macOS/Views/`, `macOS/Components/`, `Linux/UI/`): see below. They talk to the store,
   the player and the window openers, and never assign their properties.
 
 Two checks enforce it, both in `app.sh test` and CI. `scripts/check_layers.sh` compiles the Model
-alone and Model + Presentation alone, so a reference upwards doesn't compile.
+alone and Model + Presentation alone, so a reference upwards doesn't compile. A file the Model
+needs from outside its folders is listed in that script (today only `CompressedAudio.swift`).
 `ArchitectureTests` reads the sources for what a compiler can't see (a view writing state or doing
 I/O, wording in the Model). Fix the code rather than widening the test's lists.
 

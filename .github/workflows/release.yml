@@ -13,6 +13,8 @@ name: Release
 #          code is always downloadable. Only the newest few dev builds are kept.
 #          They carry the "DEV" stripe icon, like local builds. Patch bumps
 #          (X.Y.1, X.Y.2…) land here too: they never make a full release.
+# The one exception is FORCED_RELEASE below: that exact patch version is released as Stable,
+# once (its tag then exists, so the setting does nothing more).
 # If a stable run fails before its release is created, the tag doesn't exist
 # yet, so the next push to main simply tries the stable release again.
 #
@@ -33,6 +35,8 @@ concurrency:
 
 env:
   KEEP_DEV_RELEASES: 10
+  # A patch version to release as Stable all the same, for fixes that can't wait for X.Y.0.
+  FORCED_RELEASE: "0.9.1"
 
 jobs:
   release:
@@ -58,9 +62,9 @@ jobs:
           if [ -z "${BASE}" ]; then
             echo "::error::Could not read VERSION"; exit 1
           fi
-          # Only X.Y.0 makes a full release; patch versions ship as dev builds.
+          # Only X.Y.0 (or FORCED_RELEASE) makes a full release; patch versions ship as dev builds.
           # Ask the remote directly, so a stale or missing local tag can't fool us.
-          if [ "${BASE##*.}" != "0" ] \
+          if { [ "${BASE##*.}" != "0" ] && [ "$BASE" != "$FORCED_RELEASE" ]; } \
             || git ls-remote --exit-code --tags origin "refs/tags/v${BASE}" >/dev/null 2>&1; then
             KIND=dev
             VERSION="${BASE}-dev.${SHORT}"

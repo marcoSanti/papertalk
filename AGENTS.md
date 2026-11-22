@@ -106,13 +106,17 @@ release stays), so Finder, "Open With" and Help open the build just made.
   `## Unreleased`) as the `PapertalkWhatsNew` Info.plist string. After an update the app shows
   those entries once (`WhatsNew`, `AppStore.showWhatsNewIfUpdated`), never on a first launch.
   When bumping `VERSION` to `X.Y.0`, rename `## Unreleased` to `## X.Y.0` and add a new empty
-  `## Unreleased` above it. Patch bumps leave it alone.
+  `## Unreleased` above it. Patch bumps leave it alone, unless the patch is force-released (below):
+  that one gets its own section the same way.
 - Bump by editing `VERSION` as part of a PR. Patch for fixes, minor for features, major for
   breaking changes (e.g. a library format that older builds can't read).
 - Stable releases are CI-driven: merge a `VERSION` bumped to `X.Y.0` to `main` and
   `.github/workflows/release.yml` publishes a full release tagged `v<VERSION>`, marked Latest.
   A patch version (`X.Y.1`, …) never makes a full release: it ships as dev pre-releases
   (`v<VERSION>-dev.<commit>`), so users of stable builds only get it with the next `X.Y.0`.
+  The exception, only when the user asks for it: `FORCED_RELEASE` in `release.yml` names one exact
+  patch version to release as stable (0.9.1 was), with the official icon. It works once, as the
+  tag then exists.
 - Icons: the `CHANNEL` env var of `app.sh` (default `dev`) picks the app icon. Only the stable
   release (an `X.Y.0` bump merged to `main`) builds with `CHANNEL=stable` and gets the official
   `shared/icon.icns`; every other build (local, CI, dev pre-releases) gets a "DEV" stripe version

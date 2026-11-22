@@ -28,7 +28,15 @@ import PDFKit
 final class AppStore: ObservableObject {
     /// Storage backend: local disk (self-host) or remote HTTP storage server.
     /// The pipeline always runs in-process; this only decides where files live.
-    @Published var config = ServerConfig.load() { didSet { config.save() } }
+    @Published var config = ServerConfig.load() {
+        didSet {
+            config.save()
+            guard config != oldValue else { return }
+            // Another server has its own libraries: the last one's are never saved onto it.
+            forgetIndexes()
+            queueIndexLoad()
+        }
+    }
 
     private var storage: Storage {
         storageOverride ?? StorageFactory.make(config: config)
@@ -821,36 +829,81 @@ final class AppStore: ObservableObject {
 
     // MARK: Library
     func refresh() {
-        Task {
-            let ids = (try? await storage.list()) ?? []
-            libraries = await storage.exists([Library].self, K.libraries) ?? []
-            suggestionLog = await storage.exists(SuggestionLog.self, K.suggestions) ?? SuggestionLog()
-            let seen = Set(ids)
-            // One change for the whole scan: a redraw per paper made opening a big library crawl.
-            var loaded: [String: Paper] = [:]
-            for id in ids where papers[id] == nil {
-                if let p: Paper = await storage.exists(Paper.self, K.paper(id)) { loaded[id] = p }
+        queueIndexLoad()
+        Task { await scanPapers() }
+    }
+
+    /// Goes up whenever the library behind the store changes (another server or folder, Erase):
+    /// work begun on the last one mustn't write into this one.
+    private(set) var libraryEpoch = 0
+    /// `libraries.json` was read (or surely isn't there). Until then `libraries` is never saved.
+    private var librariesLoaded = false
+    /// The same for `suggestions.json`.
+    private var suggestionsLoaded = false
+
+    /// The library behind the store changed: what was read from the last one no longer counts.
+    private func forgetIndexes() {
+        libraryEpoch += 1
+        librariesLoaded = false
+        suggestionsLoaded = false
+        libraries = []
+        suggestionLog = SuggestionLog()
+    }
+
+    /// Queue reading whichever of `libraries.json` and `suggestions.json` isn't loaded yet.
+    private func queueIndexLoad() {
+        let epoch = libraryEpoch
+        enqueueSave { [self] in
+            guard epoch == libraryEpoch, !librariesLoaded || !suggestionsLoaded else { return }
+            let storage = storage
+            // A 404 only means "no file" from a place that answers as a library.
+            guard (try? await storage.list()) != nil else { return }
+            do {
+                let stored = try await storage.loadIfPresent([Library].self, K.libraries)
+                if epoch == libraryEpoch, !librariesLoaded { libraries = stored ?? []; librariesLoaded = true }
+            } catch {
+                appendLog("ERROR: couldn't read \(K.libraries): \(error.localizedDescription)")
             }
-            papers.merge(loaded) { current, _ in current }
-            for id in Array(papers.keys) where !seen.contains(id) {
-                if selectedId == id { selectedId = nil }
-                papers.removeValue(forKey: id)
+            do {
+                let stored = try await storage.loadIfPresent(SuggestionLog.self, K.suggestions)
+                if epoch == libraryEpoch, !suggestionsLoaded { suggestionLog = stored ?? SuggestionLog(); suggestionsLoaded = true }
+            } catch {
+                appendLog("ERROR: couldn't read \(K.suggestions): \(error.localizedDescription)")
             }
-            // Any import left mid-flight by a quit gets picked up again, resuming
-            // from its last concluded step (and last synthesized audio turn).
-            // A paper still flagged active but already holding a full transcript
-            // AND baked audio on disk was finished before a fix persisted its
-            // terminal state — self-heal it to done rather than reprocessing.
-            for p in papers.values {
-                guard p.isActive else { continue }
-                let hasScript = await storage.exists(Transcript.self, K.transcript(p.id)) != nil
-                let hasBaked = await storage.exists(AudioManifest.self, K.audioManifest(p.id)) != nil
-                if hasScript && hasBaked {
-                    optimistic(p.id, { $0.markDone() })
-                    continue
-                }
-                startRun(p.id) { await self.resumePipeline(p.id) }
+        }
+    }
+
+    /// Load the library's papers, once the indexes queued before it are read.
+    private func scanPapers() async {
+        let known = Set(papers.keys)
+        let listed = try? await storage.list()
+        await saveQueue?.value
+        guard let ids = listed else { return }   // unreachable: that says nothing about what it holds
+        let seen = Set(ids)
+        // One change for the whole scan: a redraw per paper made opening a big library crawl.
+        var loaded: [String: Paper] = [:]
+        for id in ids where papers[id] == nil {
+            if let p: Paper = await storage.exists(Paper.self, K.paper(id)) { loaded[id] = p }
+        }
+        papers.merge(loaded) { current, _ in current }
+        for id in known where !seen.contains(id) && runs[id] == nil {
+            if selectedId == id { selectedId = nil }
+            papers.removeValue(forKey: id)
+        }
+        // Any import left mid-flight by a quit gets picked up again, resuming
+        // from its last concluded step (and last synthesized audio turn).
+        // A paper still flagged active but already holding a full transcript
+        // AND baked audio on disk was finished before a fix persisted its
+        // terminal state — self-heal it to done rather than reprocessing.
+        for p in papers.values {
+            guard p.isActive, runs[p.id] == nil else { continue }
+            let hasScript = await storage.exists(Transcript.self, K.transcript(p.id)) != nil
+            let hasBaked = await storage.exists(AudioManifest.self, K.audioManifest(p.id)) != nil
+            if hasScript && hasBaked {
+                optimistic(p.id, { $0.markDone() })
+                continue
             }
+            startRun(p.id) { await self.resumePipeline(p.id) }
         }
     }
 
@@ -954,19 +1007,38 @@ final class AppStore: ObservableObject {
 
     /// Queue a save of `libraries.json` (behind paper saves, like `persist`).
     private func persistLibraries() {
-        enqueueSave { [self] in await storage.save(libraries, K.libraries) }
+        let epoch = libraryEpoch
+        enqueueSave { [self] in
+            guard epoch == libraryEpoch, librariesLoaded else { return }
+            await storage.save(libraries, K.libraries)
+        }
     }
 
     /// Queue a save of `suggestions.json` (behind paper saves, like `persist`).
     func persistSuggestions() {
-        enqueueSave { [self] in await storage.save(suggestionLog, K.suggestions) }
+        let epoch = libraryEpoch
+        enqueueSave { [self] in
+            guard epoch == libraryEpoch, suggestionsLoaded else { return }
+            await storage.save(suggestionLog, K.suggestions)
+        }
     }
 
     /// Read `suggestions.json` again once queued saves are written, so a check never merges into
-    /// a log the startup scan hasn't loaded yet (and then saves over the dismissed ones).
-    func reloadSuggestionLog() async {
+    /// a log the startup scan hasn't loaded yet (and then saves over the dismissed ones). False when
+    /// it can't be read: then nothing may be merged or saved.
+    func reloadSuggestionLog() async -> Bool {
+        if !suggestionsLoaded { queueIndexLoad() }
         await saveQueue?.value
-        suggestionLog = await storage.exists(SuggestionLog.self, K.suggestions) ?? suggestionLog
+        guard suggestionsLoaded else { return false }
+        let epoch = libraryEpoch
+        do {
+            let stored = try await storage.loadIfPresent(SuggestionLog.self, K.suggestions)
+            guard epoch == libraryEpoch else { return false }
+            if let stored { suggestionLog = stored }
+            return true
+        } catch {
+            return false
+        }
     }
 
     // MARK: Suggested papers (the rest is in AppStore+Suggestions.swift)
@@ -1002,8 +1074,11 @@ final class AppStore: ObservableObject {
     @Published var mail = MailSettings.load() { didSet { mail.save() } }
     /// The mail account's app password (tests replace it: the Keychain stays untested).
     var mailPassword: () -> String = { KeychainStore.get(MailSettings.passwordAccount) ?? "" }
-    /// Saves the app password (tests replace it, like `mailPassword`).
-    var storeMailPassword: (String) -> Void = { KeychainStore.set($0, account: MailSettings.passwordAccount) }
+    /// Saves the app password, or removes it when empty (tests replace it, like `mailPassword`).
+    var storeMailPassword: (String) -> Void = {
+        if $0.isEmpty { KeychainStore.delete(MailSettings.passwordAccount) }
+        else { KeychainStore.set($0, account: MailSettings.passwordAccount) }
+    }
     /// The connection alerts are read over (tests script a server).
     var makeMailTransport: (MailSettings) throws -> IMAPTransport = ScholarAlertSource.defaultTransport
     /// Settings' Test Connection is under way.
@@ -1011,9 +1086,22 @@ final class AppStore: ObservableObject {
     /// What Test Connection found; nil before a test.
     @Published var mailTestResult: String?
 
-    /// Save the library sheet: add the library, or update it in place.
+    /// Save the library sheet: add the library, or update it in place. When the libraries couldn't
+    /// be read, they are read first: saving without them would erase them.
     func saveLibrary(_ form: LibraryForm) {
         guard form.canSave else { return }
+        guard librariesLoaded else {
+            Task {
+                queueIndexLoad()
+                await scanPapers()
+                if librariesLoaded {
+                    saveLibrary(form)
+                } else {
+                    show(L("Couldn't read the library, so “{0}” wasn't saved. Check the storage server or library folder, then try again.", form.library.name))
+                }
+            }
+            return
+        }
         if let i = libraries.firstIndex(where: { $0.id == form.id }) {
             libraries[i] = form.library
         } else {
@@ -1271,25 +1359,39 @@ final class AppStore: ObservableObject {
     /// Wipe everything: library data, all app settings, and caches (Kokoro
     /// model cache + in-memory thumbnail log). Resets the store to a fresh state.
     func clearAll() {
+        // First, so a check or a queued save can't write back what is being erased.
+        stopFetch()
+        suggestionsEnabled = false
+        forgetIndexes()
         Task {
+            await saveQueue?.value
             // 1. Library data (deleted best-effort, one paper at a time).
             // The whole papers/ folder, so leftovers of interrupted runs go too.
             unloadPlayer()
             try? await storage.deleteFolder(K.papersRoot)
             try? await storage.delete(K.libraries)
+            try? await storage.delete(K.suggestions)
             papers.removeAll()
             libraries = []
+            suggestionLog = SuggestionLog()
+            selectedSuggestionId = nil
+            suggestionsStatus = nil
+            mailTestResult = nil
             thumbCache.removeAll()
             selectedId = nil
             logEntries = []
-            // 2. All settings + old (pre-rename) keys.
+            // 2. All settings + old (pre-rename) keys. These two save as they change, so before their keys go.
+            mail = MailSettings()
+            importChoice = ImportChoice()
             let d = UserDefaults.standard
             for key in [ServerConfig.defaultsKey, LLMSettings.defaultsKey, PromptSettings.defaultsKey, CustomDepthPresets.defaultsKey, "papertalk.settingsPage", PlayerController.speedKey, Self.onboardedKey, LocalStorage.folderDefaultsKey, Localization.defaultsKey, AppStore.askDeleteKey, AppStore.checkUpdatesKey, SpeechSettings.defaultsKey,
+                        MailSettings.defaultsKey, ImportChoice.defaultsKey, Self.suggestionsEnabledKey,
                         "paper2pod.server.json", "paper2pod.llm.json", "paper2pod.onboarded"] {
                 d.removeObject(forKey: key)
             }
             // 3. API keys in the Keychain (typed key + env-sourced copies).
             //    Voice models are left alone: they have their own button.
+            storeMailPassword("")
             KeychainStore.delete(LLMSettings.typedKeyAccount)
             KeychainStore.delete(SpeechSettings.typedKeyAccount)
             for env in apiKeyEnvNames + [llm.keyEnv, speech.keyEnv] where !env.isEmpty {
@@ -1307,6 +1409,9 @@ final class AppStore: ObservableObject {
             player.resetVoiceSpeed()
             customPresets = CustomDepthPresets(entries: [])
             unloadPlayer()
+            // The folder or server may be another now: read what it holds before anything is saved there.
+            forgetIndexes()
+            queueIndexLoad()
             show(L("Cleared data, settings and cache"))
             // Fresh start: close settings and run first-time setup again.
             showSettings = false
@@ -1421,10 +1526,14 @@ final class AppStore: ObservableObject {
         let old = libraryFolder, new = folder ?? LocalStorage.defaultRoot
         guard old.standardizedFileURL != new.standardizedFileURL else { return }
         unloadPlayer()
-        Task {
+        // In the save queue: nothing may write to either folder halfway through, and a library
+        // edited meanwhile waits for the moved ones to be read.
+        enqueueSave { [self] in
+            forgetIndexes()
             do {
                 _ = try await Task.detached { try LocalStorage.moveLibrary(from: old, to: new) }.value
             } catch {
+                refresh()
                 show(L("Couldn't move the library: {0}", error.localizedDescription)); return
             }
             if let folder { UserDefaults.standard.set(folder.path, forKey: LocalStorage.folderDefaultsKey) }

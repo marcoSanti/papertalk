@@ -37,6 +37,22 @@ struct SuggestionLog: Codable, Equatable {
     var readAlerts: [String]? = nil
 }
 
+extension SuggestionLog {
+    /// Both logs as one, this one's first: what either dismissed stays dismissed.
+    func joined(with other: SuggestionLog) -> SuggestionLog {
+        var out = self
+        out.handled = (handled + other.handled).uniqued()
+        let done = Set(out.handled)
+        var listed = Set<String>()
+        out.pending = (pending + other.pending).filter { !done.contains($0.id) && listed.insert($0.id).inserted }
+        out.lastCheckIso = [lastCheckIso, other.lastCheckIso].compactMap { $0 }.max()
+        if let theirs = other.readAlerts {
+            out.readAlerts = ScholarAlerts.remember(theirs, in: readAlerts).uniqued()
+        }
+        return out
+    }
+}
+
 /// The depth, length and language of the last import started from the import sheet, which
 /// suggested papers are imported with.
 struct ImportChoice: Codable, Equatable {
@@ -197,7 +213,7 @@ enum Suggestions {
               let reply = try? JSONDecoder().decode(Reply.self, from: data) else { return nil }
         var used = Set<Int>()
         var out: [Suggestion] = []
-        for e in reply.ranked where candidates.indices.contains(e.n - 1) && !used.contains(e.n - 1) {
+        for e in reply.ranked where e.n >= 1 && e.n <= candidates.count && !used.contains(e.n - 1) {
             used.insert(e.n - 1)
             var s = candidates[e.n - 1]
             let why = e.why?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

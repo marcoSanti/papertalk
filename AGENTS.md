@@ -35,7 +35,7 @@ this file (for Claude Code), so keep the guidance here.
   `StorageServer.swift` (the HTTP key/value server over a `LocalStorage` folder; no compute).
   Foundation and POSIX sockets only: it must never depend on the app's frameworks.
 - `Sources/PapertalkServer/main.swift`: the server's command line (`app.sh server`),
-  configured by the `PAPER2POD_STORAGE_*` env vars. It replaced `server/storage_server.py`
+  configured by the `PAPER2POD_STORAGE_*` env vars (loopback only unless given a token or host). It replaced `server/storage_server.py`
   and adopts roots that script wrote (plain `papers/<id>/` folders become packages).
 - `VERSION`: the app version, edited by hand (`app.sh version` prints it).
 - `CHANGELOG.md`: what each release changes, shown in the app's "What's new" sheet (see below).
@@ -243,6 +243,12 @@ Still to do, in order:
   extension (a package declared in Info.plist, so Finder shows one item), and its `list()` renames
   older plain folders. Exports are the same layout (`PaperBundle`); imports read only its known
   files, validate them, and never use the file's id unless it's a free UUID.
+- **A failed read is not an empty one.** `storage.exists` is nil for both, so never save back
+  something read with it as a whole. `libraries.json` and `suggestions.json` are read with
+  `loadIfPresent` (nil only when surely absent) and saved only once loaded; a switch of server or
+  folder, and Erase, go through `forgetIndexes()`. The server answers 404 only for what isn't there.
+- The library folder moves only through `LocalStorage.moveLibrary` (`Shared/Models/LibraryMove.swift`):
+  papers and both index files. A new root-level key must be added there and to `clearAll`.
 - Everything for a paper lives under `K.folder(id)`. Delete a paper with
   `storage.deleteFolder(K.folder(id))`, never with a hand-written list of keys (that left
   orphaned folders before).
@@ -295,6 +301,9 @@ Still to do, in order:
 - `LLMReply.json` takes text from the first `{` to the last `}`. **Ask the LLM for a
   JSON object, never a top-level array**: an array gets mangled and the parse silently falls
   back to defaults (this broke the cast step for a long time).
+- Replies and files are untrusted: check any number from them before indexing or converting to
+  `Int`, and never force-unwrap a URL made from typed text (`URL.web`). `MindMap`'s decoder
+  refuses maps that can't be laid out.
 - Depth: only `.inDepth` may have full-length method monologues; `generateTranscript` forces
   every other depth to dialogue. Summary's ceiling is the import sheet's length
   (`SummaryLength`, 5–60 min, default 35, saved as `Paper.targetMinutes` for reruns); it aims

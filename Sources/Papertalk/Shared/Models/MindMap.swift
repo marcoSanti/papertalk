@@ -158,6 +158,39 @@ struct MindMap: Codable, Equatable {
     }
 }
 
+// MARK: - Reading
+
+/// Every map from outside (a bundle, the library, a server) comes through here, so the code that
+/// walks the tree can trust it: ids are unique, and it is small and shallow enough to lay out.
+extension MindMap {
+    /// Far more than a map is drawn or edited with.
+    static let maxNodes = 2_000, maxDepth = 200
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(nodes: try c.decode([Node].self, forKey: .nodes), links: try c.decode([Link].self, forKey: .links),
+                  summary: try c.decodeIfPresent(String.self, forKey: .summary),
+                  external: try c.decodeIfPresent([ExternalLink].self, forKey: .external))
+        guard Self.canBeDrawn(nodes) else {
+            throw DecodingError.dataCorruptedError(forKey: .nodes, in: c,
+                                                   debugDescription: "repeated ids, or too large a tree")
+        }
+    }
+
+    /// Unique ids, and a tree within the limits. With unique ids a walk down from a root can't loop.
+    private static func canBeDrawn(_ nodes: [Node]) -> Bool {
+        guard nodes.count <= maxNodes, Set(nodes.map(\.id)).count == nodes.count else { return false }
+        let parts = Dictionary(grouping: nodes, by: \.parent)
+        var level = parts[nil] ?? [], depth = 0
+        while !level.isEmpty {
+            depth += 1
+            guard depth <= maxDepth else { return false }
+            level = level.flatMap { parts[$0.id] ?? [] }
+        }
+        return true
+    }
+}
+
 // MARK: - Editing
 
 /// The edits the mind map window makes. Each keeps the map valid: three branch roots, a tree

@@ -16,10 +16,13 @@ import Darwin
 ///   PUT /<key>     store the request body under the key
 ///   DELETE /<key>  remove the key (no error when it's missing)
 /// Keys are URL-encoded paths such as "papers/<id>/paper.json". With a token, every request
-/// needs "Authorization: Bearer <token>".
+/// needs "Authorization: Bearer <token>", checked before any of its body is read. Without a
+/// token it listens on this machine only, unless told a host.
 public final class StorageServer: @unchecked Sendable {
     /// The library folder served; the same layout as the app's own library.
     public let storage: LocalStorage
+    /// The address it listens on.
+    public let host: String
     /// The port it listens on (the one the system picked, when asked for 0).
     public let port: Int
     private let token: String
@@ -29,11 +32,19 @@ public final class StorageServer: @unchecked Sendable {
 
     /// Requests that stall for this long are dropped.
     static let timeoutSeconds = 30
+    /// A request's body may not be longer than this: it is held in memory while it arrives.
+    static let maxBodyBytes = 1024 * 1024 * 1024
     /// A request's line and headers may not be longer than this.
     static let maxHeaderBytes = 64 * 1024
 
-    /// Binds `host:port` (0: any free port) and adopts a root written by the old Python server.
-    public init(root: URL, host: String = "0.0.0.0", port: Int = 9170, token: String = "") throws {
+    /// Where to listen when no host is given: the network with a token, this machine only without.
+    public static func defaultHost(token: String) -> String { token.isEmpty ? "127.0.0.1" : "0.0.0.0" }
+
+    /// Binds `host:port` (nil: `defaultHost`; 0: any free port) and adopts a root written by the
+    /// old Python server.
+    public init(root: URL, host: String? = nil, port: Int = 9170, token: String = "") throws {
+        let host = host ?? Self.defaultHost(token: token)
+        self.host = host
         storage = LocalStorage(root: root)
         // storage_server.py kept papers in plain "papers/<id>/" folders; the app's layout is packages.
         storage.adoptPlainFolders()
@@ -98,16 +109,34 @@ public final class StorageServer: @unchecked Sendable {
     /// Read a request, answer it, close the connection.
     private func serve(_ fd: Int32) async {
         defer { close(fd) }
-        guard let request = Self.readRequest(fd) else {
+        guard let head = Self.readHead(fd) else {
             Self.reply(.error(400, "bad request"), to: fd, head: false)
             return
         }
-        Self.reply(await respond(request), to: fd, head: request.method == "HEAD")
+        let noBody = head.method == "HEAD"
+        guard isAuthorized(head.headers["authorization"]) else {
+            Self.refuse(.error(401, "unauthorized"), to: fd, head: noBody)
+            return
+        }
+        let length = Int(head.headers["content-length"] ?? "0") ?? -1
+        guard length >= 0 else {
+            Self.refuse(.error(400, "bad request"), to: fd, head: noBody)
+            return
+        }
+        guard length <= Self.maxBodyBytes else {
+            Self.refuse(.error(413, "too large"), to: fd, head: noBody)
+            return
+        }
+        guard let body = Self.readBody(fd, length: length, received: head.received) else {
+            Self.reply(.error(400, "bad request"), to: fd, head: noBody)
+            return
+        }
+        let request = Request(method: head.method, path: head.path, headers: head.headers, body: body)
+        Self.reply(await respond(request), to: fd, head: noBody)
     }
 
-    /// The answer to `r`.
+    /// The answer to `r`, which `serve` has authorized.
     func respond(_ r: Request) async -> Response {
-        guard isAuthorized(r.headers["authorization"]) else { return .error(401, "unauthorized") }
         guard !r.path.isEmpty else {
             switch r.method {
             case "GET": return .json(storage.allKeys())
@@ -119,8 +148,13 @@ public final class StorageServer: @unchecked Sendable {
         guard Self.isValidKey(key) else { return .error(400, "bad key") }
         switch r.method {
         case "GET":
-            guard let data = try? await storage.read(key) else { return .error(404, "not found") }
-            return Response(status: 200, contentType: "application/octet-stream", body: data)
+            do {
+                guard let data = try await storage.readIfPresent(key) else { return .error(404, "not found") }
+                return Response(status: 200, contentType: "application/octet-stream", body: data)
+            } catch {
+                // 404 is only for what isn't there: the app saves over what it's told is missing.
+                return await isFolder(key) ? .error(404, "not found") : .error(500, "could not read \(key)")
+            }
         case "HEAD":
             guard let size = await fileSize(key) else { return Response(status: 404, length: 0) }
             return Response(status: 200, contentType: "application/octet-stream", length: size)
@@ -148,6 +182,12 @@ public final class StorageServer: @unchecked Sendable {
         return zip(given, wanted).reduce(0) { $0 | ($1.0 ^ $1.1) } == 0
     }
 
+    /// Whether `key` names a folder, which is never a stored value.
+    private func isFolder(_ key: String) async -> Bool {
+        guard let url = await storage.url(for: key) else { return false }
+        return (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+    }
+
     /// The size of the regular file stored under `key`; nil when there's none.
     private func fileSize(_ key: String) async -> Int? {
         guard let url = await storage.url(for: key),
@@ -163,8 +203,8 @@ public final class StorageServer: @unchecked Sendable {
             .allSatisfy { !$0.isEmpty && !$0.hasPrefix(".") }
     }
 
-    /// The request line, headers and body read from `fd`; nil when they're malformed.
-    static func readRequest(_ fd: Int32) -> Request? {
+    /// The request line and headers read from `fd`, with whatever of the body came along; nil when malformed.
+    static func readHead(_ fd: Int32) -> (method: String, path: String, headers: [String: String], received: Data)? {
         var buffer = Data()
         let separator = Data("\r\n\r\n".utf8)
         var headerEnd: Range<Data.Index>?
@@ -173,16 +213,33 @@ public final class StorageServer: @unchecked Sendable {
             buffer.append(chunk)
             headerEnd = buffer.range(of: separator)
         }
-        guard let end = headerEnd, let head = String(data: buffer[..<end.lowerBound], encoding: .utf8) else { return nil }
-        guard let parsed = parseHead(head) else { return nil }
-        var body = Data(buffer[end.upperBound...])
-        let length = Int(parsed.headers["content-length"] ?? "0") ?? -1
-        guard length >= 0 else { return nil }
+        guard let end = headerEnd, let text = String(data: buffer[..<end.lowerBound], encoding: .utf8),
+              let parsed = parseHead(text) else { return nil }
+        return (parsed.method, parsed.path, parsed.headers, Data(buffer[end.upperBound...]))
+    }
+
+    /// The `length` bytes of a body that begins with `received`; nil when the client stops short.
+    static func readBody(_ fd: Int32, length: Int, received: Data) -> Data? {
+        var body = received
         while body.count < length {
             guard let chunk = receive(fd) else { return nil }
             body.append(chunk)
         }
-        return Request(method: parsed.method, path: parsed.path, headers: parsed.headers, body: body.prefix(length))
+        return body.prefix(length)
+    }
+
+    /// Answer without taking the body. Closing on unread bytes would reset the connection and
+    /// lose the answer, so what's arriving is thrown away for a moment first.
+    static func refuse(_ r: Response, to fd: Int32, head: Bool) {
+        reply(r, to: fd, head: head)
+        _ = shutdown(fd, Int32(SHUT_WR))
+        let deadline = Date().addingTimeInterval(2)
+        var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+        while Date() < deadline {
+            let ready = poll(&pfd, 1, 100)
+            if ready < 0 { return }
+            if ready > 0, receive(fd) == nil { return }
+        }
     }
 
     /// The method, decoded path and headers of a request's head; nil when malformed.
@@ -218,6 +275,7 @@ public final class StorageServer: @unchecked Sendable {
         case 400: "Bad Request"
         case 401: "Unauthorized"
         case 404: "Not Found"
+        case 413: "Content Too Large"
         case 501: "Not Implemented"
         default: "Internal Server Error"
         }

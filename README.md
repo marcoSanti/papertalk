@@ -76,15 +76,20 @@ Run the bundled storage server on any Mac or Linux machine with Swift 6.2, then 
 **Settings → Server Settings** to `http://<host>:9170`:
 
 ```bash
-./app.sh server
+PAPER2POD_STORAGE_TOKEN=<secret> ./app.sh server
 ```
+
+Enter the same token in **Settings → Server Settings**. Without a token the server accepts only
+connections from the machine it runs on.
 
 <details>
 <summary>Server options and API</summary>
 
 Environment: `PAPER2POD_STORAGE_PORT` (default `9170`), `PAPER2POD_STORAGE_HOST` (default
-`0.0.0.0`), `PAPER2POD_STORAGE_ROOT` (default `~/.paper2pod/storage`) and
-`PAPER2POD_STORAGE_TOKEN` (optional bearer token, entered in the app too).
+`0.0.0.0` with a token, `127.0.0.1` without), `PAPER2POD_STORAGE_ROOT` (default
+`~/.paper2pod/storage`) and `PAPER2POD_STORAGE_TOKEN` (bearer token, entered in the app too).
+Setting the host to `0.0.0.0` without a token lets anyone on the network read and delete the
+library. One upload can be at most 1 GB.
 
 It's a flat key/value store: `GET /` lists keys; `GET`, `PUT`, `DELETE` and `HEAD` on `/<key>`
 work on one file (`papers/<id>/paper.json`, `papers/<id>/turns/<n>.wav`, …). It only stores

@@ -41,7 +41,11 @@ extension AppStore {
         guard !seeds.isEmpty || alerts != nil else { suggestionsStatus = SuggestionsPresentation.noSeeds; return }
         isCheckingSuggestions = true
         defer { isCheckingSuggestions = false }
-        await reloadSuggestionLog()
+        guard await reloadSuggestionLog() else {
+            suggestionsStatus = SuggestionsPresentation.checkFailed(SuggestionsPresentation.libraryUnreadable)
+            return
+        }
+        let epoch = libraryEpoch
         var found: [Suggestion] = []
         var failures: [String] = []
         var anyAnswered = false
@@ -65,6 +69,7 @@ extension AppStore {
                 failures.append(error.localizedDescription)
             }
         }
+        guard epoch == libraryEpoch else { return }   // erased, or another library, meanwhile
         guard anyAnswered else {
             suggestionsStatus = SuggestionsPresentation.checkFailed(failures.joined(separator: " "))
             return
@@ -76,6 +81,7 @@ extension AppStore {
         suggestionsStatus = SuggestionsPresentation.checkResult(added: added.count, failures: failures)
         if !added.isEmpty {
             await rankSuggestions()
+            guard epoch == libraryEpoch else { return }
             notifier.post(.suggestions(SuggestionsPresentation.found(added.count)),
                           paperId: Self.suggestionsNotificationId, title: SuggestionsPresentation.windowTitle)
             // The notification only shows in the background; in front, a toast says it.

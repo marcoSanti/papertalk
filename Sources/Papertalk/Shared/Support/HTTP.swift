@@ -5,6 +5,15 @@ import Foundation
 import FoundationNetworking
 #endif
 
+extension URL {
+    /// `text` as an http(s) URL with a host; nil for anything else (typed URLs can be anything).
+    static func web(_ text: String) -> URL? {
+        guard let url = URL(string: text), let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https", url.host?.isEmpty == false else { return nil }
+        return url
+    }
+}
+
 extension URLRequest {
     /// Send `token` as a bearer token; nothing when it's empty.
     mutating func setBearer(_ token: String) {

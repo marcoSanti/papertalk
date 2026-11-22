@@ -187,8 +187,7 @@ struct RemoteSpeechClient {
     /// `path` under `root` (default: `base`); throws when no URL is set or it isn't http(s).
     func endpoint(_ path: String, at root: String? = nil) throws -> URL {
         guard !base.isEmpty else { throw RemoteSpeechError.noURL }
-        guard let url = URL(string: (root ?? base) + "/" + path), let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https", url.host != nil else { throw RemoteSpeechError.badURL }
+        guard let url = URL.web((root ?? base) + "/" + path) else { throw RemoteSpeechError.badURL }
         return url
     }
 

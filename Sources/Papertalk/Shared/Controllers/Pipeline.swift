@@ -40,10 +40,11 @@ struct PaperMeta {
 
 /// Why writing an episode failed.
 enum PipelineError: Error, LocalizedError {
-    case noText, llm(String)
+    case noText, badURL, llm(String)
     var errorDescription: String? {
         switch self {
         case .noText: return L("Could not extract text from PDF")
+        case .badURL: return L("The LLM URL isn't valid. It should look like http://localhost:3000/api.")
         case .llm(let m): return L("LLM: {0}", m)
         }
     }
@@ -127,7 +128,7 @@ struct LocalPipeline {
 
     /// List model ids from an OpenAI-compatible `/models` endpoint.
     func listModels() async throws -> [String] {
-        let url = URL(string: baseUrl.withoutTrailingSlashes + "/models")!
+        guard let url = URL.web(baseUrl.withoutTrailingSlashes + "/models") else { throw PipelineError.badURL }
         var req = URLRequest(url: url)
         req.setBearer(apiKey)
         let (data, resp) = try await Self.send(req)
@@ -399,15 +400,25 @@ struct LocalPipeline {
                     goal: asStr(d["goal"]) ?? "",
                     sections: refs,
                     keyPoints: asStrArray(d["key_points"]),
-                    weight: asDouble(d["weight"]) ?? 0.5,
+                    weight: Self.usableWeight(asDouble(d["weight"])),
                     monologue: asBool(d["monologue"]),
                     targetWords: 0)
                 segments.append(seg)
             }
         }
         guard !sections.isEmpty, !segments.isEmpty else { return nil }
+        // Nothing to share the length by: share it evenly.
+        if segments.allSatisfy({ $0.weight == 0 }) {
+            for i in segments.indices { segments[i].weight = 1 }
+        }
         let tags = asStrArray(obj["tags"])
         return Plan(sections: sections, segments: segments, tags: tags, depthGuide: "")
+    }
+
+    /// A segment's share as it can be added and divided by: finite, not negative, not huge.
+    private static func usableWeight(_ weight: Double?) -> Double {
+        guard let weight, weight.isFinite else { return 0.5 }
+        return min(max(weight, 0), 1_000_000)
     }
 
     // ------------------------------------------------------ dialogue segment
@@ -608,7 +619,7 @@ struct LocalPipeline {
     /// The paper's text for the sections a segment covers, matched by title; empty when none match.
     private func sourceForSections(_ plan: Plan, _ seg: PlanSegment, _ cleaned: String) -> String {
         guard let refs = seg.sections, !refs.isEmpty else { return "" }
-        let wanted = refs.compactMap { $0 - 1 < plan.sections.count ? plan.sections[$0 - 1].title : nil }
+        let wanted = refs.compactMap { (1...plan.sections.count).contains($0) ? plan.sections[$0 - 1].title : nil }
         guard !wanted.isEmpty else { return "" }
         let local = splitSections(cleaned)
         let matched = local.filter { s in
@@ -689,8 +700,9 @@ struct LocalPipeline {
             "temperature": 0.5,
             "max_tokens": maxTokens
         ]
-        var req = URLRequest(url: URL(string: baseUrl.withoutTrailingSlashes
-            .hasSuffix("/chat/completions") ? baseUrl : baseUrl + "/chat/completions")!)
+        guard let url = URL.web(baseUrl.withoutTrailingSlashes
+            .hasSuffix("/chat/completions") ? baseUrl : baseUrl + "/chat/completions") else { throw PipelineError.badURL }
+        var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setBearer(apiKey)

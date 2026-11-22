@@ -10,6 +10,9 @@ import Foundation
 public protocol Storage: AnyObject {
     /// The bytes stored under `key`; throws when there are none.
     func read(_ key: String) async throws -> Data
+    /// The bytes under `key`, nil only when there surely are none: throws when that can't be told
+    /// (unreachable, unreadable). For what is saved back whole, where a failure mustn't read as empty.
+    func readIfPresent(_ key: String) async throws -> Data?
     /// Store `data` under `key`, replacing what was there.
     func write(_ key: String, _ data: Data) async throws
     /// Remove `key`; a missing key isn't an error locally.
@@ -28,6 +31,11 @@ public protocol Storage: AnyObject {
 }
 
 extension Storage {
+    /// The JSON value under `key`, nil only when there is none: throws when it can't be read or decoded.
+    public func loadIfPresent<T: Decodable>(_ type: T.Type, _ key: String) async throws -> T? {
+        guard let data = try await readIfPresent(key) else { return nil }
+        return try JSONDecoder().decode(type, from: data)
+    }
     public func exists<T: Decodable>(_ type: T.Type, _ key: String) async -> T? {
         guard let d = try? await read(key) else { return nil }
         return try? JSONDecoder().decode(type, from: d)
@@ -101,7 +109,7 @@ public final class LocalStorage: Storage {
     /// Move every paper package from the library at `old` into the one at `new`, keeping any
     /// paper `new` already has. Returns how many papers moved.
     @discardableResult
-    public static func moveLibrary(from old: URL, to new: URL) throws -> Int {
+    public static func movePapers(from old: URL, to new: URL) throws -> Int {
         let fm = FileManager.default
         let from = old.appendingPathComponent("papers", isDirectory: true)
         let to = new.appendingPathComponent("papers", isDirectory: true)
@@ -140,6 +148,22 @@ public final class LocalStorage: Storage {
 
     public func read(_ key: String) async throws -> Data {
         try Data(contentsOf: path(key))
+    }
+    public func readIfPresent(_ key: String) async throws -> Data? {
+        var isFolder: ObjCBool = false
+        // No library folder at all is a drive that isn't mounted, not an empty library.
+        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isFolder), isFolder.boolValue else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        return try Self.contents(of: path(key))
+    }
+    /// A file's bytes; nil when there's no such file, throws when it can't be read.
+    public static func contents(of file: URL) throws -> Data? {
+        do {
+            return try Data(contentsOf: file)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            return nil
+        }
     }
     public func write(_ key: String, _ data: Data) async throws {
         let p = path(key)

@@ -10,9 +10,8 @@ enum LLMReply {
         let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         // Take everything from the first "{" to the last "}", ignoring any
         // prose the model added before/after and code fences.
-        guard s.contains("{"),
-              let start = s.firstIndex(of: "{"),
-              let end = s.lastIndex(of: "}") else { return nil }
+        guard let start = s.firstIndex(of: "{"),
+              let end = s.lastIndex(of: "}"), start < end else { return nil }
         return String(s[start...end])
     }
 

@@ -11,6 +11,8 @@ version has none) into the app.
 
 ## Unreleased
 
+- 🐛 **Safer libraries**: fixes lost libraries, several crashes and a mail password left by Erase, and a storage server without a token now accepts only its own machine (set a token to share it).
+
 ## 0.9.0
 
 - 📬 **Suggested Papers**: a new sidebar section lists papers like yours from Semantic Scholar, ranked by your LLM; read each abstract in the details panel and import the ones you want.

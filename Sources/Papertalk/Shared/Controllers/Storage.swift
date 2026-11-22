@@ -19,19 +19,20 @@ enum StorageFactory {
 // MARK: - Remote HTTP storage (PapertalkServer)
 /// The storage server (`StorageServer`): GET/PUT/DELETE of keys, and GET of the root for the key list.
 final class HttpStorage: Storage {
-    /// The server's root URL.
-    let base: URL
+    /// The server's root URL; nil when what was typed isn't one (every call then throws).
+    let base: URL?
     /// Sent as a bearer token when not empty.
     let token: String
 
     init(apiBase: String, token: String) {
         // apiBase points at the storage server root, e.g. http://host:9170
-        self.base = URL(string: apiBase.withoutTrailingSlashes)!
+        self.base = URL.web(apiBase.withoutTrailingSlashes)
         self.token = token
     }
 
     /// A request for `key`, with the token when there is one.
-    private func request(_ key: String, method: String) -> URLRequest {
+    private func request(_ key: String, method: String) throws -> URLRequest {
+        guard let base else { throw StorageError.badURL }
         var req = URLRequest(url: base.appendingPathComponent(key))
         req.httpMethod = method
         req.setBearer(token)
@@ -49,14 +50,23 @@ final class HttpStorage: Storage {
     /// Every key on the server.
     private func allKeys() async throws -> [String] {
         let data = try await send(request("", method: "GET"))
-        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
+        // Anything else (a sign-in page, another service) mustn't pass for an empty library.
+        guard let keys = try? JSONDecoder().decode([String].self, from: data) else { throw StorageError.badResponse }
+        return keys
     }
 
     func read(_ key: String) async throws -> Data {
         try await send(request(key, method: "GET"))
     }
+    func readIfPresent(_ key: String) async throws -> Data? {
+        do {
+            return try await read(key)
+        } catch StorageError.status(let code) where code == 404 {
+            return nil
+        }
+    }
     func write(_ key: String, _ data: Data) async throws {
-        var req = request(key, method: "PUT")
+        var req = try request(key, method: "PUT")
         req.httpBody = data
         try await send(req)
     }
@@ -77,16 +87,17 @@ final class HttpStorage: Storage {
         return Array(Set(ids)).map(String.init)
     }
     func url(for key: String) async -> URL? {
-        base.appendingPathComponent(key)
+        base?.appendingPathComponent(key)
     }
 }
 
 /// An HTTP store answer that wasn't a success.
 enum StorageError: Error, LocalizedError {
-    case badResponse, status(Int)
+    case badResponse, badURL, status(Int)
     var errorDescription: String? {
         switch self {
         case .badResponse: return L("Bad storage response")
+        case .badURL: return L("The storage server URL isn't valid. It should look like http://host:9170.")
         case .status(let c): return L("Storage returned {0}", c)
         }
     }

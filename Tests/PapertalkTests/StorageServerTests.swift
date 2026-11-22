@@ -9,10 +9,10 @@ import XCTest
 @testable import Papertalk
 @testable import PapertalkStore
 
-/// A real `StorageServer` on 127.0.0.1 and a free port, over a temp folder.
-final class StorageServerTests: PapertalkTestCase {
-    private var root: URL!
-    private var server: StorageServer!
+/// A test case with a storage server's temp folder; whatever server it starts is stopped after it.
+class StorageServerTestCase: PapertalkTestCase {
+    var root: URL!
+    var server: StorageServer!
 
     override func setUp() {
         super.setUp()
@@ -24,7 +24,10 @@ final class StorageServerTests: PapertalkTestCase {
         try? FileManager.default.removeItem(at: root)
         super.tearDown()
     }
+}
 
+/// A real `StorageServer` on 127.0.0.1 and a free port, over a temp folder.
+final class StorageServerTests: StorageServerTestCase {
     /// Start the server over `root` and return a client for it.
     private func start(token: String = "", clientToken: String? = nil) throws -> HttpStorage {
         server = try StorageServer(root: root, host: "127.0.0.1", port: 0, token: token)

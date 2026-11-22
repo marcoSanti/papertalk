@@ -842,5 +842,9 @@ extension LanguagePacks {
         "Papertalk can add the papers from your Google Scholar alert emails here. Tell it which mail account they arrive in.": "Papertalk puede añadir aquí los artículos de tus correos de alertas de Google Scholar. Indica la cuenta de correo en la que llegan.",
         "Set Up Scholar Alerts…": "Configurar alertas de Scholar…",
         "Suggestions start from your papers' DOIs or your Google Scholar alert emails, and there are neither yet. Add a DOI with Edit paper, or click Set Up Scholar Alerts… to read your alert emails.": "Las sugerencias parten de los DOI de tus artículos o de tus correos de alertas de Google Scholar, y aún no hay ninguno. Añade un DOI con Editar artículo, o haz clic en Configurar alertas de Scholar… para leer tus correos de alertas.",
+        "Couldn't read the library, so “{0}” wasn't saved. Check the storage server or library folder, then try again.": "No se pudo leer la biblioteca, así que «{0}» no se guardó. Revisa el servidor de almacenamiento o la carpeta de la biblioteca e inténtalo de nuevo.",
+        "The library couldn't be read. Check the storage server or library folder, then try again.": "No se pudo leer la biblioteca. Revisa el servidor de almacenamiento o la carpeta de la biblioteca e inténtalo de nuevo.",
+        "The storage server URL isn't valid. It should look like http://host:9170.": "La URL del servidor de almacenamiento no es válida. Debería parecerse a http://host:9170.",
+        "The LLM URL isn't valid. It should look like http://localhost:3000/api.": "La URL del LLM no es válida. Debería parecerse a http://localhost:3000/api.",
     ]
 }

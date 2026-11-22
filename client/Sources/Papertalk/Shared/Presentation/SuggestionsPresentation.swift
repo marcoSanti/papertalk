@@ -172,7 +172,11 @@ enum SuggestionsPresentation {
     static var abstractTitle: String { L("Abstract") }
     static func abstract(_ s: Suggestion) -> String {
         let text = (s.abstract ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? L("Semantic Scholar has no abstract for this paper. Open it in the browser to read more.") : text
+        guard text.isEmpty else { return text }
+        switch s.source {
+        case .semanticScholar: return L("Semantic Scholar has no abstract for this paper. Open it in the browser to read more.")
+        case .scholarAlert: return L("The alert email has no abstract for this paper. Open it in the browser to read more.")
+        }
     }
     /// Every author, in byline order.
     static func authors(_ s: Suggestion) -> String { s.authors.joined(separator: ", ") }

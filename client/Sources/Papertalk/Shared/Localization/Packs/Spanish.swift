@@ -794,6 +794,7 @@ extension LanguagePacks {
         "No suggestion selected": "Ninguna sugerencia seleccionada",
         "Pick a suggested paper to read its abstract and why it fits your library.": "Elige un artículo sugerido para leer su resumen y por qué encaja con tu biblioteca.",
         "Semantic Scholar has no abstract for this paper. Open it in the browser to read more.": "Semantic Scholar no tiene resumen para este artículo. Ábrelo en el navegador para saber más.",
+        "The alert email has no abstract for this paper. Open it in the browser to read more.": "El correo de alerta no tiene resumen para este artículo. Ábrelo en el navegador para saber más.",
         "Show Suggested Papers": "Mostrar artículos sugeridos",
         "Why it fits": "Por qué encaja",
         "{0} new suggested papers. See them under Suggested Papers in the sidebar.": "{0} artículos sugeridos nuevos. Los encontrarás en Artículos sugeridos, en la barra lateral.",

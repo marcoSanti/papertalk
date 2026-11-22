@@ -230,6 +230,16 @@ final class ScholarAlertsTests: PapertalkTestCase {
         }
     }
 
+    func testANegativeLiteralLengthIsReadAsText() async throws {
+        let server = FakeIMAPServer()
+        server.respond = { _ in "* NOTE {-5}\r\nTAG OK done\r\n" }
+        let client = IMAPClient(server)
+        try await client.connect()
+        let reply = try await client.command("NOOP")
+        XCTAssertEqual(reply.lines, ["* NOTE {-5}"])
+        XCTAssertTrue(reply.literals.isEmpty)
+    }
+
     func testTestConnectionCountsRecentAlerts() async throws {
         let source = ScholarAlertSource(settings: MailSettings(enabled: true, account: "me"), password: "x") { _ in self.alertServer() }
         let n = try await source.test(now: ISO8601DateFormatter().date(from: "2026-11-20T00:00:00Z")!)

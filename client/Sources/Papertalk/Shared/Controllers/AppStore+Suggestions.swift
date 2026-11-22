@@ -255,6 +255,7 @@ extension AppStore {
         guard let s = paperFetch?.current else { return }
         paperFetch?.step = .importing(fileName)
         let opening = await Task.detached { LocalPipeline.extractPages(data).prefix(2).joined(separator: " ") }.value
+        guard paperFetch?.current.id == s.id else { return }   // stopped or skipped meanwhile
         if !Suggestions.titleMatches(s.title, text: opening) {
             show(SuggestionsPresentation.mismatch(file: fileName, title: s.title))
         }

@@ -103,7 +103,7 @@ final class IMAPClient {
             let chunk = try await take(untilCRLF: ())
             line += chunk
             let text = String(decoding: chunk, as: UTF8.self)
-            if let open = text.lastIndex(of: "{"), text.hasSuffix("}"), let n = Int(text[text.index(after: open)..<text.index(before: text.endIndex)]) {
+            if let open = text.lastIndex(of: "{"), text.hasSuffix("}"), let n = Int(text[text.index(after: open)..<text.index(before: text.endIndex)]), n >= 0 {
                 literals.append(try await take(count: n))
                 continue   // the line goes on after the literal
             }

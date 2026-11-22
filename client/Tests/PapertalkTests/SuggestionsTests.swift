@@ -247,6 +247,8 @@ final class SuggestionsTests: PapertalkTestCase {
         XCTAssertEqual(SuggestionsPresentation.authors(s), "A, B, C, D")
         XCTAssertEqual(SuggestionsPresentation.doiLine(s), "DOI 10.1/x")
         XCTAssertTrue(SuggestionsPresentation.abstract(s).hasPrefix("Semantic Scholar has no abstract"))
+        s.source = .scholarAlert
+        XCTAssertTrue(SuggestionsPresentation.abstract(s).hasPrefix("The alert email has no abstract"))
         s.abstract = "  We study.\n"
         XCTAssertEqual(SuggestionsPresentation.abstract(s), "We study.")
         s.doi = nil
@@ -424,6 +426,48 @@ final class SuggestionsTests: PapertalkTestCase {
         store.stopFetch()
         XCTAssertFalse(SuggestionsPresentation.asksLibrary([]))
         XCTAssertTrue(SuggestionsPresentation.asksLibrary([Library(id: "lib-1", name: "ML", icon: "books.vertical", connectsAcross: false)]))
+    }
+
+    /// Enough text that reading it outlasts the click on Skip or Stop.
+    nonisolated private static let slowPDF = Fixtures.pdf(lines: Array(repeating: "Sparse attention at scale, line after line", count: 20_000))
+
+    /// Click while the paper says "Importing…", then give the interrupted import time to resume.
+    private func whileImporting(_ store: AppStore, click: () -> Void) async {
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if case .importing = store.paperFetch?.step { break }
+            await Task.yield()
+        }
+        guard case .importing = store.paperFetch?.step else { return XCTFail("Never got to importing") }
+        click()
+        // Reading the same PDF again, started later, ends after the import's own read.
+        _ = await Task.detached { LocalPipeline.extractPages(Self.slowPDF) }.value
+        try? await Task.sleep(nanoseconds: 200_000_000)
+    }
+
+    func testSkipWhileImportingMovesOnByOnePaper() async {
+        let a = Self.suggestion("Open A", pdf: "https://example.org/a.pdf")
+        let b = Self.suggestion("Closed B"), c = Self.suggestion("Closed C")
+        let store = await makeStore([], pending: [a, b, c])
+        MockLLM.install { _ in (200, Self.slowPDF) }
+        store.importSuggestions([a.id, b.id, c.id])
+        await whileImporting(store) { store.skipFetch() }
+        XCTAssertEqual(store.paperFetch?.current.id, b.id)
+        XCTAssertEqual(store.paperFetch?.position, 2)
+        XCTAssertEqual(store.suggestionLog.pending.map(\.id), [a.id, b.id, c.id])
+        store.stopFetch()
+    }
+
+    func testStopWhileImportingImportsNothing() async throws {
+        let a = Self.suggestion("Closed A")
+        let store = await makeStore([], pending: [a])
+        store.importSuggestions([a.id], library: "lib-1")
+        await waitUntil { store.paperFetch?.step == .waiting }
+        try Self.slowPDF.write(to: downloads.appendingPathComponent("new.pdf"))
+        await whileImporting(store) { store.stopFetch() }
+        XCTAssertNil(store.paperFetch)
+        XCTAssertEqual(store.suggestionLog.pending.map(\.id), [a.id])
+        XCTAssertTrue(store.papers.isEmpty)
     }
 
     func testAFreePDFThatIsntOneFallsBackToTheBrowser() async {

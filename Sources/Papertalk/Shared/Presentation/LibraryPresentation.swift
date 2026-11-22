@@ -38,6 +38,11 @@ enum LibraryPresentation {
         library.connectsAcross ? ("link", L("Mind maps connect to other libraries")) : nil
     }
 
+    /// When something wasn't saved, because saving over what couldn't be read would lose it.
+    static var unreadable: String {
+        L("The library couldn't be read. Check the storage server or library folder, then try again.")
+    }
+
     /// `one` for 1, else `other` with {0} replaced by the count ("{0} papers").
     static func count(_ n: Int, _ one: String, _ other: String) -> String {
         n == 1 ? one : other.replacingOccurrences(of: "{0}", with: "\(n)")

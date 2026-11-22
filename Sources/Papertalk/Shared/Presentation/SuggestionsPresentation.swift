@@ -58,9 +58,7 @@ enum SuggestionsPresentation {
     }
     static func checkFailed(_ reason: String) -> String { L("Couldn't check for suggested papers: {0}", reason) }
     /// Why a check didn't start: merging into a log it couldn't read would erase that log.
-    static var libraryUnreadable: String {
-        L("The library couldn't be read. Check the storage server or library folder, then try again.")
-    }
+    static var libraryUnreadable: String { LibraryPresentation.unreadable }
     /// Why the alert emails couldn't be read, as one of a check's failures.
     static func alertsFailed(_ reason: String) -> String { L("Google Scholar alerts: {0}", reason) }
     /// After a check that got an answer: how many arrived, and what failed alongside.

@@ -803,19 +803,42 @@ final class AppStore: ObservableObject {
     /// Save a mind map (edited in its window, or with new connections) and keep its connections
     /// two-way: every paper it links to, linked to before, or in `involving` gets the same
     /// connections back, written onto a fresh read of its map. A connection whose other concept
-    /// is gone (or whose paper left the library) is dropped. Queued behind earlier saves, so quick
+    /// is gone (or whose paper left the library) is dropped; one that can't be checked, because
+    /// the other side can't be read, stays as it was saved. Queued behind earlier saves, so quick
     /// edits land in order.
     func saveMindMap(_ id: String, _ map: MindMap, involving extra: Set<String> = []) {
         guard papers[id] != nil else { return }
         enqueueSave { [self] in
-            let old = await storage.exists(MindMap.self, K.mindMap(id))
-            let involved = extra.union((old?.externalLinks ?? []).map(\.paperId)).union(map.externalLinks.map(\.paperId))
+            let old: MindMap?
+            do {
+                old = try await storage.loadIfPresent(MindMap.self, K.mindMap(id))
+            } catch {
+                // Without the saved copy there's no telling which connections this would drop.
+                show(LibraryPresentation.unreadable)
+                return
+            }
+            let before = old?.externalLinks ?? [], after = map.externalLinks
+            let involved = extra.union(before.map(\.paperId)).union(after.map(\.paperId)).subtracting([id])
             var others: [String: MindMap] = [:]
-            for pid in involved where pid != id && papers[pid] != nil {
-                if let m = await storage.exists(MindMap.self, K.mindMap(pid)) { others[pid] = m }
+            var unchecked: Set<String> = []
+            for pid in involved where papers[pid] != nil {
+                do { others[pid] = try await storage.loadIfPresent(MindMap.self, K.mindMap(pid)) }
+                catch { unchecked.insert(pid) }
+            }
+            let notLoaded = involved.filter { papers[$0] == nil }
+            if !notLoaded.isEmpty {
+                // Gone, or only not loaded? Ask for the listing: these ids come from files, so they're never paths.
+                let listed = try? await storage.list()
+                unchecked.formUnion(notLoaded.filter { listed?.contains($0) ?? true })
             }
             var mine = map
-            mine.external = map.external?.filter { others[$0.paperId]?.node($0.nodeId) != nil }
+            var links = after.filter { unchecked.contains($0.paperId) || others[$0.paperId]?.node($0.nodeId) != nil }
+            // A connection is removed from both maps or from neither.
+            let kept = before.filter { unchecked.contains($0.paperId) && map.node($0.from) != nil && !after.contains($0) }
+            links += kept
+            mine.external = map.external == nil && links.isEmpty ? nil : links
+            // A connection the window showed is coming back: say why (hidden ones were never shown).
+            if kept.contains(where: { papers[$0.paperId] != nil }) { show(LibraryPresentation.unreadable) }
             await storage.save(mine, K.mindMap(id))
             var changed = [id]
             for (pid, m) in MindMapConnections.mirrored(mine.externalLinks, of: id, title: papers[id]?.displayTitle ?? "",

@@ -332,7 +332,8 @@ Still to do, in order:
   two-way: save maps only through `AppStore.saveMindMap`, which writes the other side of every
   connection involved (from a fresh read) and bumps `mindMapRevision` so open windows reload.
   Writing `K.mindMap` directly leaves a connection one-sided. `mindMap(for:)` hides links to
-  papers no longer in the library.
+  papers no longer in the library. A link whose other side couldn't be read is kept, not dropped:
+  it goes only when the paper or concept is surely gone.
 - The duplicate and cast prompts pause the pipeline on a `CheckedContinuation`. Prompts queue,
   one at a time. Only *new* imports (`existing == nil`) may be discarded by the duplicate
   prompt, because declining deletes the paper.

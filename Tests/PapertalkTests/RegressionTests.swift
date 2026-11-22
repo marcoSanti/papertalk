@@ -503,3 +503,158 @@ final class StorageServerGateTests: StorageServerTestCase {
         XCTAssertEqual(boundAddresses, [0])
     }
 }
+
+/// A library on disk whose chosen keys, or whose listing, can't be read.
+private final class UnreliableStorage: Storage, @unchecked Sendable {
+    private let disk: LocalStorage
+    private let lock = NSLock()
+    private var broken: Set<String> = []
+    private var listFails = false
+    private var asked: [String] = []
+
+    init(_ disk: LocalStorage) { self.disk = disk }
+    func fail(_ key: String) { lock.withLock { _ = broken.insert(key) } }
+    func failListing() { lock.withLock { listFails = true } }
+    var keysRead: [String] { lock.withLock { asked } }
+
+    private func check(_ key: String) throws {
+        let fails = lock.withLock { () -> Bool in
+            asked.append(key)
+            return broken.contains(key)
+        }
+        if fails { throw URLError(.timedOut) }
+    }
+    func read(_ key: String) async throws -> Data { try check(key); return try await disk.read(key) }
+    func readIfPresent(_ key: String) async throws -> Data? { try check(key); return try await disk.readIfPresent(key) }
+    func write(_ key: String, _ data: Data) async throws { try await disk.write(key, data) }
+    func delete(_ key: String) async throws { try await disk.delete(key) }
+    func deleteFolder(_ prefix: String) async throws { try await disk.deleteFolder(prefix) }
+    func list() async throws -> [String] {
+        if lock.withLock({ listFails }) { throw URLError(.timedOut) }
+        return try await disk.list()
+    }
+    func url(for key: String) async -> URL? { await disk.url(for: key) }
+}
+
+/// Saving a mind map never drops a connection it couldn't check.
+@MainActor
+final class MindMapSaveTests: TempLibraryTestCase {
+    private func link(_ from: String, to paper: String, _ node: String) -> MindMap.ExternalLink {
+        MindMap.ExternalLink(from: from, paperId: paper, paperTitle: paper, nodeId: node, nodeLabel: node, label: "same")
+    }
+
+    private func map(_ node: String, links: [MindMap.ExternalLink]) -> MindMap {
+        MindMap(nodes: [MindMap.Node(id: node, label: node, branch: .problem, parent: nil, description: "", core: "")],
+                links: [], external: links)
+    }
+
+    /// "p" and "q", connected both ways, behind storage that can be made to fail.
+    private func connectedPapers() async -> UnreliableStorage {
+        await Fixtures.saveMappedPaper(id: "p", title: "P", map: map("a", links: [link("a", to: "q", "b")]), in: storage)
+        await Fixtures.saveMappedPaper(id: "q", title: "Q", map: map("b", links: [link("b", to: "p", "a")]), in: storage)
+        return UnreliableStorage(storage)
+    }
+
+    private func saved(_ id: String) async -> MindMap? { await storage.exists(MindMap.self, K.mindMap(id)) }
+
+    func testAnEditKeepsConnectionsToAMapThatCantBeRead() async throws {
+        let flaky = await connectedPapers()
+        let store = AppStore(storage: flaky)
+        await waitUntil { store.papers.count == 2 }
+        let shown = await store.mindMap(for: "p")
+        var edited = try XCTUnwrap(shown)
+        edited.summary = "Edited"
+        flaky.fail(K.mindMap("q"))
+
+        store.saveMindMap("p", edited)
+        await waitUntil { await self.saved("p")?.summary == "Edited" }
+        let mine = await saved("p"), theirs = await saved("q")
+        XCTAssertEqual(mine?.externalLinks, [link("a", to: "q", "b")])
+        XCTAssertEqual(theirs?.externalLinks, [link("b", to: "p", "a")])
+    }
+
+    func testRemovingAConnectionWaitsUntilBothSidesCanBeWritten() async throws {
+        let flaky = await connectedPapers()
+        let store = AppStore(storage: flaky)
+        await waitUntil { store.papers.count == 2 }
+        let shown = await store.mindMap(for: "p")
+        var edited = try XCTUnwrap(shown)
+        edited.deleteExternal(from: "a", paperId: "q", nodeId: "b")
+        flaky.fail(K.mindMap("q"))
+
+        store.saveMindMap("p", edited)
+        await settle()
+        let mine = await saved("p")
+        XCTAssertEqual(mine?.externalLinks, [link("a", to: "q", "b")], "removed on one side only otherwise")
+        XCTAssertNotNil(store.toast)
+    }
+
+    func testAnEditKeepsConnectionsToAPaperThatDidntLoad() async throws {
+        let flaky = await connectedPapers()
+        flaky.fail(K.paper("q"))
+        let store = AppStore(storage: flaky)
+        await waitUntil { store.papers.count == 1 }
+        let shown = await store.mindMap(for: "p")   // "q" is unknown, so its connection is hidden
+        var edited = try XCTUnwrap(shown)
+        edited.summary = "Edited"
+
+        store.saveMindMap("p", edited)
+        await waitUntil { await self.saved("p")?.summary == "Edited" }
+        let mine = await saved("p")
+        XCTAssertEqual(mine?.externalLinks, [link("a", to: "q", "b")])
+    }
+
+    func testAnEditKeepsHiddenConnectionsWhileTheLibraryCantBeListed() async throws {
+        let flaky = await connectedPapers()
+        flaky.fail(K.paper("q"))
+        let store = AppStore(storage: flaky)
+        await waitUntil { store.papers.count == 1 }
+        let shown = await store.mindMap(for: "p")
+        var edited = try XCTUnwrap(shown)
+        edited.summary = "Edited"
+        flaky.failListing()
+
+        store.saveMindMap("p", edited)
+        await waitUntil { await self.saved("p")?.summary == "Edited" }
+        let mine = await saved("p")
+        XCTAssertEqual(mine?.externalLinks, [link("a", to: "q", "b")])
+    }
+
+    func testAMapWhoseSavedCopyCantBeReadIsNotSavedOver() async throws {
+        let flaky = await connectedPapers()
+        let store = AppStore(storage: flaky)
+        await waitUntil { store.papers.count == 2 }
+        let before = await saved("p")
+        flaky.fail(K.mindMap("p"))
+
+        store.saveMindMap("p", map("a", links: []))
+        await settle()
+        let after = await saved("p")
+        XCTAssertEqual(after, before)
+        XCTAssertNotNil(store.toast)
+    }
+
+    func testConnectionsToPapersThatAreGoneStillGoAndTheirIdsAreNeverPaths() async throws {
+        let stray = map("a", links: [link("a", to: "deleted", "x"), link("a", to: "../../outside", "y")])
+        await Fixtures.saveMappedPaper(id: "p", title: "P", map: stray, in: storage)
+        let flaky = UnreliableStorage(storage)
+        let store = AppStore(storage: flaky)
+        await waitUntil { store.papers.count == 1 }
+
+        store.saveMindMap("p", stray)
+        await waitUntil { await self.saved("p")?.externalLinks.isEmpty == true }
+        XCTAssertFalse(flaky.keysRead.contains { $0.contains("..") })
+    }
+
+    func testRemovingAReadableConnectionStillRemovesBothSides() async throws {
+        let flaky = await connectedPapers()
+        let store = AppStore(storage: flaky)
+        await waitUntil { store.papers.count == 2 }
+
+        store.saveMindMap("p", map("a", links: []))
+        await waitUntil {
+            let mine = await self.saved("p"), theirs = await self.saved("q")
+            return mine?.externalLinks.isEmpty == true && theirs?.externalLinks.isEmpty == true
+        }
+    }
+}

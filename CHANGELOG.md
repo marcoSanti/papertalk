@@ -5,11 +5,16 @@ user-visible change adds one line under `## Unreleased`, in this form:
 
 `- <emoji> **Title**: one short sentence on what changed for the user.`
 
-When `VERSION` is bumped to `X.Y.0`, rename `## Unreleased` to `## X.Y.0` and start a new, empty
-`## Unreleased` above it. `app.sh` embeds only the build's own section (or `Unreleased` when the
-version has none) into the app.
+When `VERSION` is bumped to `X.Y.0`, rename `## Unreleased` to that version and start a new, empty
+`## Unreleased` above it. Do that for a patch only to release it to everyone: a patch with a section
+of its own is published as a stable release (see AGENTS.md). `app.sh` embeds only the build's own
+section (or `Unreleased` when the version has none) into the app.
 
 ## Unreleased
+
+## 0.9.1
+
+- 🐛 **Safer libraries**: fixes lost libraries and mind map connections, several crashes and a mail password left by Erase; a storage server now needs a token to be shared with other machines.
 
 ## 0.9.0
 

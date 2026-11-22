@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Papertalk app: build, run, test, release and versioning.
-# Run from anywhere; things that need the Swift package run from client/.
+# Run from anywhere: everything runs from the repo root, where the Swift package is.
 #
 #   ./app.sh [build|app|run|release|test|coverage|server|clean|version]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLIENT="$ROOT/client"
 
 VERSION="${VERSION:-$(cat "$ROOT/VERSION")}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
@@ -21,8 +20,8 @@ case "$CHANNEL" in
     *) echo "CHANNEL must be stable or dev, not '$CHANNEL'" >&2; exit 2 ;;
 esac
 OFFICIAL_ICON="$ROOT/shared/icon.icns"
-DEV_ICON="$CLIENT/.build/icons/Papertalk-dev.icns"
-DOCUMENT_ICON="$CLIENT/.build/icons/PaperDocument.icns"
+DEV_ICON="$ROOT/.build/icons/Papertalk-dev.icns"
+DOCUMENT_ICON="$ROOT/.build/icons/PaperDocument.icns"
 
 usage() {
     echo "usage: $0 [build|app|run|release|test|coverage|server|clean|version]" >&2
@@ -36,10 +35,10 @@ icon() {
         echo "$OFFICIAL_ICON"
         return
     fi
-    local script="$ROOT/scripts/dev_icon.swift"
+    local script="$ROOT/scripts/icons.swift"
     if [ ! -f "$DEV_ICON" ] || [ "$OFFICIAL_ICON" -nt "$DEV_ICON" ] || [ "$script" -nt "$DEV_ICON" ]; then
         mkdir -p "$(dirname "$DEV_ICON")"
-        swift "$script" "$OFFICIAL_ICON" "$DEV_ICON" >&2
+        swift "$script" dev "$OFFICIAL_ICON" "$DEV_ICON" >&2
     fi
     echo "$DEV_ICON"
 }
@@ -47,10 +46,10 @@ icon() {
 # The Finder icon of .papertalk files, generated from the official icon on every channel,
 # and regenerated when either it or the script is newer.
 document_icon() {
-    local script="$ROOT/scripts/document_icon.swift"
+    local script="$ROOT/scripts/icons.swift"
     if [ ! -f "$DOCUMENT_ICON" ] || [ "$OFFICIAL_ICON" -nt "$DOCUMENT_ICON" ] || [ "$script" -nt "$DOCUMENT_ICON" ]; then
         mkdir -p "$(dirname "$DOCUMENT_ICON")"
-        swift "$script" "$OFFICIAL_ICON" "$DOCUMENT_ICON" >&2
+        swift "$script" document "$OFFICIAL_ICON" "$DOCUMENT_ICON" >&2
     fi
     echo "$DOCUMENT_ICON"
 }
@@ -97,7 +96,7 @@ register_build() {
 
 build() {
     local config="$1"
-    cd "$CLIENT"
+    cd "$ROOT"
     swift build -c "$config"
 }
 
@@ -106,7 +105,7 @@ build() {
 app() {
     local config="${1:-debug}"
     build "$config"
-    cd "$CLIENT"
+    cd "$ROOT"
     local app="dist/Papertalk.app" zip_file="dist/Papertalk-$VERSION.zip"
     local source_file="dist/Papertalk-$VERSION-source.tar.gz" icon_file document_icon_file
     icon_file="$(icon)"
@@ -124,20 +123,20 @@ app() {
     plutil -replace CFBundleIconFile -string Papertalk "$app/Contents/Info.plist"
     help_book "$app/Contents/Resources"
     codesign --force --sign - "$app" >/dev/null 2>&1 || true
-    register_build "$CLIENT/$app"
+    register_build "$ROOT/$app"
     echo "Built $app (version $VERSION, build $BUILD_NUMBER, $CHANNEL icon)"
     if [ "${2:-}" = zip ]; then
         rm -f dist/Papertalk-*.zip dist/Papertalk-*-source.tar.gz
         ditto -c -k --keepParent "$app" "$zip_file"
         # The committed source the app was built from (uncommitted changes aren't included).
-        git -C "$ROOT" archive --format=tar.gz --prefix="Papertalk-$VERSION/" -o "$CLIENT/$source_file" HEAD
+        git -C "$ROOT" archive --format=tar.gz --prefix="Papertalk-$VERSION/" -o "$ROOT/$source_file" HEAD
         echo "Bundled $zip_file and $source_file"
     fi
 }
 
 run() {
     app debug
-    cd "$CLIENT"
+    cd "$ROOT"
     if pgrep -x Papertalk >/dev/null; then
         echo "Quitting the running Papertalk…"
         osascript -e 'tell application id "dev.papertalk.desktop" to quit' >/dev/null 2>&1 || true
@@ -153,9 +152,10 @@ release() {
     app release zip
 }
 
-# Run the PapertalkTests mock test suite (no network, no keychain).
+# The MVC layer check, then the PapertalkTests mock test suite (no network, no keychain).
 test() {
-    cd "$CLIENT"
+    cd "$ROOT"
+    "$ROOT/scripts/check_layers.sh"
     swift test --disable-swift-testing
 }
 
@@ -166,12 +166,12 @@ coverage() {
 
 # Build and run the storage server (PAPER2POD_STORAGE_* settings, see README).
 server() {
-    cd "$CLIENT"
+    cd "$ROOT"
     swift run -c release PapertalkServer
 }
 
 clean() {
-    cd "$CLIENT"
+    cd "$ROOT"
     swift package clean
     rm -rf dist
 }

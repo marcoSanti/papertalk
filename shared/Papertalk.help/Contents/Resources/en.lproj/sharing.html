@@ -17,8 +17,9 @@
 <li>A paper whose id is already in your library comes in as a copy.</li>
 </ul>
 <h2>Where the library lives</h2>
-<p>Papers live in <code>~/Library/Application Support/papertalk/papers/</code>, one package per paper (Finder shows each as a single item). <a href="settings.html">Settings → General → Library folder</a> moves it, for example into a folder you back up; papers already in that folder join the library.</p>
+<p>Papers live in <code>~/Library/Application Support/papertalk/papers/</code>, one package per paper (Finder shows each as a single item). <a href="settings.html">Settings → General → Library folder</a> moves it, for example into a folder you back up; your libraries and suggested papers move with it, and papers and libraries already in that folder join them.</p>
 <h2>One library on several Macs</h2>
 <p>Run the storage server that comes with Papertalk (<code>./app.sh server</code> in the source) on any Mac or Linux machine, then enter its address (<code>http://&lt;host&gt;:9170</code>) and token in <b>Settings → Server Settings</b>. Clearing the URL switches back to the library on this Mac.</p>
+<p>Start the server with a token to share it: <code>PAPER2POD_STORAGE_TOKEN=&lt;secret&gt; ./app.sh server</code>. Without one it accepts only connections from the machine it runs on.</p>
 </body>
 </html>

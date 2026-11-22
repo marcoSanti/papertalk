@@ -76,15 +76,20 @@ Run the bundled storage server on any Mac or Linux machine with Swift 6.2, then 
 **Settings → Server Settings** to `http://<host>:9170`:
 
 ```bash
-./app.sh server
+PAPER2POD_STORAGE_TOKEN=<secret> ./app.sh server
 ```
+
+Enter the same token in **Settings → Server Settings**. Without a token the server accepts only
+connections from the machine it runs on.
 
 <details>
 <summary>Server options and API</summary>
 
 Environment: `PAPER2POD_STORAGE_PORT` (default `9170`), `PAPER2POD_STORAGE_HOST` (default
-`0.0.0.0`), `PAPER2POD_STORAGE_ROOT` (default `~/.paper2pod/storage`) and
-`PAPER2POD_STORAGE_TOKEN` (optional bearer token, entered in the app too).
+`0.0.0.0` with a token, `127.0.0.1` without), `PAPER2POD_STORAGE_ROOT` (default
+`~/.paper2pod/storage`) and `PAPER2POD_STORAGE_TOKEN` (bearer token, entered in the app too).
+Setting the host to `0.0.0.0` without a token lets anyone on the network read and delete the
+library. One upload can be at most 1 GB.
 
 It's a flat key/value store: `GET /` lists keys; `GET`, `PUT`, `DELETE` and `HEAD` on `/<key>`
 work on one file (`papers/<id>/paper.json`, `papers/<id>/turns/<n>.wav`, …). It only stores
@@ -118,11 +123,11 @@ files; conversion happens in the app.
 Needs macOS 26 and Xcode with Swift 6.2.
 
 ```bash
-./app.sh run        # debug build of client/dist/Papertalk.app, then open it
+./app.sh run        # debug build of dist/Papertalk.app, then open it
 ./app.sh test       # the test suite, about ten seconds, no network needed
 ./app.sh release    # optimized build, zipped
 ```
 
 Read [AGENTS.md](AGENTS.md) first: it explains the code layout, the rules, and how releases are
-cut from `VERSION`. A Linux build (GTK 4 AppImage) is in progress under `client/linux-dev/`.
+cut from `VERSION`. A Linux build (GTK 4 AppImage) is in progress under `linux-dev/`.
 When reporting a bug, include the **Activity** log from the paper's details.
